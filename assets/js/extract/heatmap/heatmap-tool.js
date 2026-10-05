@@ -29,22 +29,48 @@
 
   // ---------------------------------------------------------------- overlay
 
+  // Adds a closed polygon to the current path (ws.polyPath starts a new one).
+  function addPolygon(ctx, v, pts) {
+    pts.forEach((q, i) => {
+      const s = v.toScreen(q);
+      if (i === 0) ctx.moveTo(s.x, s.y);
+      else ctx.lineTo(s.x, s.y);
+    });
+    ctx.closePath();
+  }
+
+  // result.cells → hex color of each cell's repainted value, kept per result:
+  // the colors only change with the values, but the overlay redraws on every
+  // pan, zoom and hover.
+  const reconColors = new WeakMap();
+  function reconColorsFor(result) {
+    let hit = reconColors.get(result);
+    if (!hit) {
+      hit = result.cells.map((row) => row.map((c) => rgbToHex(colorAtT(result.samples, c.t))));
+      reconColors.set(result, hit);
+    }
+    return hit;
+  }
+
   // Reconstruction: repaint each sampled area with the color its value maps to.
   function drawUnderGrid(ctx, v, panel, active) {
     if (!active || !state.showRecon) return;
     const result = ws.resultFor(panel);
     if (!result.cells) return;
     const g = panel.grid;
+    const colors = reconColorsFor(result);
     for (let r = 0; r < g.rows; r++) {
       for (let k = 0; k < g.cols; k++) {
-        ws.polyPath(ctx, v, cellSamplePolygon(g, r, k));
-        ctx.fillStyle = rgbToHex(colorAtT(result.samples, result.cells[r][k].t));
+        ctx.beginPath();
+        addPolygon(ctx, v, cellSamplePolygon(g, r, k));
+        ctx.fillStyle = colors[r][k];
         ctx.fill();
       }
     }
   }
 
-  // Sampled areas (when cells are large enough to read) and flagged cells.
+  // Sampled areas (when cells are large enough to read) and flagged cells,
+  // each kind stroked as one path.
   function drawOverGrid(ctx, v, panel, active) {
     if (!active) return;
     const g = panel.grid;
@@ -54,28 +80,25 @@
       (Math.hypot(c[3].x - c[0].x, c[3].y - c[0].y) / g.rows) * v.scale,
     );
     if (cellPx > 10 && !state.showRecon) {
-      for (let r = 0; r < g.rows; r++) {
-        for (let k = 0; k < g.cols; k++) {
-          ws.polyPath(ctx, v, cellSamplePolygon(g, r, k));
-          ctx.setLineDash([3, 3]);
-          ctx.lineWidth = 1;
-          ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-      }
+      ctx.beginPath();
+      for (let r = 0; r < g.rows; r++) for (let k = 0; k < g.cols; k++) addPolygon(ctx, v, cellSamplePolygon(g, r, k));
+      ctx.setLineDash([3, 3]);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
     const result = ws.resultFor(panel);
     if (!result.cells) return;
+    ctx.beginPath();
     for (let r = 0; r < g.rows; r++) {
       for (let k = 0; k < g.cols; k++) {
-        if (!result.cells[r][k].flagged) continue;
-        ws.polyPath(ctx, v, cellSamplePolygon(g, r, k));
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = ws.COLORS.flag;
-        ctx.stroke();
+        if (result.cells[r][k].flagged) addPolygon(ctx, v, cellSamplePolygon(g, r, k));
       }
     }
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = ws.COLORS.flag;
+    ctx.stroke();
   }
 
   function hoverText(panel, cell) {

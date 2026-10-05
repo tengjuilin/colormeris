@@ -124,11 +124,27 @@
     return n;
   }
 
+  // The colorbar's samples and color reader depend only on the image, the
+  // colorbar and the distance. Profiles are read again on every drag or sweep
+  // frame, so the last few are kept: each keeps its color cache warm, and
+  // rebuilding the 256 samples per profile would cost more than reading it.
+  const PREPARED_KEEP = 4;
+  const preparedCache = [];
   function prepare(img, panel) {
     const cb = panel.colorbar;
+    const key = JSON.stringify([cb, panel.settings.distance]);
+    const at = preparedCache.findIndex((e) => e.img === img && e.key === key);
+    if (at >= 0) {
+      const [hit] = preparedCache.splice(at, 1);
+      preparedCache.unshift(hit);
+      return hit.value;
+    }
     const samples = colorbarSamples(img, cb);
     const valueAt = makeValueFn(ticksWithT(cb), cb.scale);
-    return { samples, read: makeColorReader(samples, valueAt, panel.settings) };
+    const value = { samples, read: makeColorReader(samples, valueAt, panel.settings) };
+    preparedCache.unshift({ img, key, value });
+    preparedCache.length = Math.min(preparedCache.length, PREPARED_KEEP);
+    return value;
   }
 
   // The value field. Result: {rows, cols, bin, width, height, values, t,

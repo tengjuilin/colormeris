@@ -294,3 +294,28 @@ test('profile samples outside the plot area are marked and left out of the CSV',
   assert.equal(samples.filter((q) => q.outside).length, 10);
   assert.equal(profileCsv(samples).trim().split('\n').length, 1 + 31);
 });
+
+test('profiles follow changes to the colorbar, its ticks and the image despite the prepared-colorbar cache', () => {
+  const { img, panel } = scene();
+  const prof = createProfile({ x: X0 + 0.5, y: Y0 + 50 }, { x: X0 + W - 0.5, y: Y0 + 50 }, { halfWidth: 1 });
+  const first = sampleProfile(img, panel, prof);
+  assert.deepEqual(sampleProfile(img, panel, prof), first);
+  // Same image and colorbar, another profile: unchanged readings.
+  const other = createProfile({ x: X0 + 0.5, y: Y0 + 20 }, { x: X0 + W - 0.5, y: Y0 + 20 }, { halfWidth: 1 });
+  assert.equal(sampleProfile(img, panel, other).length, 200);
+  assert.deepEqual(sampleProfile(img, panel, prof), first);
+  // A tick value change rescales the values.
+  panel.colorbar.ticks[1].value = 2;
+  close(sampleProfile(img, panel, prof)[199].value, 2 * first[199].value, 0.02);
+  panel.colorbar.ticks[1].value = 1;
+  assert.deepEqual(sampleProfile(img, panel, prof), first);
+  // Moving the colorbar line reads other colors.
+  panel.colorbar.end = { x: 245, y: 60 };
+  assert.notDeepEqual(sampleProfile(img, panel, prof).map((q) => q.value), first.map((q) => q.value));
+  panel.colorbar.end = { x: 245, y: 10 };
+  // Another image object with other pixels is not served from the cache.
+  const img2 = makeImage(280, 130);
+  paintColorbar(img2, 240, 250, 10, 110, VIRIDISH);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) setPixel(img2, X0 + x, Y0 + y, cmap(VIRIDISH, 0.9));
+  close(sampleProfile(img2, panel, prof)[100].value, 0.9, 0.02);
+});

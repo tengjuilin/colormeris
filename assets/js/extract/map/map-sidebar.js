@@ -232,8 +232,12 @@
       const dpr = window.devicePixelRatio || 1;
       const cssW = canvas.clientWidth || 300;
       const cssH = canvas.clientHeight || 140;
-      canvas.width = Math.round(cssW * dpr);
-      canvas.height = Math.round(cssH * dpr);
+      // Assigning width reallocates the bitmap even when unchanged; the plot
+      // is redrawn on every sweep frame and trace move.
+      const w = Math.round(cssW * dpr);
+      const h = Math.round(cssH * dpr);
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
       const ctx = canvas.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);

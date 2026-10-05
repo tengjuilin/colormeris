@@ -161,7 +161,12 @@
       const img = this.toImage(sx, sy);
       this.hover = { sx, sy, img };
       const p = this.pointer;
+      // A plain hover changes the picture only through the crosshair and the
+      // loupe (shown in modes, whose previews follow the pointer too); the
+      // overlay asks for its own draw when the hovered cell or trace changes.
+      let redraw = this.crosshair || !!this.cb.wantsLoupe?.();
       if (p && p.id === e.pointerId) {
+        redraw = true;
         if (!p.moved && Math.hypot(sx - p.sx, sy - p.sy) > DRAG_THRESHOLD) {
           p.moved = true;
           if (p.draw) this.cb.onDragStart?.(p.start, e);
@@ -182,7 +187,7 @@
         this.canvas.classList.toggle('over-handle', !!handle);
       }
       this.cb.onHover?.(img);
-      this.requestDraw();
+      if (redraw) this.requestDraw();
     }
 
     onPointerUp(e) {
