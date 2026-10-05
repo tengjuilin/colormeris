@@ -203,10 +203,17 @@
     const f = opts.fn || cvdLinearFn(type, opts);
     LIN ??= Float64Array.from({ length: 256 }, (_, i) => srgbToLinear(i));
     const tmp = [0, 0, 0];
+    // Neighbors often share a color (flat areas, background): the last one
+    // is kept at hand, so the Map is only asked when the color changes.
+    let lastKey = -1;
+    let hit = 0;
     for (let p = from; p < to; p++) {
       const o = p * 4;
       const key = (rgba[o] << 16) | (rgba[o + 1] << 8) | rgba[o + 2];
-      let hit = cache.get(key);
+      if (key !== lastKey) {
+        lastKey = key;
+        hit = cache.get(key);
+      }
       if (hit === undefined) {
         f(LIN[rgba[o]], LIN[rgba[o + 1]], LIN[rgba[o + 2]], tmp, 0);
         hit = (linearToSrgb(tmp[0]) << 16) | (linearToSrgb(tmp[1]) << 8) | linearToSrgb(tmp[2]);

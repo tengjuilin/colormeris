@@ -193,8 +193,11 @@
         const out = await simulate(k, my);
         if (my !== job) return;
         const p = sims.find((s) => s.key === k);
-        p.canvas.width = out.width;
-        p.canvas.height = out.height;
+        // Setting the size, even to the same one, clears and reallocates the canvas.
+        if (p.canvas.width !== out.width || p.canvas.height !== out.height) {
+          p.canvas.width = out.width;
+          p.canvas.height = out.height;
+        }
         p.canvas.getContext('2d').putImageData(out, 0, 0);
         p.data = out;
       }
@@ -202,7 +205,14 @@
       if (last) showAt(last); // keep the readout in step with the new settings
     }
 
-    sev.addEventListener('input', render);
+    // The slider sends an input event per step; simulating up to four images
+    // for each one is wasted while it moves, so at most one run per frame.
+    let sevFrame = 0;
+    sev.addEventListener('input', () => {
+      sevOut.textContent = severity().toFixed(1);
+      if (sevFrame) return;
+      sevFrame = requestAnimationFrame(() => { sevFrame = 0; render(); });
+    });
     model.addEventListener('change', render);
 
     // ---- hover: the same spot on every panel, with its colors ----
