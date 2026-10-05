@@ -142,7 +142,10 @@
       } else if (handle.kind === 'barStart' || handle.kind === 'barEnd') {
         const cb = panel.colorbar;
         const other = handle.kind === 'barStart' ? cb.end : cb.start;
-        const q = e.altKey ? p : snapAxis(other, p);
+        handle.dir ??= { x: cb.end.x - cb.start.x, y: cb.end.y - cb.start.y };
+        // Shift: only lengthen or shorten, keeping the bar's direction.
+        const along = { x: other.x + handle.dir.x, y: other.y + handle.dir.y };
+        const q = e.shiftKey ? pointAtT(other, along, projectT(other, along, p)) : e.altKey ? p : snapAxis(other, p);
         // "follow": ticks keep their relative position along the bar.
         // "fixed": they keep their distance from the end that is not dragged,
         // so lengthening the bar leaves them in place and rotating turns them
@@ -160,15 +163,21 @@
         // Ticks typed along a known colormap have no page point to move.
         cb.ticks.forEach((k, i) => Number.isFinite(k.x) && Object.assign(k, pointAtT(cb.start, cb.end, fixed ? tAt(handle.ts[i]) : handle.ts[i])));
       } else if (handle.kind === 'bar') {
-        // Move the line and its ticks together, by the pointer's step since the last event.
+        // Move the line and its ticks together, from where the drag started.
+        // Shift: only along the axis the pointer has moved furthest on.
         const cb = panel.colorbar;
-        const dx = p.x - handle.last.x;
-        const dy = p.y - handle.last.y;
-        handle.last = p;
-        for (const q of [cb.start, cb.end, ...cb.ticks.filter((k) => Number.isFinite(k.x))]) {
-          q.x += dx;
-          q.y += dy;
+        const pts = [cb.start, cb.end, ...cb.ticks.filter((k) => Number.isFinite(k.x))];
+        handle.from ??= pts.map((q) => ({ x: q.x, y: q.y }));
+        let dx = p.x - handle.last.x;
+        let dy = p.y - handle.last.y;
+        if (e.shiftKey) {
+          if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
+          else dx = 0;
         }
+        pts.forEach((q, i) => {
+          q.x = handle.from[i].x + dx;
+          q.y = handle.from[i].y + dy;
+        });
       } else if (handle.kind === 'tick') {
         const cb = panel.colorbar;
         const k = cb.ticks.find((x) => x.id === handle.id);
