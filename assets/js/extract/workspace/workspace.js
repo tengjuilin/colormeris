@@ -352,6 +352,7 @@
       w.showZoom(v);
     },
     wantsLoupe: () => !!app.mode,
+    handlePoint: (handle, p) => w.handlePoint(handle, p),
     wantsDrag: () => !!tool.wantsDrag?.(),
     onDragStart: (p, e) => tool.onDragStart?.(p, e),
     onDragMove: (p, e) => tool.onDragMove?.(p, e),

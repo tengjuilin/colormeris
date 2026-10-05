@@ -17,7 +17,7 @@
   class Viewer {
     constructor(container, callbacks) {
       this.container = container;
-      this.cb = callbacks; // {onClick, hitTest, onHandleDrag, onHandleDrop, onHover, drawOverlay, wantsLoupe, wantsDrag, onDragStart, onDragMove, onDragEnd}
+      this.cb = callbacks; // {onClick, hitTest, onHandleDrag, onHandleDrop, onHover, drawOverlay, wantsLoupe, handlePoint, wantsDrag, onDragStart, onDragMove, onDragEnd}
       this.canvas = document.createElement('canvas');
       this.canvas.className = 'viewer-canvas';
       this.loupe = document.createElement('canvas');
@@ -257,7 +257,12 @@
         this.loupe.style.display = 'none';
         return;
       }
-      const { sx, sy, img } = this.hover;
+      const { sx, sy } = this.hover;
+      // While dragging a handle, magnify where the handle actually is: snapping
+      // (axis lock, ticks projected onto the bar) can move it off the pointer, and
+      // a bar grabbed beside its line keeps that offset, which is many page
+      // pixels when zoomed out.
+      const img = (this.pointer?.handle && this.pointer.moved && this.cb.handlePoint?.(this.pointer.handle, this.hover.img)) || this.hover.img;
       const lc = this.loupe.getContext('2d');
       const half = LOUPE_SIZE / 2;
       lc.imageSmoothingEnabled = false;

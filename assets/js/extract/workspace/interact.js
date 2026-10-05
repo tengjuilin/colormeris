@@ -177,6 +177,18 @@
       w.changed({ light: true });
     }
 
+    // Current page position of a dragged shared handle, for the loupe.
+    function handlePoint(handle, p) {
+      const panel = w.activePanel();
+      const cb = panel.colorbar;
+      if (handle.kind === 'bar' && cb.start && cb.end) return pointAtT(cb.start, cb.end, Math.min(1, Math.max(0, projectT(cb.start, cb.end, p))));
+      if (handle.kind === 'barStart') return cb.start;
+      if (handle.kind === 'barEnd') return cb.end;
+      if (handle.kind === 'corner') return panel.grid.corners?.[handle.i];
+      if (handle.kind === 'tick') return cb.ticks.find((k) => k.id === handle.id);
+      return null;
+    }
+
     function onHover(p) {
       if (!p || !app.imageData) {
         $('status-pos').textContent = '';
@@ -212,7 +224,7 @@
       w.viewer.requestDraw();
     }
 
-    return { onClick, hitTest, onHandleDrag, onHandleDrop, onHover, applyDetectedSize, snapAxis };
+    return { onClick, hitTest, onHandleDrag, onHandleDrop, onHover, handlePoint, applyDetectedSize, snapAxis };
   }
 
   Object.assign(CM, { setupWorkspaceInteract });
