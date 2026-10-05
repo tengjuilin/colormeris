@@ -31,23 +31,49 @@
     const valueAt = makeValueFn(ticksWithT(cb), cb.scale);
     const { grayChroma, distance, maxDeltaE } = panel.settings;
     const cache = new Map();
-    return (rgb) => {
-      const r = Math.round(rgb[0]);
-      const g = Math.round(rgb[1]);
-      const b = Math.round(rgb[2]);
+    const hits = [];
+    // Index into hits (1-based) of a color, classifying it on first sight.
+    const indexOf = (r, g, b) => {
       const key = (r << 16) | (g << 8) | b;
-      let hit = cache.get(key);
-      if (!hit) {
+      let k = cache.get(key);
+      if (!k) {
+        let hit;
         const lab = rgbToLab([r, g, b]);
         if (Math.hypot(lab[1], lab[2]) <= grayChroma) hit = { value: 0, signal: false, deltaE: 0, flagged: false };
         else {
           const { t, deltaE } = labToT(lab, samples, distance);
           hit = { value: valueAt(t), signal: true, deltaE, flagged: deltaE > maxDeltaE };
         }
-        cache.set(key, hit);
+        k = hits.push(hit);
+        cache.set(key, k);
       }
-      return hit;
+      return k;
     };
+    const classify = (rgb) => hits[indexOf(Math.round(rgb[0]), Math.round(rgb[1]), Math.round(rgb[2])) - 1];
+    // Same as classify(readPixel(img, x, y)) for pixel i = y * width + x, but
+    // remembered per pixel (index into hits, 0 = not read yet): dragging a
+    // region re-reads mostly the same pixels, and an array read is much
+    // cheaper than the color lookup. 4 bytes per pixel, made on first use.
+    let byPixel = null;
+    classify.pixel = (i) => {
+      byPixel ??= new Int32Array(img.width * img.height);
+      const k = byPixel[i];
+      if (k) return hits[k - 1];
+      const d = img.data;
+      const q = i * 4;
+      const a = d[q + 3];
+      let n;
+      if (a === 255) n = indexOf(d[q], d[q + 1], d[q + 2]);
+      else {
+        const f = a / 255;
+        const bg = 255 * (1 - f);
+        n = indexOf(Math.round(d[q] * f + bg), Math.round(d[q + 1] * f + bg), Math.round(d[q + 2] * f + bg));
+      }
+      byPixel[i] = n;
+      return hits[n - 1];
+    };
+    classify.img = img;
+    return classify;
   }
 
   // Statistics over the pixels of one outline (image pixels).
@@ -57,8 +83,10 @@
     let flaggedPx = 0;
     let sum = 0;
     let max = 0;
+    const { width } = img;
+    const at = classify.img === img ? classify.pixel : ((i) => classify(readPixel(img, i % width, Math.floor(i / width))));
     forEachPixelInPolygon(outline, img.width, img.height, (x, y) => {
-      const c = classify(readPixel(img, x, y));
+      const c = at(y * width + x);
       areaPx++;
       if (!c.signal) return;
       signalPx++;
@@ -92,6 +120,12 @@
       quantCache.set(img, hit);
     }
     return hit;
+  }
+
+  // The shared classifier for this image, colorbar and settings (also used by
+  // the signal mask, so it reuses the colors and pixels already read).
+  function panelClassifier(img, panel) {
+    return quantCacheFor(img, panel).classify;
   }
 
   // One row per ROI copy: {roi, row, col, outline, stats}, or {error}.
@@ -165,5 +199,5 @@
     return { rows: order.map((k) => rowsByKey.get(k)), rois: panel.rois };
   }
 
-  Object.assign(CM, { roiPanelProblem, pixelArea, makeClassifier, quantifyOutline, quantifyPanel, metricValue, shortNumber, roiTableModel });
+  Object.assign(CM, { roiPanelProblem, pixelArea, makeClassifier, panelClassifier, quantifyOutline, quantifyPanel, metricValue, shortNumber, roiTableModel });
 })((globalThis.Colormeris ??= {}));

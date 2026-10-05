@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { roiInstances, shapeOutline, boxGeom, colorbarProblem, makeClassifier, boxLabel, roiControlPoints, roiFromLocal, metricValue, shortNumber } = CM;
+  const { roiInstances, shapeOutline, boxGeom, colorbarProblem, panelClassifier, readPixel, boxLabel, roiControlPoints, roiFromLocal, metricValue, shortNumber } = CM;
 
   // ROI tool, DOM: what the tool draws over the image (regions with their
   // labels, edit handles, the scale bar, the signal mask, previews while
@@ -20,15 +20,19 @@
       for (const roi of panel.rois) {
         const color = rctx.roiColor(panel, roi);
         const selected = roi.id === state.selectedId;
-        for (const inst of roiInstances(roi, panel.grid)) {
-          ws.polyPath(ctx, v, inst.outline);
-          if (selected) {
-            ctx.globalAlpha = 0.15;
-            ctx.fillStyle = color;
-            ctx.fill();
-            ctx.globalAlpha = 1;
-          }
-          ws.strokeDual(ctx, color, selected ? 2.5 : 1.5);
+        // All copies of a region as one path: one fill and stroke per region,
+        // not per copy.
+        const instances = roiInstances(roi, panel.grid);
+        ctx.beginPath();
+        for (const inst of instances) addPolygon(ctx, v, inst.outline);
+        if (selected) {
+          ctx.globalAlpha = 0.15;
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+        ws.strokeDual(ctx, color, selected ? 2.5 : 1.5);
+        for (const inst of instances) {
           // Label with the current metric when the copy is big enough on screen.
           const xs = inst.outline.map((q) => q.x);
           const ys = inst.outline.map((q) => q.y);
@@ -54,6 +58,16 @@
         }
       }
       if (panel.scale) drawScale(ctx, v, panel.scale);
+    }
+
+    // Adds a closed polygon to the current path.
+    function addPolygon(ctx, v, pts) {
+      pts.forEach((q, i) => {
+        const s = v.toScreen(q);
+        if (i === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      });
+      ctx.closePath();
     }
 
     function drawScale(ctx, v, scale) {
@@ -108,18 +122,21 @@
       const img = ws.app.imageData;
       const key = JSON.stringify([ws.currentPage(), img.width, panel.colorbar, panel.settings]);
       if (state.mask?.key !== key) {
-        const classify = makeClassifier(img, panel);
+        const classify = panelClassifier(img, panel);
+        const at = classify.img === img ? classify.pixel : (i) => classify(readPixel(img, i % img.width, Math.floor(i / img.width)));
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
         const mctx = canvas.getContext('2d');
         const out = mctx.createImageData(img.width, img.height);
-        const d = img.data;
-        for (let i = 0; i < d.length; i += 4) {
-          const c = classify([d[i], d[i + 1], d[i + 2]]);
-          if (!c.signal) continue;
-          if (c.flagged) out.data.set([255, 40, 40, 170], i);
-          else out.data.set([255, 0, 200, 120], i);
+        // Write whole pixels through a 32-bit view (in the platform's byte order).
+        const px = new Uint32Array(out.data.buffer);
+        const rgba = (...c) => new Uint32Array(new Uint8ClampedArray(c).buffer)[0];
+        const flagged = rgba(255, 40, 40, 170);
+        const signal = rgba(255, 0, 200, 120);
+        for (let i = 0; i < px.length; i++) {
+          const c = at(i);
+          if (c.signal) px[i] = c.flagged ? flagged : signal;
         }
         mctx.putImageData(out, 0, 0);
         state.mask = { key, canvas };
