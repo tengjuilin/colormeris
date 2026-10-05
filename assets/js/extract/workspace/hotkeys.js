@@ -63,7 +63,8 @@
         return;
       }
       if (typing) return;
-      const h = hotkeys[findHotkey(w.ws.settings.hotkeys, comboFromEvent(e))];
+      // Actions of other tools may share the key, so look only at this tool's.
+      const h = hotkeys[findHotkey(w.ws.settings.hotkeys, comboFromEvent(e), w.tool().kind)];
       if (!h || (!h.always && !app.sourceCanvas) || (h.tool && h.tool !== w.tool().kind)) return;
       // A hotkey that returns false did nothing, so the browser keeps the key
       // (Mod+C with no profile selected still copies selected text).

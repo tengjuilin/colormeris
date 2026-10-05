@@ -7,8 +7,6 @@
   // card's buttons and fields are bound in roi/roi-sidebar.js and act on the
   // active panel, whatever the tool.
 
-  const SCALE_COLOR = '#22d3ee';
-
   // A click in 'scale' mode: the first end, then the other one, which sets
   // panel.scale with the length and unit typed in the card.
   function scaleBarClick(ws, mode, p, e) {
@@ -34,13 +32,14 @@
   }
 
   function drawScaleBar(ws, ctx, v, scale) {
+    const color = ws.color('scale');
     const a = v.toScreen(scale.p1);
     const b = v.toScreen(scale.p2);
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
-    ws.strokeDual(ctx, SCALE_COLOR, 2);
-    for (const q of [scale.p1, scale.p2]) ws.drawHandle(ctx, v, q, SCALE_COLOR, 'circle');
+    ws.strokeDual(ctx, color, 2);
+    for (const q of [scale.p1, scale.p2]) ws.drawHandle(ctx, v, q, color, 'circle');
     const label = `${scale.length} ${scale.unit}`;
     ctx.save();
     ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
@@ -51,7 +50,7 @@
     ctx.lineWidth = 3;
     ctx.strokeStyle = 'rgba(0,0,0,0.8)';
     ctx.strokeText(label, mx, my);
-    ctx.fillStyle = SCALE_COLOR;
+    ctx.fillStyle = color;
     ctx.fillText(label, mx, my);
     ctx.restore();
   }
@@ -64,7 +63,7 @@
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
-    ws.strokeDual(ctx, SCALE_COLOR, 1.5, [6, 4]);
+    ws.strokeDual(ctx, ws.color('scale'), 1.5, [6, 4]);
   }
 
   Object.assign(CM, { scaleBarClick, drawScaleBar, drawScalePreview });

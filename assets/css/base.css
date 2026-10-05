@@ -18,8 +18,11 @@
   --good-bg: #e3f4e8;
   --good-text: #14602d;
   --stage: #d9dce2;
+  /* Overlay colors; extract.html sets these four from Settings → Colors. */
   --grid-color: #e22bd0;
   --bar-color: #f29900;
+  --flag-color: #ff3b30;
+  --highlight-color: #ffd400;
   --radius: 8px;
   /* UI standard (see CLAUDE.md): two control heights, one spacing scale, three text sizes. */
   --control-h: 32px;

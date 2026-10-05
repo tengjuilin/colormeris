@@ -1,10 +1,10 @@
 (function (CM) {
   'use strict';
-  const { HOTKEY_ACTIONS, defaultSettings, normalizeSettings, normalizeCombo, comboFromEvent, findHotkey, formatCombo, buildSettingsZip, readSettingsFile, MATCHING_DEFAULTS } = CM;
+  const { HOTKEY_GROUPS, HOTKEY_ACTIONS, COLOR_GROUPS, COLOR_ITEMS, defaultSettings, normalizeSettings, normalizeCombo, comboFromEvent, hotkeyClashes, formatCombo, buildSettingsZip, readSettingsFile, MATCHING_DEFAULTS } = CM;
 
-  // Settings dialog: agent connection, matching defaults, hotkeys, and
-  // settings zips. The settings object is ws.settings (see settings.js for
-  // its shape); every change is saved in localStorage at once. The API key
+  // Settings dialog: agent connection, matching defaults, hotkeys, overlay
+  // colors, and settings zips. The settings object is ws.settings (see
+  // settings.js for its shape); every change is saved in localStorage at once. The API key
   // is only stored when "Remember" is ticked, otherwise it lasts for this visit.
 
   const STORE = 'colormeris.settings';
@@ -96,6 +96,7 @@
       ws.setValue($('set-map-maxde'), settings.matching.map.maxDeltaE);
       $('matching-note').textContent = matchingNote();
       renderHotkeys();
+      renderColors();
     }
 
     // ------------------------------------------------------------ agent
@@ -173,31 +174,45 @@
     let capturing = null; // action id waiting for a key
     const label = (combo) => formatCombo(combo, isMac);
 
+    // One fieldset per group (HOTKEY_GROUPS), like the Matching and Colors
+    // panes, each with a table of its actions.
     function renderHotkeys() {
       $('hotkey-list').replaceChildren(
-        ...HOTKEY_ACTIONS.map((action) => {
-          const tr = document.createElement('tr');
-          tr.className = capturing === action.id ? 'capturing' : '';
-          const name = document.createElement('td');
-          name.textContent = action.label;
-          const keys = document.createElement('td');
-          const combos = settings.hotkeys[action.id] || [];
-          if (capturing === action.id) keys.textContent = 'Press a key… (Esc cancels)';
-          else if (!combos.length) keys.append(Object.assign(document.createElement('span'), { className: 'muted', textContent: 'none' }));
-          else keys.append(...combos.map((c) => Object.assign(document.createElement('kbd'), { textContent: label(c) })));
-          const btns = document.createElement('td');
-          const change = button(capturing === action.id ? 'Cancel' : 'Change', () => (capturing === action.id ? stopCapture() : startCapture(action.id)));
-          const isDefault = JSON.stringify(combos) === JSON.stringify(action.keys);
-          const reset = button('Reset', () => setKeys(action.id, [...action.keys]));
-          reset.disabled = isDefault;
-          reset.title = `Default: ${action.keys.map(label).join(', ')}`;
-          const clear = button('Clear', () => setKeys(action.id, []));
-          clear.disabled = !combos.length;
-          btns.append(change, ' ', reset, ' ', clear);
-          tr.append(name, keys, btns);
-          return tr;
+        ...HOTKEY_GROUPS.map((group) => {
+          const fs = document.createElement('fieldset');
+          fs.append(Object.assign(document.createElement('legend'), { textContent: group.label }));
+          const table = Object.assign(document.createElement('table'), { className: 'hotkeys' });
+          table.setAttribute('aria-label', `${group.label} hotkeys`);
+          const body = document.createElement('tbody');
+          body.append(...HOTKEY_ACTIONS.filter((a) => a.group === group.id).map(hotkeyRow));
+          table.append(body);
+          fs.append(table);
+          return fs;
         }),
       );
+    }
+
+    function hotkeyRow(action) {
+      const tr = document.createElement('tr');
+      tr.className = capturing === action.id ? 'capturing' : '';
+      const name = document.createElement('td');
+      name.textContent = action.label;
+      const keys = document.createElement('td');
+      const combos = settings.hotkeys[action.id] || [];
+      if (capturing === action.id) keys.textContent = 'Press a key… (Esc cancels)';
+      else if (!combos.length) keys.append(Object.assign(document.createElement('span'), { className: 'muted', textContent: 'none' }));
+      else keys.append(...combos.map((c) => Object.assign(document.createElement('kbd'), { textContent: label(c) })));
+      const btns = document.createElement('td');
+      const change = button(capturing === action.id ? 'Cancel' : 'Change', () => (capturing === action.id ? stopCapture() : startCapture(action.id)));
+      const isDefault = JSON.stringify(combos) === JSON.stringify(action.keys);
+      const reset = button('Reset', () => setKeys(action.id, [...action.keys]));
+      reset.disabled = isDefault;
+      reset.title = `Default: ${action.keys.map(label).join(', ')}`;
+      const clear = button('Clear', () => setKeys(action.id, []));
+      clear.disabled = !combos.length;
+      btns.append(change, ' ', reset, ' ', clear);
+      tr.append(name, keys, btns);
+      return tr;
     }
 
     function button(text, onClick) {
@@ -238,10 +253,12 @@
           return;
         }
         const id = capturing;
-        const other = findHotkey(settings.hotkeys, combo);
-        if (other && other !== id) {
+        // Only actions that can be active together clash; another tool's
+        // action keeps the key.
+        for (const other of hotkeyClashes(settings.hotkeys, combo, id)) {
           settings.hotkeys[other] = settings.hotkeys[other].filter((c) => c !== combo);
-          ws.toast(`${label(combo)} moved from “${HOTKEY_ACTIONS.find((a) => a.id === other).label}”.`);
+          const a = HOTKEY_ACTIONS.find((x) => x.id === other);
+          ws.toast(`${label(combo)} moved from “${HOTKEY_GROUPS.find((g) => g.id === a.group).label}: ${a.label}”.`);
         }
         capturing = null;
         setKeys(id, [combo]);
@@ -267,6 +284,77 @@
     }
     listeners.push(updateTitles);
     updateTitles();
+
+    // ------------------------------------------------------------ colors
+    // Overlay colors, one color input per color (several for a palette), in
+    // sections by COLOR_GROUPS. Changes redraw the figure at once.
+
+    function renderColors() {
+      $('color-list').replaceChildren(
+        ...COLOR_GROUPS.map((group) => {
+          const fs = document.createElement('fieldset');
+          fs.append(Object.assign(document.createElement('legend'), { textContent: group.label }));
+          for (const item of COLOR_ITEMS.filter((c) => c.group === group.id)) fs.append(colorRow(item));
+          return fs;
+        }),
+      );
+    }
+
+    function colorRow(item) {
+      const row = document.createElement('div');
+      row.className = 'color-row';
+      const name = Object.assign(document.createElement('span'), { className: 'color-name', textContent: item.label });
+      const swatches = document.createElement('span');
+      swatches.className = 'color-swatches';
+      const value = settings.colors[item.id];
+      const list = Array.isArray(value) ? value : [value];
+      list.forEach((c, i) => {
+        const input = Object.assign(document.createElement('input'), { type: 'color', value: c });
+        input.setAttribute('aria-label', Array.isArray(value) ? `${item.label}, color ${i + 1}` : item.label);
+        // input fires while the picker is open; save on change only.
+        input.addEventListener('input', () => setColor(item, i, input.value, false));
+        input.addEventListener('change', () => setColor(item, i, input.value, true));
+        swatches.append(input);
+      });
+      const isDefault = JSON.stringify(value) === JSON.stringify(item.value);
+      const reset = button('Reset', () => {
+        settings.colors[item.id] = structuredClone(item.value);
+        changed();
+        ws.changed({ light: true });
+        renderColors();
+      });
+      reset.disabled = isDefault;
+      row.append(name, swatches, reset);
+      return row;
+    }
+
+    function setColor(item, i, color, save) {
+      if (Array.isArray(settings.colors[item.id])) settings.colors[item.id][i] = color;
+      else settings.colors[item.id] = color;
+      applyCssColors();
+      // Redraws the figure; sidebar swatches (profile chips) and plots follow too.
+      ws.changed({ light: true });
+      if (save) {
+        changed();
+        renderColors();
+      }
+    }
+
+    // Sidebar marks (card dots, flagged and highlighted table cells) use CSS
+    // variables (base.css); they follow the overlay colors.
+    function applyCssColors() {
+      const root = document.documentElement.style;
+      for (const [name, id] of [['--grid-color', 'grid'], ['--bar-color', 'bar'], ['--flag-color', 'flag'], ['--highlight-color', 'highlight']]) root.setProperty(name, settings.colors[id]);
+    }
+    listeners.push(applyCssColors);
+    applyCssColors();
+
+    $('colors-reset').addEventListener('click', () => {
+      settings.colors = defaultSettings().colors;
+      changed();
+      ws.changed({ light: true });
+      renderColors();
+    });
 
     // ------------------------------------------------------------ import / export / reset
 

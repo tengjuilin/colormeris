@@ -91,3 +91,32 @@ test('settings zip round-trips', async () => {
   const json = new Blob([JSON.stringify(serializeSettings(s))]);
   assert.deepEqual((await readSettingsFile(JSZip, json, 'settings.json')).settings, s);
 });
+
+test('hotkeys are grouped and tools may share keys', () => {
+  const { HOTKEY_GROUPS, hotkeyClashes } = CM;
+  const groups = new Set(HOTKEY_GROUPS.map((g) => g.id));
+  for (const a of HOTKEY_ACTIONS) assert.ok(groups.has(a.group), `${a.id} has a known group`);
+  // A ROI and a Map action on the same key: each tool finds its own.
+  const hotkeys = { ...defaultSettings().hotkeys, ellipse: ['X'] };
+  assert.equal(findHotkey(hotkeys, 'X', 'roi'), 'ellipse');
+  assert.equal(findHotkey(hotkeys, 'X', 'map'), 'xtick');
+  assert.equal(findHotkey(hotkeys, 'X', 'heatmap'), null);
+  // So they do not clash; a key of an action of every tool does.
+  assert.deepEqual(hotkeyClashes(hotkeys, 'X', 'ellipse'), []);
+  assert.deepEqual(hotkeyClashes(hotkeys, 'F', 'xtick'), ['fit']);
+  assert.deepEqual(hotkeyClashes(hotkeys, 'L', 'fit'), ['profile']);
+});
+
+test('colors default, normalize and round-trip', () => {
+  const { COLOR_ITEMS, COLOR_DEFAULTS, hexToRgb } = CM;
+  const d = defaultSettings();
+  assert.equal(d.colors.grid, '#e22bd0');
+  assert.equal(d.colors.roiPalette.length, 8);
+  for (const item of COLOR_ITEMS) assert.deepEqual(d.colors[item.id], COLOR_DEFAULTS[item.id]);
+  const s = normalizeSettings({ colors: { grid: '#ABCDEF', bar: 'red', profilePalette: ['#000000', 'bad'] } });
+  assert.equal(s.colors.grid, '#abcdef');
+  assert.equal(s.colors.bar, COLOR_DEFAULTS.bar); // not #rrggbb
+  assert.deepEqual(s.colors.profilePalette, ['#000000', ...COLOR_DEFAULTS.profilePalette.slice(1)]);
+  assert.deepEqual(parseSettings(JSON.parse(JSON.stringify(serializeSettings(s)))).settings.colors, s.colors);
+  assert.deepEqual(hexToRgb('#ff8001'), [255, 128, 1]);
+});

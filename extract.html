@@ -6,8 +6,8 @@
   <title>Colormeris</title>
   <meta name="description" content="Turn colors in scientific figures back into numbers: heatmap grids and signal inside regions of interest (ROI).">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%23dfe3ff'/%3E%3Crect x='8' width='8' height='8' fill='%235560f0'/%3E%3Crect y='8' width='8' height='8' fill='%232530e0'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23a3a9ff'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="assets/css/base.css?v=2">
-  <link rel="stylesheet" href="assets/css/extract.css?v=5">
+  <link rel="stylesheet" href="assets/css/base.css?v=3">
+  <link rel="stylesheet" href="assets/css/extract.css?v=9">
   <script src="assets/vendor/jszip/jszip.min.js" defer></script>
   <!-- Classic (non-module) scripts so the page also works when opened from disk. Order matters. -->
   <script src="assets/js/core/color.js?v=2" defer></script>
@@ -23,7 +23,7 @@
   <script src="assets/js/extract/roi/geometry.js?v=2" defer></script>
   <script src="assets/js/extract/roi/quantify.js?v=4" defer></script>
   <script src="assets/js/extract/map/field.js?v=13" defer></script>
-  <script src="assets/js/extract/settings.js?v=4" defer></script>
+  <script src="assets/js/extract/settings.js?v=5" defer></script>
   <script src="assets/js/extract/workspace/history.js?v=1" defer></script>
   <script src="assets/js/extract/workspace/overlay.js?v=3" defer></script>
   <script src="assets/js/extract/workspace/interact.js?v=6" defer></script>
@@ -33,21 +33,21 @@
   <script src="assets/js/extract/workspace/panels.js?v=3" defer></script>
   <script src="assets/js/extract/workspace/source.js?v=2" defer></script>
   <script src="assets/js/extract/workspace/export.js?v=1" defer></script>
-  <script src="assets/js/extract/workspace/hotkeys.js?v=2" defer></script>
-  <script src="assets/js/extract/workspace/workspace.js?v=4" defer></script>
+  <script src="assets/js/extract/workspace/hotkeys.js?v=3" defer></script>
+  <script src="assets/js/extract/workspace/workspace.js?v=5" defer></script>
   <script src="assets/js/extract/heatmap/heatmap-tool.js?v=3" defer></script>
-  <script src="assets/js/extract/scale-bar.js?v=1" defer></script>
-  <script src="assets/js/extract/roi/roi-overlay.js?v=3" defer></script>
+  <script src="assets/js/extract/scale-bar.js?v=2" defer></script>
+  <script src="assets/js/extract/roi/roi-overlay.js?v=4" defer></script>
   <script src="assets/js/extract/roi/roi-sidebar.js?v=2" defer></script>
-  <script src="assets/js/extract/roi/roi-tool.js?v=3" defer></script>
+  <script src="assets/js/extract/roi/roi-tool.js?v=4" defer></script>
   <script src="assets/js/extract/map/map-sidebar.js?v=13" defer></script>
-  <script src="assets/js/extract/map/map-tool.js?v=15" defer></script>
+  <script src="assets/js/extract/map/map-tool.js?v=16" defer></script>
   <script src="assets/js/agent/schema.js?v=3" defer></script>
   <script src="assets/js/agent/api.js?v=2" defer></script>
   <script src="assets/js/agent/llm.js?v=1" defer></script>
   <script src="assets/js/agent/runner.js?v=1" defer></script>
   <script src="assets/js/agent/agent-card.js?v=1" defer></script>
-  <script src="assets/js/extract/settings-dialog.js?v=2" defer></script>
+  <script src="assets/js/extract/settings-dialog.js?v=5" defer></script>
   <script src="assets/js/extract/main.js?v=2" defer></script>
 </head>
 <body class="extract">
@@ -384,7 +384,7 @@
         <div class="card-head">
           <h2>Results</h2>
           <label class="check"><input id="map-recon" type="checkbox"> Reconstruct</label>
-          <label class="check" title="Red: color far from the colorbar (ΔE). Magenta / cyan: at the top / bottom end of the colorbar, possibly clipped."><input id="map-flags" type="checkbox"> Show flags</label>
+          <label class="check" title="Red: color far from the colorbar (ΔE). Magenta / cyan: at the top / bottom end of the colorbar, possibly clipped. Colors can be changed in Settings."><input id="map-flags" type="checkbox"> Show flags</label>
         </div>
         <div class="fields">
           <label class="field" title="Side of the square bins in pixels of the rendered image; each bin is the median of its pixels. 1 = one value per pixel.">Bin size (px) <input id="map-bin" type="number" min="1" max="256" step="1"></label>
@@ -514,6 +514,7 @@
         <button type="button" class="active" data-settings-tab="agent">Agent</button>
         <button type="button" data-settings-tab="matching">Matching</button>
         <button type="button" data-settings-tab="hotkeys">Hotkeys</button>
+        <button type="button" data-settings-tab="colors">Colors</button>
         <button type="button" data-settings-tab="transfer">Import and export</button>
       </nav>
 
@@ -581,17 +582,21 @@
 
       <section class="settings-pane" data-settings-pane="hotkeys" hidden>
         <h3>Hotkeys</h3>
-        <p class="muted small">Click <i>Change</i>, then press the new key or combination. A key used by another action moves to this one. Esc (cancel), Space (pan), Enter and Backspace (polygons) and Delete (regions) are fixed.</p>
-        <table class="hotkeys">
-          <thead><tr><th>Action</th><th>Keys</th><th></th></tr></thead>
-          <tbody id="hotkey-list"></tbody>
-        </table>
+        <p class="muted small">Click <i>Change</i>, then press the new key or combination. A key used by another action in the same tool moves to this one; ROI and Map actions may share keys, since only one tool is active at a time. Esc (cancel), Space (pan), Enter and Backspace (polygons) and Delete (regions) are fixed.</p>
+        <div id="hotkey-list" class="hotkey-list"></div>
         <div class="row"><button type="button" class="btn small" id="hotkeys-reset">Reset all hotkeys</button></div>
+      </section>
+
+      <section class="settings-pane" data-settings-pane="colors" hidden>
+        <h3>Colors</h3>
+        <p class="muted small">Colors of the marks drawn over figures: corners, colorbar, regions, profiles and flags. Pick colors that stand out from the figure's own colormap. Masks and flag layers keep their transparency.</p>
+        <div id="color-list" class="color-list"></div>
+        <div class="row"><button type="button" class="btn small" id="colors-reset">Reset all colors</button></div>
       </section>
 
       <section class="settings-pane" data-settings-pane="transfer" hidden>
         <h3>Import and export</h3>
-        <p class="muted small">Save all settings (agent, matching and hotkeys) to a zip, and load them in another browser or after clearing this one.</p>
+        <p class="muted small">Save all settings (agent, matching, hotkeys and colors) to a zip, and load them in another browser or after clearing this one.</p>
         <fieldset>
           <legend>Export</legend>
           <label class="check small"><input id="settings-include-key" type="checkbox"> Include the API key</label>

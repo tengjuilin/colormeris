@@ -1,10 +1,10 @@
 (function (CM) {
   'use strict';
 
-  // App settings (pure): the agent connection, matching defaults per tool and
-  // hotkeys. Kept in localStorage by settings-dialog.js and saved to or read
-  // from a settings zip (settings.json inside). Unlike project.json these
-  // belong to the user, not to a figure.
+  // App settings (pure): the agent connection, matching defaults per tool,
+  // hotkeys and overlay colors. Kept in localStorage by settings-dialog.js and
+  // saved to or read from a settings zip (settings.json inside). Unlike
+  // project.json these belong to the user, not to a figure.
 
   const SETTINGS_SCHEMA = 'colormeris-settings';
   const SETTINGS_VERSION = 1;
@@ -12,28 +12,37 @@
 
   // Hotkeys. A combo is a string such as "G", "Mod+Shift+Z" or "ArrowLeft";
   // Mod is Ctrl, or ⌘ on a Mac. An action can have several combos.
-  // `tool` limits an action to one tool; `always` also runs it before a file is open.
+  // `group` is its section in the Settings dialog (HOTKEY_GROUPS). `tool`
+  // limits an action to one tool, so tools may reuse each other's keys;
+  // `always` also runs it before a file is open.
+  const HOTKEY_GROUPS = [
+    { id: 'general', label: 'General' },
+    { id: 'view', label: 'View and pages' },
+    { id: 'calibration', label: 'Calibration (all tools)' },
+    { id: 'roi', label: 'ROI' },
+    { id: 'map', label: 'Map' },
+  ];
   const HOTKEY_ACTIONS = [
-    { id: 'undo', label: 'Undo', keys: ['Mod+Z'], always: true },
-    { id: 'redo', label: 'Redo', keys: ['Mod+Shift+Z', 'Mod+Y'], always: true },
-    { id: 'grid', label: 'Place grid corners', keys: ['G'] },
-    { id: 'colorbar', label: 'Place colorbar ends', keys: ['B'] },
-    { id: 'ticks', label: 'Add ticks', keys: ['T'] },
-    { id: 'fit', label: 'Fit to view', keys: ['F'] },
-    { id: 'zoomIn', label: 'Zoom in', keys: ['=', '+'] },
-    { id: 'zoomOut', label: 'Zoom out', keys: ['-'] },
-    { id: 'crosshair', label: 'Crosshair', keys: ['C'] },
-    { id: 'prevPage', label: 'Previous page', keys: ['ArrowLeft'] },
-    { id: 'nextPage', label: 'Next page', keys: ['ArrowRight'] },
-    { id: 'ellipse', label: 'Ellipse region (ROI)', keys: ['E'], tool: 'roi' },
-    { id: 'rect', label: 'Rectangle region (ROI)', keys: ['R'], tool: 'roi' },
-    { id: 'polygon', label: 'Polygon region (ROI)', keys: ['P'], tool: 'roi' },
-    { id: 'xtick', label: 'Add x-axis ticks (Map)', keys: ['X'], tool: 'map' },
-    { id: 'ytick', label: 'Add y-axis ticks (Map)', keys: ['Y'], tool: 'map' },
-    { id: 'profile', label: 'Draw a line profile (Map)', keys: ['L'], tool: 'map' },
-    { id: 'copyProfiles', label: 'Copy selected profiles (Map)', keys: ['Mod+C'], tool: 'map' },
-    { id: 'pasteProfiles', label: 'Paste profiles (Map)', keys: ['Mod+V'], tool: 'map' },
-    { id: 'sweepProfile', label: 'Sweep the profile across the plot (Map)', keys: ['K'], tool: 'map' },
+    { id: 'undo', group: 'general', label: 'Undo', keys: ['Mod+Z'], always: true },
+    { id: 'redo', group: 'general', label: 'Redo', keys: ['Mod+Shift+Z', 'Mod+Y'], always: true },
+    { id: 'fit', group: 'view', label: 'Fit to view', keys: ['F'] },
+    { id: 'zoomIn', group: 'view', label: 'Zoom in', keys: ['=', '+'] },
+    { id: 'zoomOut', group: 'view', label: 'Zoom out', keys: ['-'] },
+    { id: 'crosshair', group: 'view', label: 'Crosshair', keys: ['C'] },
+    { id: 'prevPage', group: 'view', label: 'Previous page', keys: ['ArrowLeft'] },
+    { id: 'nextPage', group: 'view', label: 'Next page', keys: ['ArrowRight'] },
+    { id: 'grid', group: 'calibration', label: 'Place grid or plot area corners', keys: ['G'] },
+    { id: 'colorbar', group: 'calibration', label: 'Place colorbar ends', keys: ['B'] },
+    { id: 'ticks', group: 'calibration', label: 'Add colorbar ticks', keys: ['T'] },
+    { id: 'ellipse', group: 'roi', label: 'Ellipse region', keys: ['E'], tool: 'roi' },
+    { id: 'rect', group: 'roi', label: 'Rectangle region', keys: ['R'], tool: 'roi' },
+    { id: 'polygon', group: 'roi', label: 'Polygon region', keys: ['P'], tool: 'roi' },
+    { id: 'xtick', group: 'map', label: 'Add x-axis ticks', keys: ['X'], tool: 'map' },
+    { id: 'ytick', group: 'map', label: 'Add y-axis ticks', keys: ['Y'], tool: 'map' },
+    { id: 'profile', group: 'map', label: 'Draw a line profile', keys: ['L'], tool: 'map' },
+    { id: 'copyProfiles', group: 'map', label: 'Copy selected profiles', keys: ['Mod+C'], tool: 'map' },
+    { id: 'pasteProfiles', group: 'map', label: 'Paste profiles', keys: ['Mod+V'], tool: 'map' },
+    { id: 'sweepProfile', group: 'map', label: 'Sweep the profile across the plot', keys: ['K'], tool: 'map' },
   ];
   // Keys with a fixed meaning: cancel, pan, and finishing or editing a polygon.
   const RESERVED_KEYS = ['Escape', 'Space', 'Enter', 'Backspace', 'Delete', 'Tab'];
@@ -45,6 +54,42 @@
     map: { distance: 'de2000', maxDeltaE: 10 },
   };
 
+  // Overlay colors drawn over figures, as #rrggbb. A palette is a list: items
+  // (ROI regions, map profiles) take its colors in turn. Translucent layers
+  // keep their own opacity. `group` is the section in the Settings dialog.
+  const COLOR_GROUPS = [
+    { id: 'common', label: 'All tools' },
+    { id: 'roi', label: 'ROI' },
+    { id: 'map', label: 'Map' },
+  ];
+  const COLOR_ITEMS = [
+    { id: 'grid', group: 'common', label: 'Grid and plot area', value: '#e22bd0' },
+    { id: 'bar', group: 'common', label: 'Colorbar and its ticks', value: '#f29900' },
+    { id: 'flag', group: 'common', label: 'Flagged heatmap cells', value: '#ff3b30' },
+    { id: 'highlight', group: 'common', label: 'Highlight (hovered cell, first polygon point)', value: '#ffd400' },
+    { id: 'scale', group: 'common', label: 'Scale bar', value: '#22d3ee' },
+    { id: 'roiPalette', group: 'roi', label: 'Regions', value: ['#00e5ff', '#ffd400', '#7cff4f', '#ff6ad5', '#ff8c1a', '#b18cff', '#ffffff', '#4fa3ff'] },
+    { id: 'roiDraft', group: 'roi', label: 'Region being drawn', value: '#00e5ff' },
+    { id: 'roiSignal', group: 'roi', label: 'Signal mask (Show signal)', value: '#ff00c8' },
+    { id: 'roiFlagged', group: 'roi', label: 'Flagged pixels in the mask', value: '#ff2828' },
+    { id: 'axisX', group: 'map', label: 'X-axis ticks', value: '#7cff4f' },
+    { id: 'axisY', group: 'map', label: 'Y-axis ticks', value: '#ffd400' },
+    { id: 'profilePalette', group: 'map', label: 'Profiles', value: ['#00c2e0', '#e040a0', '#f59f00', '#40c057', '#845ef7'] },
+    { id: 'trace', group: 'map', label: 'Traced profile sample', value: '#ffd400' },
+    { id: 'mapFlag', group: 'map', label: 'Flagged values (Show flags)', value: '#ff2828' },
+    { id: 'mapHigh', group: 'map', label: 'At the colorbar top (Show flags)', value: '#ff00c8' },
+    { id: 'mapLow', group: 'map', label: 'At the colorbar bottom (Show flags)', value: '#00e5ff' },
+  ];
+  const COLOR_DEFAULTS = Object.fromEntries(COLOR_ITEMS.map((c) => [c.id, structuredClone(c.value)]));
+
+  const hexColor = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v.trim()) ? v.trim().toLowerCase() : null);
+
+  // [r, g, b] of a #rrggbb color.
+  function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+
   const AGENT_DEFAULTS = { key: '', rememberKey: false, minConfidence: 0.9, maxSteps: 80, base: '', llm: '', reviewer: '' };
 
   function defaultSettings() {
@@ -52,6 +97,7 @@
       agent: { ...AGENT_DEFAULTS },
       matching: structuredClone(MATCHING_DEFAULTS),
       hotkeys: Object.fromEntries(HOTKEY_ACTIONS.map((a) => [a.id, [...a.keys]])),
+      colors: structuredClone(COLOR_DEFAULTS),
     };
   }
 
@@ -85,6 +131,14 @@
       const keys = hk[action.id];
       if (!Array.isArray(keys)) continue;
       out.hotkeys[action.id] = [...new Set(keys.map(normalizeCombo).filter(Boolean))];
+    }
+    const colors = raw.colors || {};
+    for (const item of COLOR_ITEMS) {
+      const v = colors[item.id];
+      if (Array.isArray(item.value)) {
+        // A palette keeps its length; bad or missing entries take the default.
+        if (Array.isArray(v)) out.colors[item.id] = item.value.map((d, i) => hexColor(v[i]) ?? d);
+      } else if (hexColor(v)) out.colors[item.id] = hexColor(v);
     }
     return out;
   }
@@ -125,11 +179,31 @@
     return [...mods, key.length === 1 ? key.toUpperCase() : key].join('+');
   }
 
-  // Id of the action bound to a combo, or null.
-  function findHotkey(hotkeys, combo) {
+  // Whether two actions can be active at the same time, so they cannot share
+  // a key: actions of different tools can.
+  function hotkeysOverlap(a, b) {
+    const ta = HOTKEY_ACTIONS.find((x) => x.id === a)?.tool ?? null;
+    const tb = HOTKEY_ACTIONS.find((x) => x.id === b)?.tool ?? null;
+    return !ta || !tb || ta === tb;
+  }
+
+  // Id of the action bound to a combo, or null. With `tool`, actions of other
+  // tools are skipped; without it, the first match counts.
+  function findHotkey(hotkeys, combo, tool = null) {
     if (!combo) return null;
-    for (const [id, keys] of Object.entries(hotkeys || {})) if (keys.includes(combo)) return id;
+    for (const [id, keys] of Object.entries(hotkeys || {})) {
+      if (!keys.includes(combo)) continue;
+      const only = HOTKEY_ACTIONS.find((a) => a.id === id)?.tool ?? null;
+      if (!tool || !only || only === tool) return id;
+    }
     return null;
+  }
+
+  // Ids of other actions bound to combo that would clash with action `id`.
+  function hotkeyClashes(hotkeys, combo, id) {
+    return Object.entries(hotkeys || {})
+      .filter(([other, keys]) => other !== id && keys.includes(combo) && hotkeysOverlap(id, other))
+      .map(([other]) => other);
   }
 
   const KEY_NAMES = { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Space: 'Space', PageUp: 'Page Up', PageDown: 'Page Down' };
@@ -192,14 +266,20 @@
     SETTINGS_SCHEMA,
     SETTINGS_VERSION,
     SETTINGS_FILE,
+    HOTKEY_GROUPS,
     HOTKEY_ACTIONS,
     RESERVED_KEYS,
+    COLOR_GROUPS,
+    COLOR_ITEMS,
+    COLOR_DEFAULTS,
+    hexToRgb,
     MATCHING_DEFAULTS,
     defaultSettings,
     normalizeSettings,
     normalizeCombo,
     comboFromEvent,
     findHotkey,
+    hotkeyClashes,
     formatCombo,
     serializeSettings,
     parseSettings,

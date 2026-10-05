@@ -39,7 +39,6 @@
   // roi-overlay.js draws over the image, roi-sidebar.js renders the cards; the
   // three share `rctx` (state, selection, colors, hit testing).
 
-  const PALETTE = ['#00e5ff', '#ffd400', '#7cff4f', '#ff6ad5', '#ff8c1a', '#b18cff', '#ffffff', '#4fa3ff'];
 
   // setupRoiTool(ws) registers the tool with a workspace (workspace/workspace.js).
   function setupRoiTool(ws) {
@@ -52,7 +51,11 @@
     metric: 'sum',
   };
   const selectedRoi = () => ws.activePanel().rois.find((r) => r.id === state.selectedId) || null;
-  const roiColor = (panel, roi) => PALETTE[panel.rois.indexOf(roi) % PALETTE.length];
+  // Region colors come from the Settings dialog (colors.roiPalette), in turn.
+  const roiColor = (panel, roi) => {
+    const palette = ws.color('roiPalette');
+    return palette[Math.max(0, panel.rois.indexOf(roi)) % palette.length];
+  };
   const rctx = { ws, state, selectedRoi, roiColor, regionAt, deleteSelected };
   const { drawOverlay, drawModePreview, hoverText } = setupRoiOverlay(rctx);
   const { renderSidebar } = setupRoiSidebar(rctx);

@@ -102,7 +102,8 @@ Page images and extracted values are sent to OpenRouter and the model providers 
 
 - **Agent**: OpenRouter key (stored only if *Remember* is ticked), *Min. confidence*, *Max. steps* and *API base URL*.
 - **Matching**: color difference, ΔE flag limit and, for ROI, the gray threshold. New panels start with these values; changing one applies it to every panel of that tool in the open project (Undo reverts it). Each panel keeps its own copy in the project zip, so a project reopens with the values it was made with.
-- **Hotkeys**: press *Change* and then the new key. Esc, Space, Enter, Backspace and Delete are fixed.
+- **Hotkeys**, in sections (General, View and pages, Calibration, ROI, Map): press *Change* and then the new key. A key taken from another action of the same tool moves to the new one; ROI and Map actions can share keys, since only one tool is active. Esc, Space, Enter, Backspace and Delete are fixed.
+- **Colors**: the colors of marks drawn over figures (grid and plot area, colorbar, flags, highlight, scale bar, ROI regions and masks, map axis ticks, profiles, trace and flags). Change them when they blend into a figure's colormap; *Reset* restores a default.
 - **Import and export**: *Export settings* writes `colormeris-settings.zip` (one `settings.json`); *Import settings* reads it back, or a bare `settings.json`. The API key is left out unless you tick *Include the API key*; importing a file without a key keeps the current one.
 
 ## Agent API

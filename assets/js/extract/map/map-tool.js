@@ -14,6 +14,7 @@
     pastedProfiles,
     bilinear,
     invertBilinear,
+    hexToRgb,
     reconPixels,
     formatNumber,
     FLAG_DELTA_E,
@@ -33,11 +34,6 @@
   // This file sets up the tool, draws over the image and handles clicks and
   // drags; map-sidebar.js renders the cards. They share `mctx`.
 
-  const AXIS_COLORS = { x: '#7cff4f', y: '#ffd400' };
-  // One color per profile, by its place in the list: on the image, on its
-  // chip and in the plot. Mid-tones that read on images and on the light or
-  // dark plot; no red (flagged samples) or yellow (the trace).
-  const PROFILE_COLORS = ['#00c2e0', '#e040a0', '#f59f00', '#40c057', '#845ef7'];
 
   // setupMapTool(ws) registers the tool with a workspace (workspace/workspace.js).
   function setupMapTool(ws) {
@@ -57,7 +53,23 @@
   const isSelected = (id) => id === state.selectedId || state.overlay.has(id);
   // All selected profiles, in list order.
   const selectedProfiles = () => ws.activePanel().map.profiles.filter((l) => isSelected(l.id));
-  const profileColor = (panel, l) => PROFILE_COLORS[Math.max(0, panel.map.profiles.indexOf(l)) % PROFILE_COLORS.length];
+  // Colors come from the Settings dialog (colors.*), read at draw time.
+  const AXIS_COLORS = {
+    get x() {
+      return ws.color('axisX');
+    },
+    get y() {
+      return ws.color('axisY');
+    },
+  };
+  // One color per profile, by its place in the list: on the image, on its
+  // chip and in the plot. The defaults are mid-tones that read on images and
+  // on the light or dark plot, with no red (flagged samples) or yellow (the trace).
+  const profileColorAt = (i) => {
+    const palette = ws.color('profilePalette');
+    return palette[Math.max(0, i) % palette.length];
+  };
+  const profileColor = (panel, l) => profileColorAt(panel.map.profiles.indexOf(l));
 
   // Select profile id (null: none). With add, toggle it in the selection
   // instead; a profile added becomes the one edited.
@@ -131,6 +143,9 @@
   // value repainted with its colorbar color) and the flags.
   function layersFor(result) {
     let hit = state.layers.get(result.values);
+    // The flag colors are settings; a change repaints the flags.
+    const flagKey = ['mapFlag', 'mapHigh', 'mapLow'].map(ws.color).join();
+    if (hit && hit.flagKey !== flagKey) delete hit.flags;
     if (!hit) {
       hit = {};
       state.layers.set(result.values, hit);
@@ -139,10 +154,11 @@
       hit.recon = paintLayer(result, reconPixels(result));
     }
     if (state.showFlags && !hit.flags) {
+      hit.flagKey = flagKey;
       const colors = [
-        [FLAG_DELTA_E, [255, 40, 40, 200]],
-        [FLAG_HIGH, [255, 0, 200, 170]],
-        [FLAG_LOW, [0, 229, 255, 170]],
+        [FLAG_DELTA_E, [...hexToRgb(ws.color('mapFlag')), 200]],
+        [FLAG_HIGH, [...hexToRgb(ws.color('mapHigh')), 170]],
+        [FLAG_LOW, [...hexToRgb(ws.color('mapLow')), 170]],
       ].map(([flag, rgba]) => [flag, new Uint32Array(new Uint8ClampedArray(rgba).buffer)[0]]);
       const out = new Uint8ClampedArray(result.flags.length * 4);
       const px = new Uint32Array(out.buffer);
@@ -220,9 +236,9 @@
     const q = v.toScreen({ x: s.px, y: s.py });
     ctx.beginPath();
     ctx.arc(q.x, q.y, 6, 0, 2 * Math.PI);
-    ws.strokeDual(ctx, '#ffd400', 2);
+    ws.strokeDual(ctx, ws.color('trace'), 2);
     // Four significant digits, as in the profile plot's readout.
-    label(ctx, { x: q.x + 10, y: q.y + 4 }, String(Number(s.value.toPrecision(4))), '#ffd400', 'above');
+    label(ctx, { x: q.x + 10, y: q.y + 4 }, String(Number(s.value.toPrecision(4))), ws.color('trace'), 'above');
   }
 
   // Pointer over the image near a selected profile → trace the nearest
@@ -272,7 +288,7 @@
       ws.drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
     } else if (m.type === 'profile' && m.points.length === 1) {
       // In the color the new profile will get.
-      line(ctx, v, m.points[0], ws.snapAxis(m.points[0], hover), PROFILE_COLORS[panel.map.profiles.length % PROFILE_COLORS.length]);
+      line(ctx, v, m.points[0], ws.snapAxis(m.points[0], hover), profileColorAt(panel.map.profiles.length));
     } else {
       drawScalePreview(ws, ctx, v, m, hover);
     }

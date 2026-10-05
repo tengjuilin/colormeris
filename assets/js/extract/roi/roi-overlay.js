@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { roiInstances, shapeOutline, boxGeom, colorbarProblem, panelClassifier, readPixel, boxLabel, roiControlPoints, roiFromLocal, metricValue, shortNumber, drawScaleBar, drawScalePreview } = CM;
+  const { roiInstances, shapeOutline, boxGeom, colorbarProblem, panelClassifier, readPixel, boxLabel, roiControlPoints, roiFromLocal, metricValue, shortNumber, drawScaleBar, drawScalePreview, hexToRgb } = CM;
 
   // ROI tool, DOM: what the tool draws over the image (regions with their
   // labels, edit handles, the scale bar, the signal mask, previews while
@@ -74,7 +74,7 @@
       if ((m.type === 'ellipse' || m.type === 'rect') && state.draft) {
         const roi = { shape: m.type, geom: boxGeom(state.draft.a, state.draft.b, state.draft.equal) };
         ws.polyPath(ctx, v, shapeOutline(roi));
-        ws.strokeDual(ctx, '#00e5ff', 1.5, [6, 4]);
+        ws.strokeDual(ctx, ws.color('roiDraft'), 1.5, [6, 4]);
       } else if (m.type === 'polygon' && m.points.length) {
         const pts = hover ? [...m.points, hover] : m.points;
         ctx.beginPath();
@@ -83,18 +83,19 @@
           if (i === 0) ctx.moveTo(s.x, s.y);
           else ctx.lineTo(s.x, s.y);
         });
-        ws.strokeDual(ctx, '#00e5ff', 1.5, [6, 4]);
-        m.points.forEach((q, i) => ws.drawHandle(ctx, v, q, i === 0 ? '#ffd400' : '#00e5ff', 'circle'));
+        ws.strokeDual(ctx, ws.color('roiDraft'), 1.5, [6, 4]);
+        m.points.forEach((q, i) => ws.drawHandle(ctx, v, q, i === 0 ? ws.COLORS.highlight : ws.color('roiDraft'), 'circle'));
       } else {
         drawScalePreview(ws, ctx, v, m, hover);
       }
     }
 
-    // Tint pixels counted as signal (magenta) and flagged colors (red).
+    // Tint pixels counted as signal and flagged colors (colors.roiSignal, roiFlagged).
     function drawMask(ctx, v, panel) {
       if (colorbarProblem(panel)) return;
       const img = ws.app.imageData;
-      const key = JSON.stringify([ws.currentPage(), img.width, panel.colorbar, panel.settings]);
+      const tint = [ws.color('roiSignal'), ws.color('roiFlagged')];
+      const key = JSON.stringify([ws.currentPage(), img.width, panel.colorbar, panel.settings, tint]);
       if (state.mask?.key !== key) {
         const classify = panelClassifier(img, panel);
         const at = classify.img === img ? classify.pixel : (i) => classify(readPixel(img, i % img.width, Math.floor(i / img.width)));
@@ -106,8 +107,8 @@
         // Write whole pixels through a 32-bit view (in the platform's byte order).
         const px = new Uint32Array(out.data.buffer);
         const rgba = (...c) => new Uint32Array(new Uint8ClampedArray(c).buffer)[0];
-        const flagged = rgba(255, 40, 40, 170);
-        const signal = rgba(255, 0, 200, 120);
+        const signal = rgba(...hexToRgb(tint[0]), 120);
+        const flagged = rgba(...hexToRgb(tint[1]), 170);
         for (let i = 0; i < px.length; i++) {
           const c = at(i);
           if (c.signal) px[i] = c.flagged ? flagged : signal;

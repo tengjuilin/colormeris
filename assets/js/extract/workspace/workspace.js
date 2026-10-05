@@ -4,6 +4,7 @@
     Viewer,
     createProject,
     defaultSettings,
+    COLOR_DEFAULTS,
     setupWorkspaceHistory,
     setupWorkspaceOverlay,
     setupWorkspaceInteract,
@@ -72,7 +73,24 @@
   let tool = null; // the active tool
   const toolFor = (panel) => tools[panel.tool] || tool;
 
-  const COLORS = { grid: '#e22bd0', bar: '#f29900', flag: '#ff3b30', highlight: '#ffd400', outline: 'rgba(0,0,0,0.65)' };
+  // Overlay colors come from the Settings dialog (settings.colors); `color`
+  // reads them at draw time, so a change shows on the next redraw.
+  const color = (id) => ws.settings?.colors?.[id] ?? COLOR_DEFAULTS[id];
+  const COLORS = {
+    get grid() {
+      return color('grid');
+    },
+    get bar() {
+      return color('bar');
+    },
+    get flag() {
+      return color('flag');
+    },
+    get highlight() {
+      return color('highlight');
+    },
+    outline: 'rgba(0,0,0,0.65)',
+  };
 
   const app = {
     project: createProject(),
@@ -315,6 +333,7 @@
     app,
     tools,
     COLORS,
+    color,
     tool: () => tool,
     toolFor,
     newTickId,
@@ -379,6 +398,7 @@
     app,
     $,
     COLORS,
+    color,
     viewer,
     activePanel,
     pagePanels,
