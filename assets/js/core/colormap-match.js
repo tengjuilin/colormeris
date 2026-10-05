@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { rgbToLab, deltaE2000, deltaE76 } = CM;
+  const { rgbToLab, deltaE2000 } = CM;
 
   // Which known colormap is this? Two ways for the colormap viewer:
   //   identifyColorbar   colors sampled along a colorbar, start → end. Also
@@ -39,12 +39,26 @@
   }
 
   // Mean of the smallest KEEP share of the values.
+  // A typed array sorts numbers natively, without a comparator call per
+  // pair (this sort was most of the matching time).
   function robustMean(values) {
-    const v = values.slice().sort((a, b) => a - b);
+    const v = Float64Array.from(values).sort();
     const k = Math.max(1, Math.round(v.length * KEEP));
     let s = 0;
     for (let i = 0; i < k; i++) s += v[i];
     return s / k;
+  }
+
+  // Lab of each map at n evenly spaced points, cached per color list (the
+  // viewer passes the same arrays every time), so a second figure costs no
+  // conversions.
+  const refLabs = new WeakMap(); // rgbs -> Map(key -> labs)
+  function mapLabs(map, key, make) {
+    let byKey = refLabs.get(map.rgbs);
+    if (!byKey) refLabs.set(map.rgbs, (byKey = new Map()));
+    const k = `${map.kind === 'qualitative'}|${key}`;
+    if (!byKey.has(k)) byKey.set(k, make());
+    return byKey.get(k);
   }
 
   // samples: [[r, g, b], …] along the bar, at least 2.
@@ -62,7 +76,7 @@
     }
     const out = [];
     for (const map of maps) {
-      const fwd = ts.map((t) => rgbToLab(colorAt(map, t)));
+      const fwd = mapLabs(map, `bar${n}`, () => ts.map((t) => rgbToLab(colorAt(map, t))));
       for (const reversed of [false, true]) {
         const ref = reversed ? fwd.slice().reverse() : fwd;
         let best = null;
@@ -118,16 +132,24 @@
     if (!labs.length) return [];
     const out = [];
     for (const map of maps) {
-      const ref = map.kind === 'qualitative'
+      const ref = mapLabs(map, 'loose', () => (map.kind === 'qualitative'
         ? map.rgbs.map((c) => rgbToLab(c))
-        : Array.from({ length: 64 }, (_, i) => rgbToLab(colorAt(map, i / 63)));
+        : Array.from({ length: 64 }, (_, i) => rgbToLab(colorAt(map, i / 63)))));
       const covered = new Array(ref.length).fill(false);
       const d = labs.map((lab) => {
-        // Nearest by ΔE76 (fast), then the ΔE2000 to that color.
+        // Nearest by ΔE76 (fast), then the ΔE2000 to that color. Squared
+        // distances pick the same color without a square root per pair.
+        const [L, A, B] = lab;
         let bi = 0;
         let bd = Infinity;
         for (let i = 0; i < ref.length; i++) {
-          const e = deltaE76(lab, ref[i]);
+          const r = ref[i];
+          const dL = L - r[0];
+          let e = dL * dL;
+          if (e >= bd) continue;
+          const da = A - r[1];
+          const db = B - r[2];
+          e += da * da + db * db;
           if (e < bd) { bd = e; bi = i; }
         }
         const e = deltaE2000(lab, ref[bi]);

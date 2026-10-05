@@ -13,8 +13,12 @@
     const ID_MAX_PIXELS = 40000; // whole-image mode looks at about this many pixels
     const ID_TIE = 0.01; // maps whose scores differ by less than this have the same colors
 
+    // Built on the first match and kept: the matcher caches each map's Lab
+    // by its color list, so the next figure reuses them.
+    let idMaps = null;
     function identifyMaps() {
-      return data.maps.map((m) => ({ name: m.name, kind: m.kind, rgbs: base(m) }));
+      idMaps ??= data.maps.map((m) => ({ name: m.name, kind: m.kind, rgbs: base(m) }));
+      return idMaps;
     }
 
     // Matches within ID_TIE of the best remaining one are the same colors (gray,
@@ -62,6 +66,8 @@
         buttons: [whole],
         onLoad: () => { whole.disabled = false; },
         onReset: (keepImage) => {
+          runId++; // drop a match still waiting for its paint
+          list.removeAttribute('aria-busy');
           sampled.hidden = true;
           sampled.replaceChildren();
           list.replaceChildren();
@@ -77,6 +83,26 @@
       d.append(fig.zone, fig.file, fig.canvas, sampled, status, verdict, list, explain);
 
       const hexOf = (rgb) => CM.rgbToHex(rgb.map(clamp8));
+
+      // Matching every map takes a few hundred ms. Say so and let the
+      // browser paint the line and the message first; a newer drag or
+      // reset makes an older run drop its result.
+      let runId = 0;
+      function afterPaint(work) {
+        const id = ++runId;
+        status.textContent = `Matching against ${data.maps.length} colormaps…`;
+        // The last figure's results would read as this one's while it runs.
+        verdict.textContent = '';
+        list.replaceChildren();
+        explain.hidden = true;
+        list.setAttribute('aria-busy', 'true');
+        requestAnimationFrame(() => setTimeout(() => {
+          if (id !== runId) return;
+          list.removeAttribute('aria-busy');
+          status.textContent = '';
+          work();
+        }, 0));
+      }
 
       function showVerdict(best, level, extra) {
         const nm = best.reversed ? `${best.name} (reversed)` : best.name;
@@ -148,14 +174,15 @@
         const strip = el('div', { class: 'cmap-id-strip', role: 'img', 'aria-label': 'Sampled colors' });
         strip.append(stripCanvas(rgbs.map(roundRgb), false));
         sampled.append(strip);
-        status.textContent = '';
-        renderResults(CM.identifyColorbar(rgbs, identifyMaps()), { dir: true });
-        // Hand the figure and its calibration to the Recolor tab.
-        const go = el('button', { type: 'button', class: 'btn small' }, 'Recolor this figure');
-        go.title = 'Open this figure in Recolor with the same colorbar, to redraw it in another colormap';
         const { lastFile, line } = fig;
-        go.addEventListener('click', () => ctx.recolorFigure(lastFile, line));
-        verdict.append(' ', go);
+        afterPaint(() => {
+          renderResults(CM.identifyColorbar(rgbs, identifyMaps()), { dir: true });
+          // Hand the figure and its calibration to the Recolor tab.
+          const go = el('button', { type: 'button', class: 'btn small' }, 'Recolor this figure');
+          go.title = 'Open this figure in Recolor with the same colorbar, to redraw it in another colormap';
+          go.addEventListener('click', () => ctx.recolorFigure(lastFile, line));
+          verdict.append(' ', go);
+        });
       }
 
       function runWhole() {
@@ -167,9 +194,11 @@
         const px = [];
         for (let y = 0; y < img.height; y += step) for (let x = 0; x < img.width; x += step) px.push(CM.readPixel(img, x, y));
         sampled.hidden = true;
-        status.textContent = 'The direction cannot be known this way. A line along the colorbar is more reliable.';
-        renderResults(CM.identifyColors(px, identifyMaps()), { dir: false });
-        verdict.append(' Whole image: the score is how close the image’s colors are to the nearest color of each map.');
+        afterPaint(() => {
+          status.textContent = 'The direction cannot be known this way. A line along the colorbar is more reliable.';
+          renderResults(CM.identifyColors(px, identifyMaps()), { dir: false });
+          verdict.append(' Whole image: the score is how close the image’s colors are to the nearest color of each map.');
+        });
       }
 
 
