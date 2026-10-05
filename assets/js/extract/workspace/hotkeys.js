@@ -1,6 +1,7 @@
 (function (CM) {
   'use strict';
-  const { comboFromEvent, findHotkey } = CM;
+  const { comboFromEvent, findHotkey, isMacPlatform } = CM;
+  const isMac = isMacPlatform(globalThis.navigator);
 
   // View tools (zoom, crosshair, overlay) and keyboard shortcuts.
   //
@@ -64,7 +65,7 @@
       }
       if (typing) return;
       // Actions of other tools may share the key, so look only at this tool's.
-      const h = hotkeys[findHotkey(w.ws.settings.hotkeys, comboFromEvent(e), w.tool().kind)];
+      const h = hotkeys[findHotkey(w.ws.settings.hotkeys, comboFromEvent(e, isMac), w.tool().kind)];
       if (!h || (!h.always && !app.sourceCanvas) || (h.tool && h.tool !== w.tool().kind)) return;
       // A hotkey that returns false did nothing, so the browser keeps the key
       // (Mod+C with no profile selected still copies selected text).

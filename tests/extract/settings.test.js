@@ -45,7 +45,13 @@ test('normalizeCombo orders modifiers and refuses fixed keys', () => {
 test('comboFromEvent reads keydown events', () => {
   assert.equal(comboFromEvent({ key: 'g' }), 'G');
   assert.equal(comboFromEvent({ key: 'G', shiftKey: true }), 'Shift+G');
-  assert.equal(comboFromEvent({ key: 'z', metaKey: true, shiftKey: true }), 'Mod+Shift+Z');
+  // Mod is Ctrl on Windows and Linux, ⌘ on a Mac; the other one is the system's.
+  assert.equal(comboFromEvent({ key: 'z', ctrlKey: true, shiftKey: true }), 'Mod+Shift+Z');
+  assert.equal(comboFromEvent({ key: 'z', metaKey: true, shiftKey: true }, true), 'Mod+Shift+Z');
+  assert.equal(comboFromEvent({ key: 'z', metaKey: true }), '');
+  assert.equal(comboFromEvent({ key: 'z', ctrlKey: true }, true), '');
+  // Other layouts: a Cyrillic key in the place of C is C.
+  assert.equal(comboFromEvent({ key: 'с', code: 'KeyC', ctrlKey: true }), 'Mod+C');
   // Shift is part of the character for "+".
   assert.equal(comboFromEvent({ key: '+', shiftKey: true }), '+');
   // Alt+G types © on a Mac; the key's position names it.
@@ -60,7 +66,12 @@ test('findHotkey and formatCombo', () => {
   assert.equal(findHotkey(hotkeys, '='), 'zoomIn');
   assert.equal(findHotkey(hotkeys, 'Q'), null);
   assert.equal(formatCombo('Mod+Shift+Z'), 'Ctrl+Shift+Z');
-  assert.equal(formatCombo('Mod+Shift+Z', true), '⌘⇧Z');
+  assert.equal(formatCombo('Mod+Shift+Z', true), '⇧⌘Z');
+  assert.equal(formatCombo('Mod+Alt+Shift+K', true), '⌥⇧⌘K');
+  assert.equal(formatCombo('Backspace', true), '⌫');
+  assert.equal(CM.isMacPlatform({ userAgentData: { platform: 'macOS' } }), true);
+  assert.equal(CM.isMacPlatform({ platform: 'Win32' }), false);
+  assert.equal(CM.isMacPlatform({ userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)' }), true);
   assert.equal(formatCombo('ArrowLeft'), '←');
 });
 

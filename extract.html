@@ -23,7 +23,7 @@
   <script src="assets/js/extract/roi/geometry.js?v=2" defer></script>
   <script src="assets/js/extract/roi/quantify.js?v=4" defer></script>
   <script src="assets/js/extract/map/field.js?v=13" defer></script>
-  <script src="assets/js/extract/settings.js?v=5" defer></script>
+  <script src="assets/js/extract/settings.js?v=6" defer></script>
   <script src="assets/js/extract/workspace/history.js?v=1" defer></script>
   <script src="assets/js/extract/workspace/overlay.js?v=3" defer></script>
   <script src="assets/js/extract/workspace/interact.js?v=6" defer></script>
@@ -33,21 +33,21 @@
   <script src="assets/js/extract/workspace/panels.js?v=3" defer></script>
   <script src="assets/js/extract/workspace/source.js?v=2" defer></script>
   <script src="assets/js/extract/workspace/export.js?v=1" defer></script>
-  <script src="assets/js/extract/workspace/hotkeys.js?v=3" defer></script>
+  <script src="assets/js/extract/workspace/hotkeys.js?v=4" defer></script>
   <script src="assets/js/extract/workspace/workspace.js?v=5" defer></script>
   <script src="assets/js/extract/heatmap/heatmap-tool.js?v=3" defer></script>
   <script src="assets/js/extract/scale-bar.js?v=2" defer></script>
   <script src="assets/js/extract/roi/roi-overlay.js?v=4" defer></script>
   <script src="assets/js/extract/roi/roi-sidebar.js?v=2" defer></script>
   <script src="assets/js/extract/roi/roi-tool.js?v=4" defer></script>
-  <script src="assets/js/extract/map/map-sidebar.js?v=13" defer></script>
+  <script src="assets/js/extract/map/map-sidebar.js?v=14" defer></script>
   <script src="assets/js/extract/map/map-tool.js?v=16" defer></script>
   <script src="assets/js/agent/schema.js?v=3" defer></script>
   <script src="assets/js/agent/api.js?v=2" defer></script>
   <script src="assets/js/agent/llm.js?v=1" defer></script>
   <script src="assets/js/agent/runner.js?v=1" defer></script>
   <script src="assets/js/agent/agent-card.js?v=1" defer></script>
-  <script src="assets/js/extract/settings-dialog.js?v=5" defer></script>
+  <script src="assets/js/extract/settings-dialog.js?v=6" defer></script>
   <script src="assets/js/extract/main.js?v=2" defer></script>
 </head>
 <body class="extract">
@@ -68,8 +68,8 @@
     </label>
     <span id="source-label" class="source-label muted">No file loaded</span>
     <span class="spacer"></span>
-    <button id="btn-undo" class="btn ghost" title="Undo (Ctrl/⌘+Z)" data-hotkey="undo" data-title="Undo" disabled>Undo</button>
-    <button id="btn-redo" class="btn ghost" title="Redo (Ctrl/⌘+Shift+Z)" data-hotkey="redo" data-title="Redo" disabled>Redo</button>
+    <button id="btn-undo" class="btn ghost" title="Undo (Ctrl+Z, ⌘Z on a Mac)" data-hotkey="undo" data-title="Undo" disabled>Undo</button>
+    <button id="btn-redo" class="btn ghost" title="Redo (Ctrl+Shift+Z or Ctrl+Y, ⇧⌘Z on a Mac)" data-hotkey="redo" data-title="Redo" disabled>Redo</button>
     <button id="btn-export-zip" class="btn" disabled>Export project (.zip)</button>
     <button id="btn-settings" class="btn ghost" title="Settings: agent, matching, hotkeys" aria-haspopup="dialog">Settings</button>
   </header>
@@ -101,7 +101,7 @@
           <li><b>Results</b>: bin size 1 gives one value per pixel; larger bins take the median and smooth out JPEG noise. <b>Profiles</b> give values along a line. Download CSVs or export the project zip.</li>
         </ol>
         <p class="muted" data-tool="map" hidden>Published images are usually compressed and contrast-adjusted: values are in the units of the colorbar as displayed, the colorbar limits how many levels can be told apart, and colors at its ends may be clipped (<i>Show flags</i>).</p>
-        <p class="muted">Switch tools at the top at any time: the file and both tools' work stay, and one project zip holds everything. Scroll to zoom, drag to pan, ← → to flip PDF pages, drag handles to adjust. Esc cancels, Ctrl/⌘+Z undoes; change the hotkeys in <i>Settings</i>. Everything runs in your browser; files are never uploaded, except page images sent to OpenRouter when you run the agent.</p>
+        <p class="muted">Switch tools at the top at any time: the file and both tools' work stay, and one project zip holds everything. Scroll to zoom, drag to pan, ← → to flip PDF pages, drag handles to adjust. Esc cancels, Ctrl+Z (⌘Z on a Mac) undoes; change the hotkeys in <i>Settings</i>. Everything runs in your browser; files are never uploaded, except page images sent to OpenRouter when you run the agent.</p>
       </details>
 
       <section class="card agent" id="sec-agent" data-tool="heatmap">
@@ -271,7 +271,7 @@
         <div id="roi-edit" class="row" hidden>
           <label class="field grow">Selected region <input id="roi-name" type="text" spellcheck="false"></label>
           <button class="btn" id="roi-reset" title="Put every copy back at the shared position">Reset nudges</button>
-          <button class="btn danger" id="roi-delete" title="Delete (Del)">Delete</button>
+          <button class="btn danger" id="roi-delete" title="Delete (Delete or Backspace; ⌫ on a Mac)">Delete</button>
         </div>
         <p id="roi-hint" class="hint">Drag a copy to nudge it in its box; Alt-drag moves all copies. Handles resize the shape everywhere.</p>
       </section>
@@ -344,7 +344,7 @@
           <div class="row">
             <label class="field grow">Name <input id="profile-name" type="text" spellcheck="false"></label>
             <button class="btn subtle" id="profile-zoom" title="Zoom to the profile">Zoom to</button>
-            <button class="btn danger" id="profile-delete" title="Delete (Del)">Delete</button>
+            <button class="btn danger" id="profile-delete" title="Delete (Delete or Backspace; ⌫ on a Mac)">Delete</button>
           </div>
           <div class="fields">
             <label class="field" id="profile-length-field"><span id="profile-length-label">Length (px)</span> <input id="profile-length" type="number" min="0" step="any" class="num"></label>
@@ -582,7 +582,7 @@
 
       <section class="settings-pane" data-settings-pane="hotkeys" hidden>
         <h3>Hotkeys</h3>
-        <p class="muted small">Click <i>Change</i>, then press the new key or combination. A key used by another action in the same tool moves to this one; ROI and Map actions may share keys, since only one tool is active at a time. Esc (cancel), Space (pan), Enter and Backspace (polygons) and Delete (regions) are fixed.</p>
+        <p class="muted small">Click <i>Change</i>, then press the new key or combination. A key used by another action in the same tool moves to this one; ROI and Map actions may share keys, since only one tool is active at a time. Esc (cancel), Space (pan), Enter and Backspace (polygons) and Delete or Backspace (regions, profiles) are fixed. Ctrl on Windows and Linux is ⌘ on a Mac, so hotkeys (and settings files) work on both; Control (⌃) on a Mac and the Windows key are left to the system.</p>
         <div id="hotkey-list" class="hotkey-list"></div>
         <div class="row"><button type="button" class="btn small" id="hotkeys-reset">Reset all hotkeys</button></div>
       </section>

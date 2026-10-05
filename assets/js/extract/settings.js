@@ -161,19 +161,32 @@
     return [...MODIFIERS.filter((m) => mods.has(m)), k].join('+');
   }
 
-  // Combo of a keydown event, or '' for a lone modifier key. Shift only counts
-  // for letters and named keys, since for other characters it changes the
-  // character itself ("+" is Shift and "=" on many keyboards).
-  function comboFromEvent(e) {
+  // Whether the browser runs on macOS or iOS, where ⌘ is the command key.
+  // `nav` is navigator (passed in, so this stays testable).
+  function isMacPlatform(nav) {
+    const platform = nav?.userAgentData?.platform || nav?.platform || nav?.userAgent || '';
+    return /Mac|iPhone|iPad|iPod/i.test(platform);
+  }
+
+  // Combo of a keydown event, or '' for a key that is not a hotkey (a lone
+  // modifier). Mod is ⌘ on a Mac and Ctrl elsewhere; the other key of the
+  // pair (Control on a Mac, the Windows key) belongs to the system, so chords
+  // with it are no hotkeys. Shift only counts for letters and named keys,
+  // since for other characters it changes the character itself ("+" is
+  // Shift and "=" on many keyboards).
+  function comboFromEvent(e, mac = false) {
     let key = e.key;
-    if (!key || ['Control', 'Meta', 'Alt', 'Shift', 'AltGraph', 'CapsLock', 'Dead', 'Unidentified'].includes(key)) return '';
-    // Alt changes the character on a Mac (Alt+G types ©), so take the key's name from its position.
+    if (!key || ['Control', 'Meta', 'OS', 'Alt', 'AltGraph', 'Shift', 'CapsLock', 'Dead', 'Unidentified'].includes(key)) return '';
+    if (mac ? e.ctrlKey : e.metaKey) return '';
+    // Alt changes the character on a Mac (Alt+G types ©), and other keyboard
+    // layouts type other letters (Cyrillic, Greek); take the name of letter
+    // and digit keys from their position then, as on a US keyboard.
     const code = /^(?:Key([A-Z])|Digit(\d))$/.exec(e.code || '');
-    if (e.altKey && code) key = code[1] || code[2];
+    if (code && (e.altKey || (key.length === 1 && !/^[\x20-\x7e]$/.test(key)))) key = code[1] || code[2];
     if (key === ' ') key = 'Space';
     const letter = /^[a-z]$/i.test(key);
     const mods = [];
-    if (e.ctrlKey || e.metaKey) mods.push('Mod');
+    if (mac ? e.metaKey : e.ctrlKey) mods.push('Mod');
     if (e.altKey) mods.push('Alt');
     if (e.shiftKey && (letter || key.length > 1)) mods.push('Shift');
     return [...mods, key.length === 1 ? key.toUpperCase() : key].join('+');
@@ -207,13 +220,15 @@
   }
 
   const KEY_NAMES = { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Space: 'Space', PageUp: 'Page Up', PageDown: 'Page Down' };
-  // Human-readable combo: "Ctrl+Shift+Z", or "⌘⇧Z" on a Mac.
+  // A Mac keyboard labels some keys with symbols; its "delete" key is Backspace.
+  const MAC_KEY_NAMES = { ...KEY_NAMES, Backspace: '⌫', Delete: '⌦', Enter: '↩', Escape: 'esc', Tab: '⇥' };
+  // Human-readable combo: "Ctrl+Shift+Z", or "⇧⌘Z" on a Mac (Apple's
+  // modifier order: ⌥ ⇧ ⌘).
   function formatCombo(combo, mac = false) {
     const parts = combo.split(/\+(?=.)/);
     const key = parts.pop();
-    const k = KEY_NAMES[key] || key;
-    if (mac) return parts.map((m) => ({ Mod: '⌘', Alt: '⌥', Shift: '⇧' })[m]).join('') + k;
-    return [...parts.map((m) => (m === 'Mod' ? 'Ctrl' : m)), k].join('+');
+    if (mac) return ['Alt', 'Shift', 'Mod'].filter((m) => parts.includes(m)).map((m) => ({ Mod: '⌘', Alt: '⌥', Shift: '⇧' })[m]).join('') + (MAC_KEY_NAMES[key] || key);
+    return [...parts.map((m) => (m === 'Mod' ? 'Ctrl' : m)), KEY_NAMES[key] || key].join('+');
   }
 
   // ---------------------------------------------------------------- file
@@ -277,6 +292,7 @@
     defaultSettings,
     normalizeSettings,
     normalizeCombo,
+    isMacPlatform,
     comboFromEvent,
     findHotkey,
     hotkeyClashes,

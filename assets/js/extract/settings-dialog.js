@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { HOTKEY_GROUPS, HOTKEY_ACTIONS, COLOR_GROUPS, COLOR_ITEMS, defaultSettings, normalizeSettings, normalizeCombo, comboFromEvent, hotkeyClashes, formatCombo, buildSettingsZip, readSettingsFile, MATCHING_DEFAULTS } = CM;
+  const { HOTKEY_GROUPS, HOTKEY_ACTIONS, COLOR_GROUPS, COLOR_ITEMS, defaultSettings, normalizeSettings, normalizeCombo, comboFromEvent, isMacPlatform, hotkeyClashes, formatCombo, buildSettingsZip, readSettingsFile, MATCHING_DEFAULTS } = CM;
 
   // Settings dialog: agent connection, matching defaults, hotkeys, overlay
   // colors, and settings zips. The settings object is ws.settings (see
@@ -10,7 +10,7 @@
   const STORE = 'colormeris.settings';
   const OLD_AGENT_STORE = 'colormeris.agent'; // before the dialog, the Agent card saved here
 
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const isMac = isMacPlatform(navigator);
 
   function loadStored() {
     try {
@@ -245,8 +245,13 @@
         e.preventDefault();
         e.stopImmediatePropagation();
         if (e.key === 'Escape') return stopCapture();
-        const raw = comboFromEvent(e);
-        if (!raw) return; // a modifier on its own: wait for the key
+        const raw = comboFromEvent(e, isMac);
+        if (!raw) {
+          // Control on a Mac and the Windows key belong to the system.
+          const system = !['Control', 'Meta', 'OS'].includes(e.key) && (isMac ? e.ctrlKey : e.metaKey);
+          if (system) ws.toast(isMac ? 'Control (⌃) chords belong to macOS; use ⌘ instead.' : 'Windows-key chords belong to Windows; use Ctrl instead.', true);
+          return; // otherwise a modifier on its own: wait for the key
+        }
         const combo = normalizeCombo(raw);
         if (!combo) {
           ws.toast(`${label(raw)} is fixed and cannot be a hotkey.`, true);

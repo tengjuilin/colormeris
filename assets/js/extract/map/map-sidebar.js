@@ -194,7 +194,7 @@
       $('profile-length-field').title =
         (kind === 'x' || kind === 'y' ? `Span of ${kind} values along the profile.` : `Length of the profile in ${kind === 'px' ? 'pixels' : unit}.`) +
         ' Typing a length moves its end; the start and direction stay.';
-      $('profile-delete').title = shown.length > 1 ? `Delete the ${shown.length} selected profiles (Del)` : 'Delete (Del)';
+      $('profile-delete').title = shown.length > 1 ? `Delete the ${shown.length} selected profiles (Delete or Backspace; ⌫ on a Mac)` : 'Delete (Delete or Backspace; ⌫ on a Mac)';
       const results = ws.resultFor(panel).profiles || {};
       const series = [];
       const errors = [];
