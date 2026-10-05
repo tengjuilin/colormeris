@@ -31,9 +31,15 @@
   function simulateCvd(rgb, type) {
     const m = MACHADO[type];
     if (!m) throw new Error(`Unknown CVD type: ${type}`);
-    const lin = rgb.map(srgbToLinear);
+    const r = srgbToLinear(rgb[0]);
+    const g = srgbToLinear(rgb[1]);
+    const b = srgbToLinear(rgb[2]);
     // linearToSrgb clips to [0, 1] and rounds.
-    return m.map((row) => linearToSrgb(row[0] * lin[0] + row[1] * lin[1] + row[2] * lin[2]));
+    return [
+      linearToSrgb(m[0][0] * r + m[0][1] * g + m[0][2] * b),
+      linearToSrgb(m[1][0] * r + m[1][1] * g + m[1][2] * b),
+      linearToSrgb(m[2][0] * r + m[2][1] * g + m[2][2] * b),
+    ];
   }
 
   // ---- Image simulation (the CVD tab) ----

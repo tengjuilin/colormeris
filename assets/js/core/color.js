@@ -6,9 +6,17 @@
 
   const WHITE_D65 = [0.95047, 1.0, 1.08883];
 
-  function srgbToLinear(c) {
+  function srgbToLinearExact(c) {
     const v = c / 255;
     return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  }
+  // Colors are nearly always whole bytes; a table spares a pow per channel,
+  // most of the colormap ratings' Lab conversions.
+  const LIN8 = Float64Array.from({ length: 256 }, (_, i) => srgbToLinearExact(i));
+
+  function srgbToLinear(c) {
+    const hit = LIN8[c];
+    return hit !== undefined ? hit : srgbToLinearExact(c);
   }
 
   function linearToSrgb(v) {

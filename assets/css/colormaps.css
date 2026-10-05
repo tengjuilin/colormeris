@@ -119,6 +119,9 @@ input.cmap-search { width: 260px; max-width: 100%; }
 .cmap-item.open { background: var(--surface-2); box-shadow: -6px 0 0 var(--surface-2), 6px 0 0 var(--surface-2); }
 .cmap-item.open .cmap-open-btn { color: var(--accent); }
 .cmap-item { padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent); }
+/* Rows are filled in near the viewport (browse-tab.js); until then they hold
+   about their height, so the scrollbar and opening a section barely shift. */
+.cmap-browse .cmap-item:not(.built) > .cmap-row { min-height: var(--cmap-row-h, 28px); }
 .cmap-name { font-size: 12.5px; min-width: 0; overflow-wrap: anywhere; }
 .cmap-name code { font-family: var(--mono); font-size: 12.5px; }
 .cmap-name sup { font-size: 10px; margin-left: 2px; }
@@ -393,6 +396,8 @@ input.cmap-search { width: 260px; max-width: 100%; }
   .cmap-top { padding-bottom: 10px; }
 
   .cmap-row, .cmap-single .cmap-row { grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+  .cmap-browse { --cmap-row-h: 190px; } /* name, pills and five strips in two columns */
+  .cmap-browse.cmap-single, .cmap-single .cmap-browse { --cmap-row-h: 102px; }
   .cmap-rc { display: none; }
   .cmap-single .cmap-cell { grid-column: 1 / -1; }
   .cmap-name { grid-column: 1; grid-row: 1; }

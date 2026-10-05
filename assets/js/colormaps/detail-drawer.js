@@ -356,6 +356,7 @@
       open(name) {
         const entry = items.find((e) => e.map.name === name);
         if (!entry) return;
+        ctx.buildRow(entry); // its row may still be unbuilt (opened from a link)
         if (current) teardown();
         state.open = name;
         entry.item.classList.add('open');

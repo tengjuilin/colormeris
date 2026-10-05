@@ -217,7 +217,7 @@
     Object.assign(ctx, CM.setupCmapFooter(ctx));
     // Builds the rows, which number the references in list order.
     const browse = CM.setupCmapBrowse(ctx);
-    Object.assign(ctx, { headerRow: browse.headerRow, applyStripView: browse.applyStripView });
+    Object.assign(ctx, { headerRow: browse.headerRow, applyStripView: browse.applyStripView, buildRow: browse.buildRow });
     const detail = CM.setupCmapDetail(ctx);
     const compare = CM.setupCmapCompare(ctx);
     const identify = CM.setupCmapIdentify(ctx);

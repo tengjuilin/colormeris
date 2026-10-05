@@ -52,19 +52,23 @@
 
   function setupCmapBrowse(ctx) {
     const { el, VIEWS, RATING_COLS, data, state, items, root, metrics, viewData, isRev, makeStrip, renderStrip, hideTip, ratingPills, ratingCells, refNumber, methodList } = ctx;
+    // ctx.compare and ctx.detail are set after this module; rows are built later.
     state.stripView = loadStripView();
     let uid = 0;
 
-    // Ratings need the metrics, a few ms per map, which for every map took
-    // most of the start-up time. List rows fill theirs in when they come near
-    // the viewport (sections start closed), and the rest are computed while
+    // A row's contents (five strips, rating glyphs, buttons: about 40
+    // elements) are built when it comes near the viewport. With over 1000
+    // maps in closed sections, building them all took most of the start-up
+    // time. The item itself exists from the start, so search, filters, sort
+    // and Compare work on every map. Ratings need the metrics, a few ms per
+    // map: rows compute theirs when built, and the rest are computed while
     // the page is idle, so sorting and filtering by rating stay quick.
     const rowObserver = 'IntersectionObserver' in window
       ? new IntersectionObserver((entries) => {
         for (const e of entries) {
           if (!e.isIntersecting) continue;
           rowObserver.unobserve(e.target);
-          e.target._fill();
+          buildRow(e.target._entry);
         }
       }, { rootMargin: '400px 0px' })
       : null;
@@ -82,36 +86,45 @@
     function makeRow(map) {
       const item = el('div', { class: 'cmap-item' });
       const row = el('div', { class: 'cmap-row' });
-      const panelId = `cmap-panel-${++uid}`;
       for (const k of CM.citeFor(map.name)) refNumber(k); // footer numbers follow the list order
+      const panel = el('div', { class: 'cmap-panel', id: `cmap-panel-${++uid}`, hidden: '' });
+      item.append(row, panel);
+      item.dataset.name = map.name.toLowerCase();
+      // strips and the buttons are set by buildRow.
+      const entry = { map, item, row, panel, built: false, strips: [], button: null, cmpBtn: null, revBtn: null, order: items.length };
+      item._entry = entry;
+      if (rowObserver) rowObserver.observe(item);
+      else buildRow(entry);
+      items.push(entry);
+      return item;
+    }
 
+    // Fill in a row; anything that needs its buttons (the detail view) calls this first.
+    function buildRow(entry) {
+      if (entry.built) return entry;
+      entry.built = true;
+      rowObserver?.unobserve(entry.item);
+      const { map, row, panel } = entry;
       const name = el('div', { class: 'cmap-name' });
       const code = el('code', { class: 'cmap-name-link', title: `Show details of ${map.name}` }, map.name);
-      name.append(code);
+      name.append(code, ratingPills(map));
       row.append(name);
 
-      const strips = [];
+      const k = state.stripView;
       VIEWS.forEach((v, j) => {
         const cell = el('div', { class: j === 0 ? 'cmap-cell main' : 'cmap-cell', 'data-view': v.key });
+        if (k !== 'all' && v.key !== k) cell.hidden = true;
         cell.append(el('span', { class: 'cmap-cap' }, v.label));
         const strip = makeStrip(map, v);
-        strips.push(strip);
+        entry.strips.push(strip);
         cell.append(strip);
         row.append(cell);
       });
-      const cells = RATING_COLS.map(() => el('span', { class: 'cmap-rc' }));
-      row.append(...cells);
-      row._fill = () => {
-        name.append(ratingPills(map));
-        const filled = ratingCells(map);
-        cells.forEach((c, i) => c.replaceWith(filled[i]));
-      };
-      if (rowObserver) rowObserver.observe(row);
-      else row._fill();
+      row.append(...ratingCells(map));
 
       const button = el('button', {
-        class: 'cmap-toggle cmap-open-btn', type: 'button', 'aria-expanded': 'false',
-        'aria-label': `Details of ${map.name}`, title: 'Show plots and details',
+        class: 'cmap-toggle cmap-open-btn', type: 'button', 'aria-expanded': String(state.open === map.name),
+        'aria-controls': panel.id, 'aria-label': `Details of ${map.name}`, title: 'Show plots and details',
       });
       button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       const cmpBtn = el('button', { class: 'cmap-toggle cmap-cmp', type: 'button', 'aria-pressed': 'false' });
@@ -122,12 +135,11 @@
       const actions = el('div', { class: 'cmap-actions' });
       actions.append(revBtn, cmpBtn, button);
       row.append(actions);
+      Object.assign(entry, { button, cmpBtn, revBtn });
+      entry.item.classList.add('built');
 
-      const panel = el('div', { class: 'cmap-panel', id: panelId, hidden: '' });
-      item.append(row, panel);
-      item.dataset.name = map.name.toLowerCase();
-      const entry = { map, item, strips, panel, button, cmpBtn, revBtn, order: items.length };
       syncRevBtn(entry);
+      ctx.compare?.syncButton(entry);
       revBtn.addEventListener('click', () => {
         if (!state.flipped.delete(map.name)) state.flipped.add(map.name);
         redirect([entry]);
@@ -136,8 +148,7 @@
       button.addEventListener('click', toggleDetail);
       code.addEventListener('click', toggleDetail);
       cmpBtn.addEventListener('click', () => ctx.compare.setCompared(map.name, cmpBtn.getAttribute('aria-pressed') !== 'true'));
-      items.push(entry);
-      return item;
+      return entry;
     }
 
     // Column names. In the list they sort and explain the ratings; the
@@ -305,6 +316,7 @@
     }
 
     function syncRevBtn(entry) {
+      if (!entry.built) return;
       const on = isRev(entry.map);
       const pre = state.flipped.has(entry.map.name) && entry.map.flip;
       entry.revBtn.setAttribute('aria-pressed', String(on));
@@ -318,7 +330,7 @@
     function redirect(entries) {
       for (const entry of entries) {
         syncRevBtn(entry);
-        for (const s of entry.strips) if (s._cm.rendered) renderStrip(s);
+        for (const s of entry.strips) if (s._cm.rendered) renderStrip(s); // none before buildRow
       }
       hideTip();
       if (entries.some((e) => e.map.name === state.open)) ctx.detail.refresh();
@@ -509,7 +521,7 @@
     // Native popovers are placed once both they and their buttons are in the page.
     const anchorPopovers = () => { for (const [btn, pop] of popovers) ctx.anchorPopover(btn, pop); };
 
-    return { bar: ui.bar, header, list: browse, sections, headerRow, applyStripView, showRow, anchorPopovers, precomputeMetrics };
+    return { bar: ui.bar, header, list: browse, sections, headerRow, applyStripView, showRow, anchorPopovers, precomputeMetrics, buildRow };
   }
 
   Object.assign(CM, { setupCmapBrowse });

@@ -82,6 +82,14 @@
   const SAMPLES = 64; // enough to find confusions; keeps 87 maps × 5 views fast (≈ 0.2 s)
   const labDist = (a, b) => deltaE2000(a, b);
   const lDist = (a, b) => Math.abs(a - b);
+  // A cheap lower bound on ΔE2000: its lightness term |ΔL*| / S_L. The rest
+  // is (ΔC'/S_C)² + (ΔH'/S_H)² + R_T·(ΔC'/S_C)(ΔH'/S_H) with |R_T| ≤ 2, which
+  // is never negative. Pairs whose bound already rules them out skip the full
+  // formula; in maps that change in lightness that is most pairs.
+  function labBound(a, b) {
+    const m = (a[0] + b[0]) / 2 - 50;
+    return Math.abs(a[0] - b[0]) / (1 + (0.015 * m * m) / Math.sqrt(20 + m * m));
+  }
 
   // Separations in the colormap itself, each CVD view and grayscale (ΔL*).
   // Indices are given as positions t in [0, 1] (or color numbers for
@@ -150,12 +158,16 @@
   // One pass per view gives both its readability and its smallest separation
   // (as `separations` finds it): both look at the same 64 samples and the
   // same pairs, and the ΔE2000 of each pair is most of the viewer's start-up time.
-  function readScan(feats, dist, cyclic, gap = 0.1) {
+  // `bound` is a lower bound on `dist` (dist itself for ΔL*); a pair is only
+  // measured when the bound cannot decide, so the results are exact.
+  function readScan(feats, dist, cyclic, gap = 0.1, bound = dist) {
     const n = feats.length;
+    // Differs by at least READ_DE (bound first: the usual case in a ramp).
+    const apart = (a, b) => bound(a, b) >= READ_DE || dist(a, b) >= READ_DE;
     let levels = 1;
     let anchor = feats[0];
     for (let i = 1; i < n; i++) {
-      if (dist(anchor, feats[i]) >= READ_DE) { levels++; anchor = feats[i]; }
+      if (apart(anchor, feats[i])) { levels++; anchor = feats[i]; }
     }
     const w = Math.max(1, Math.round(FLAT_WINDOW * (n - 1)));
     const flatSpans = [];
@@ -163,7 +175,7 @@
     let windows = 0;
     for (let i = 0; i + w < n; i++) {
       windows++;
-      if (dist(feats[i], feats[i + w]) < READ_DE) {
+      if (!apart(feats[i], feats[i + w])) {
         flatCount++;
         flatSpans.push([i / (n - 1), (i + w) / (n - 1)]);
       }
@@ -177,7 +189,11 @@
     for (let i = 0; i < m; i++) {
       for (let j = i + minIdx; j < m; j++) {
         if (cyclic && m - (j - i) < minIdx) continue;
-        const d = dist(feats[idx[i]], feats[idx[j]]);
+        const a = feats[idx[i]];
+        const b = feats[idx[j]];
+        // Neither a look-alike nor a new smallest separation.
+        if (bound !== dist && bound(a, b) > Math.max(READ_DE, best.min) + 1e-9) continue;
+        const d = dist(a, b);
         if (d < READ_DE) amb[i] = amb[j] = true;
         if (d < best.min) best = { min: d, i, j };
       }
@@ -198,8 +214,8 @@
 
   // Features per view: Lab as seen and in each CVD view, L* in grayscale.
   function viewScans(rgbs, cyclic) {
-    const out = { orig: readScan(rgbs.map(rgbToLab), labDist, cyclic) };
-    for (const type of CVD_TYPES) out[type] = readScan(rgbs.map((c) => rgbToLab(simulateCvd(c, type))), labDist, cyclic);
+    const out = { orig: readScan(rgbs.map(rgbToLab), labDist, cyclic, 0.1, labBound) };
+    for (const type of CVD_TYPES) out[type] = readScan(rgbs.map((c) => rgbToLab(simulateCvd(c, type))), labDist, cyclic, 0.1, labBound);
     out.gray = readScan(rgbs.map((c) => rgbToLab(c)[0]), lDist, cyclic);
     return out;
   }

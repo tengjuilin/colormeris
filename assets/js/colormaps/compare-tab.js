@@ -425,15 +425,19 @@
       renderSine(list);
     }
 
-    function syncButtons() {
+    // One Browse row; rows not built yet only get the tint (buildRow syncs the rest).
+    function syncButton(e) {
+      const on = selected.includes(e.map.name);
+      e.item.classList.toggle('compared', on);
+      if (!e.cmpBtn) return;
       const full = selected.length >= MAX_CMP;
-      for (const e of items) {
-        const on = selected.includes(e.map.name);
-        e.item.classList.toggle('compared', on);
-        e.cmpBtn.setAttribute('aria-pressed', String(on));
-        e.cmpBtn.disabled = !on && full;
-        e.cmpBtn.title = on ? `Remove ${e.map.name} from comparison` : full ? `Up to ${MAX_CMP} maps can be compared` : `Add ${e.map.name} to comparison`;
-      }
+      e.cmpBtn.setAttribute('aria-pressed', String(on));
+      e.cmpBtn.disabled = !on && full;
+      e.cmpBtn.title = on ? `Remove ${e.map.name} from comparison` : full ? `Up to ${MAX_CMP} maps can be compared` : `Add ${e.map.name} to comparison`;
+    }
+
+    function syncButtons() {
+      for (const e of items) syncButton(e);
     }
 
     // ---- tray (Browse tab) ----
@@ -605,7 +609,7 @@
     }
 
     buildCompare();
-    return { sec: cmp.sec, tray, render, syncButtons, syncTray, setCompared };
+    return { sec: cmp.sec, tray, render, syncButton, syncButtons, syncTray, setCompared };
   }
 
   Object.assign(CM, { setupCmapCompare });
