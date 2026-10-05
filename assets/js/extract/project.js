@@ -20,13 +20,16 @@
   const KINDS = ['heatmap', 'roi', 'map'];
   const AXIS_SCALES = ['linear', 'log10'];
   const SHAPES = ['ellipse', 'rect', 'polygon'];
-  const SCALE_UNITS = ['cm', 'mm'];
+  const SCALE_UNITS = ['cm', 'mm', 'µm', 'nm'];
+  // How map coordinates are reported (map.units): axis values, pixels, or scale-bar lengths.
+  const MAP_UNITS = ['axis', 'px', 'length'];
 
   // `page` is the 1-based PDF page the panel's coordinates refer to (always 1
-  // for images). `tool` is 'heatmap', 'roi' or 'map'. `rois` and `scale` are
-  // used by the ROI tool (see roi/geometry.js); `settings.grayChroma` is its
-  // background threshold (CIELAB chroma). `map` is used by the Map tool (see
-  // map/field.js): bin size in rendered pixels, axis ticks in page pixels, and
+  // for images). `tool` is 'heatmap', 'roi' or 'map'. `rois` are used by
+  // the ROI tool (see roi/geometry.js); `scale` (a scale bar) by the ROI and
+  // Map tools; `settings.grayChroma` is the ROI
+  // tool's background threshold (CIELAB chroma). `map` is used by the Map tool (see
+  // map/field.js): bin size in rendered pixels, units (see MAP_UNITS), axis ticks in page pixels, and
   // line profiles.
   function createPanel(name = 'Panel 1', page = 1, tool = 'heatmap') {
     const panel = {
@@ -41,7 +44,7 @@
       settings: { distance: 'de2000', maxDeltaE: 10, grayChroma: 10 },
       rois: [],
       scale: null,
-      map: { bin: 1, x: { ticks: [], scale: 'linear' }, y: { ticks: [], scale: 'linear' }, profiles: [] },
+      map: { bin: 1, units: 'axis', x: { ticks: [], scale: 'linear' }, y: { ticks: [], scale: 'linear' }, profiles: [] },
       // Review of the extraction: {status: 'accepted' | 'rejected', by,
       // confidence, note, resultHash, time}. It applies while the values
       // still hash to resultHash (see agent/schema.js).
@@ -174,21 +177,28 @@
                 geom: serializeGeom(r),
                 offsets: Object.fromEntries(Object.entries(r.offsets).map(([k, o]) => [k, { dx: o.dx, dy: o.dy }])),
               })),
-              scale: p.scale ? { p1: pt(p.scale.p1), p2: pt(p.scale.p2), length: p.scale.length, unit: p.scale.unit } : null,
+              scale: serializeScale(p.scale),
             }
           : {}),
         ...(p.tool === 'map'
           ? {
               map: {
                 bin: p.map.bin,
+                units: p.map.units,
                 x: serializeAxis(p.map.x),
                 y: serializeAxis(p.map.y),
                 profiles: p.map.profiles.map((l) => ({ name: l.name, a: pt(l.a), b: pt(l.b), halfWidth: l.halfWidth })),
               },
+              scale: serializeScale(p.scale),
             }
           : {}),
       })),
     };
+  }
+
+  // A scale bar: two page points and the real length between them.
+  function serializeScale(sc) {
+    return sc ? { p1: pt(sc.p1), p2: pt(sc.p2), length: sc.length, unit: sc.unit } : null;
   }
 
   function serializeAxis(axis) {
@@ -199,6 +209,7 @@
     const out = createPanel('', 1, 'map').map;
     if (!raw || typeof raw !== 'object') return out;
     if (Number.isFinite(raw.bin)) out.bin = Math.min(256, Math.max(1, Math.round(raw.bin)));
+    if (MAP_UNITS.includes(raw.units)) out.units = raw.units;
     for (const key of ['x', 'y']) {
       const a = raw[key];
       if (!a || typeof a !== 'object') continue;
@@ -324,6 +335,8 @@
       }
       if (tool === 'roi') {
         p.rois = (Array.isArray(raw.rois) ? raw.rois : []).map((r, j) => readRoi(r, `panel ${i + 1} region ${j + 1}`));
+      }
+      if (tool === 'roi' || tool === 'map') {
         const sc = raw.scale;
         if (sc && typeof sc === 'object') {
           const p1 = readPoint(sc.p1, `panel ${i + 1} scale`);

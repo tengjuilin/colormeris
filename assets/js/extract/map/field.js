@@ -187,8 +187,10 @@
     }
     const x = axisFn(panel, 'x');
     const y = axisFn(panel, 'y');
-    const xs = Array.from({ length: cols }, (_, c) => (x.fn ? x.fn((c + 0.5) / cols) : ((c + 0.5) / cols) * width));
-    const ys = Array.from({ length: rows }, (_, r) => (y.fn ? y.fn((r + 0.5) / rows) : ((r + 0.5) / rows) * height));
+    const xc = mapCoord(panel, 'x');
+    const yc = mapCoord(panel, 'y');
+    const xs = Array.from({ length: cols }, (_, c) => xc.at((c + 0.5) / cols));
+    const ys = Array.from({ length: rows }, (_, r) => yc.at((r + 0.5) / rows));
     return {
       rows,
       cols,
@@ -201,8 +203,10 @@
       flags,
       xs,
       ys,
-      xAxis: !!x.fn,
-      yAxis: !!y.fn,
+      xAxis: xc.kind === 'axis',
+      yAxis: yc.kind === 'axis',
+      xName: xc.name,
+      yName: yc.name,
       axisProblems: [x.problem, y.problem].filter(Boolean),
       samples,
       stats,
@@ -321,6 +325,37 @@
     return { row, col, value: result.values[i], deltaE: result.deltaE[i], flags: result.flags[i] };
   }
 
+  // How map.units ('axis' | 'px' | 'length') reports positions along `key`'s
+  // axis: 'axis' (tick values), 'length' (scale-bar units from the plot's
+  // top-left corner) or 'px'. A choice that is not available falls back to
+  // the axis, then the length, then pixels.
+  function coordKind(panel, key, choice = panel.map.units) {
+    if (choice === 'px') return 'px';
+    const hasAxis = !!(panel.grid.corners && axisFn(panel, key).fn);
+    const scaled = lengthPerPixel(panel.scale) !== null;
+    if (choice === 'length' && scaled) return 'length';
+    return hasAxis ? 'axis' : scaled ? 'length' : 'px';
+  }
+
+  // {kind, name, at: position u or v across the plot (0..1) → coordinate} for
+  // `key`'s axis; name is the CSV header ('x', 'x_px', 'x_µm').
+  function mapCoord(panel, key, choice) {
+    const kind = coordKind(panel, key, choice);
+    const { width, height } = gridPixelSize(panel.grid.corners);
+    const side = key === 'x' ? width : height;
+    if (kind === 'axis') return { kind, name: key, at: axisFn(panel, key).fn };
+    const k = kind === 'length' ? lengthPerPixel(panel.scale) : 1;
+    return { kind, name: `${key}_${kind === 'length' ? panel.scale.unit : 'px'}`, at: (t) => t * side * k };
+  }
+
+  // Real length per page pixel from a scale bar ({p1, p2, length, unit}), or
+  // null without one.
+  function lengthPerPixel(scale) {
+    if (!scale?.p1 || !scale?.p2 || !(scale.length > 0)) return null;
+    const px = Math.hypot(scale.p2.x - scale.p1.x, scale.p2.y - scale.p1.y);
+    return px > 0 ? scale.length / px : null;
+  }
+
   // The axis a profile is plotted and measured against: 'x' or 'y' when the
   // line runs mostly along that axis and it is calibrated, else null (distance
   // along the line in pixels).
@@ -331,28 +366,42 @@
     return axisFn(panel, key).fn ? key : null;
   }
 
-  // Length of a profile in the units of profileAxisKey(): the span of axis
-  // values between its ends, or pixels. {length, key}.
-  function profileLength(panel, profile) {
-    const key = profileAxisKey(panel, profile);
-    if (!key) return { length: Math.hypot(profile.b.x - profile.a.x, profile.b.y - profile.a.y), key };
-    return { length: Math.abs(axisCoords(panel, profile.b)[key] - axisCoords(panel, profile.a)[key]), key };
+  // What a profile is plotted and measured against, for the user's choice
+  // ('axis' | 'px' | 'length'): 'x' or 'y' (axis values), 'length' (distance
+  // along the line in scale-bar units) or 'px'. A choice that is not
+  // available falls back to the axis, then the length, then pixels.
+  function profileXKind(panel, profile, choice = panel.map.units) {
+    if (choice === 'px') return 'px';
+    const scaled = lengthPerPixel(panel.scale) !== null;
+    if (choice === 'length' && scaled) return 'length';
+    return profileAxisKey(panel, profile) || (scaled ? 'length' : 'px');
+  }
+
+  // Length of a profile in the units of profileXKind(): the span of axis
+  // values between its ends, the real length, or pixels. {length, kind}.
+  function profileLength(panel, profile, choice) {
+    const kind = profileXKind(panel, profile, choice);
+    const px = Math.hypot(profile.b.x - profile.a.x, profile.b.y - profile.a.y);
+    if (kind === 'px') return { length: px, kind };
+    if (kind === 'length') return { length: px * lengthPerPixel(panel.scale), kind };
+    return { length: Math.abs(axisCoords(panel, profile.b)[kind] - axisCoords(panel, profile.a)[kind]), kind };
   }
 
   // The end point that gives a profile `length` (in profileLength() units),
   // keeping its start and direction; null when no point along it does.
-  function profileEndForLength(panel, profile, length) {
+  function profileEndForLength(panel, profile, length, choice) {
     const { a, b } = profile;
     const len = Math.hypot(b.x - a.x, b.y - a.y);
     if (!(length > 0) || len < 1e-9) return null;
     const dir = { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
     const at = (s) => ({ x: a.x + s * dir.x, y: a.y + s * dir.y });
-    const key = profileAxisKey(panel, profile);
-    if (!key) return at(length);
+    const kind = profileXKind(panel, profile, choice);
+    if (kind === 'px') return at(length);
+    if (kind === 'length') return at(length / lengthPerPixel(panel.scale));
     // Axis values are monotonic along the line (also on a log axis), so
     // bisect on the distance in pixels.
-    const v0 = axisCoords(panel, a)[key];
-    const span = (s) => Math.abs(axisCoords(panel, at(s))[key] - v0);
+    const v0 = axisCoords(panel, a)[kind];
+    const span = (s) => Math.abs(axisCoords(panel, at(s))[kind] - v0);
     let hi = len;
     for (let k = 0; k < 40 && span(hi) < length; k++) hi *= 2;
     if (!(span(hi) >= length)) return null;
@@ -470,7 +519,9 @@
 
   // Values along a profile line, one sample per pixel of length, each averaged
   // over ±halfWidth pixels across the line. Returns
-  // [{d, x, y, px, py, value, deltaE, flagged, clipped, outside}] or {error}.
+  // [{d, len, x, y, px, py, value, deltaE, flagged, clipped, outside}] or
+  // {error}; d is the distance from the start in pixels, len the same in
+  // scale-bar units (null without a scale bar).
   // Samples outside the plot area (axes, labels, the page) are kept, so the
   // line keeps its length, but marked outside: plots and CSVs leave them out.
   function sampleProfile(img, panel, profile) {
@@ -486,6 +537,7 @@
     const line = sampleColorbar(img, { x: a.x - 0.5, y: a.y - 0.5 }, { x: b.x - 0.5, y: b.y - 0.5 }, profile.halfWidth, n);
     const x = panel.grid.corners ? axisFn(panel, 'x').fn : null;
     const y = panel.grid.corners ? axisFn(panel, 'y').fn : null;
+    const perPx = lengthPerPixel(panel.scale);
     return line.map((s) => {
       const hit = read(s.rgb);
       const p = { x: a.x + s.t * (b.x - a.x), y: a.y + s.t * (b.y - a.y) };
@@ -500,6 +552,7 @@
       }
       return {
         d: s.t * length,
+        len: perPx === null ? null : s.t * length * perPx,
         x: ax,
         y: ay,
         px: p.x,
@@ -532,7 +585,11 @@
     extractMap,
     axisCoords,
     mapAt,
+    lengthPerPixel,
+    coordKind,
+    mapCoord,
     profileAxisKey,
+    profileXKind,
     profileLength,
     profileEndForLength,
     profileDivisor,

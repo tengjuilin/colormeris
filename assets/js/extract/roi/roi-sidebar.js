@@ -89,7 +89,7 @@
       ws.setBadge($('scale-state'), sc ? `${sc.length} ${sc.unit}` : 'pixels', !!sc);
       for (const opt of $('result-metric').querySelectorAll('[data-scaled]')) {
         opt.disabled = !sc;
-        opt.textContent = opt.textContent.replace(/\((unit|cm|mm)²\)/, `(${sc ? sc.unit : 'unit'}²)`);
+        opt.textContent = opt.textContent.replace(/\((unit|cm|mm|µm|nm)²\)/, `(${sc ? sc.unit : 'unit'}²)`);
       }
       if (!sc && ['sumArea', 'signalArea', 'area'].includes(state.metric)) state.metric = 'sum';
       ws.setValue($('result-metric'), state.metric);

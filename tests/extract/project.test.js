@@ -89,6 +89,16 @@ test('panels keep their page; older files fall back to source.page', () => {
   assert.deepEqual(parseProject(json).panels.map((p) => p.page), [3, 3]);
 });
 
+test('map panels keep their scale bar and units', () => {
+  const project = createProject('map');
+  const p = project.panels[0];
+  p.scale = { p1: { x: 10, y: 5 }, p2: { x: 110, y: 5 }, length: 20, unit: 'µm' };
+  p.map.units = 'length';
+  const q = parseProject(JSON.parse(JSON.stringify(serializeProject(project)))).panels[0];
+  assert.deepEqual(q.scale, p.scale);
+  assert.equal(q.map.units, 'length');
+});
+
 test('ROI panels keep their tool, regions, nudges and scale', () => {
   const project = createProject('roi');
   project.source = { fileName: 'fig.pdf', page: 3 };

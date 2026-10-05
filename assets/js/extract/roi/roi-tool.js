@@ -27,6 +27,7 @@
     fitGeom,
     setupRoiOverlay,
     setupRoiSidebar,
+    scaleBarClick,
   } = CM;
 
   // ROI tool: quantify luminescence overlays inside drawn regions (ellipses,
@@ -196,26 +197,7 @@
       }
       return true;
     }
-    if (mode?.type === 'scale') {
-      const q = mode.points.length === 1 && !e.altKey ? ws.snapAxis(mode.points[0], p) : p;
-      mode.points.push(q);
-      if (mode.points.length < 2) {
-        ws.updateModebar();
-        return true;
-      }
-      const [p1, p2] = mode.points;
-      if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 3) {
-        mode.points.pop();
-        ws.toast('Too short; click the other end of the scale bar.', true);
-        return true;
-      }
-      ws.setMode(null);
-      const length = Number($('scale-length').value) > 0 ? Number($('scale-length').value) : 1;
-      ws.commit((pn) => (pn.scale = { p1, p2, length, unit: $('scale-unit').value }));
-      $('scale-length').focus();
-      $('scale-length').select();
-      return true;
-    }
+    if (mode?.type === 'scale') return scaleBarClick(ws, mode, p, e);
     if (mode?.type === 'ellipse' || mode?.type === 'rect') return true; // shapes are dragged, not clicked
     if (mode) return false;
     // No tool: clicking a region selects it.

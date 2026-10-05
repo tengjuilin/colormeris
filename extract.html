@@ -7,7 +7,7 @@
   <meta name="description" content="Turn colors in scientific figures back into numbers: heatmap grids and signal inside regions of interest (ROI).">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%23dfe3ff'/%3E%3Crect x='8' width='8' height='8' fill='%235560f0'/%3E%3Crect y='8' width='8' height='8' fill='%232530e0'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23a3a9ff'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="assets/css/base.css?v=2">
-  <link rel="stylesheet" href="assets/css/extract.css?v=4">
+  <link rel="stylesheet" href="assets/css/extract.css?v=5">
   <script src="assets/vendor/jszip/jszip.min.js" defer></script>
   <!-- Classic (non-module) scripts so the page also works when opened from disk. Order matters. -->
   <script src="assets/js/core/color.js?v=2" defer></script>
@@ -15,14 +15,14 @@
   <script src="assets/js/core/colorbar.js?v=4" defer></script>
   <script src="assets/js/core/colormap-library.js?v=8" defer></script>
   <script src="assets/js/core/colormap-match.js?v=3" defer></script>
-  <script src="assets/js/extract/project.js?v=3" defer></script>
+  <script src="assets/js/extract/project.js?v=5" defer></script>
   <script src="assets/js/extract/heatmap/sampling.js?v=3" defer></script>
-  <script src="assets/js/extract/project-files.js?v=5" defer></script>
+  <script src="assets/js/extract/project-files.js?v=7" defer></script>
   <script src="assets/js/extract/pdf-loader.js?v=1" defer></script>
   <script src="assets/js/extract/viewer.js?v=4" defer></script>
   <script src="assets/js/extract/roi/geometry.js?v=2" defer></script>
   <script src="assets/js/extract/roi/quantify.js?v=4" defer></script>
-  <script src="assets/js/extract/map/field.js?v=11" defer></script>
+  <script src="assets/js/extract/map/field.js?v=13" defer></script>
   <script src="assets/js/extract/settings.js?v=4" defer></script>
   <script src="assets/js/extract/workspace/history.js?v=1" defer></script>
   <script src="assets/js/extract/workspace/overlay.js?v=3" defer></script>
@@ -36,11 +36,12 @@
   <script src="assets/js/extract/workspace/hotkeys.js?v=2" defer></script>
   <script src="assets/js/extract/workspace/workspace.js?v=4" defer></script>
   <script src="assets/js/extract/heatmap/heatmap-tool.js?v=3" defer></script>
-  <script src="assets/js/extract/roi/roi-overlay.js?v=2" defer></script>
-  <script src="assets/js/extract/roi/roi-sidebar.js?v=1" defer></script>
-  <script src="assets/js/extract/roi/roi-tool.js?v=2" defer></script>
-  <script src="assets/js/extract/map/map-sidebar.js?v=9" defer></script>
-  <script src="assets/js/extract/map/map-tool.js?v=13" defer></script>
+  <script src="assets/js/extract/scale-bar.js?v=1" defer></script>
+  <script src="assets/js/extract/roi/roi-overlay.js?v=3" defer></script>
+  <script src="assets/js/extract/roi/roi-sidebar.js?v=2" defer></script>
+  <script src="assets/js/extract/roi/roi-tool.js?v=3" defer></script>
+  <script src="assets/js/extract/map/map-sidebar.js?v=13" defer></script>
+  <script src="assets/js/extract/map/map-tool.js?v=15" defer></script>
   <script src="assets/js/agent/schema.js?v=3" defer></script>
   <script src="assets/js/agent/api.js?v=2" defer></script>
   <script src="assets/js/agent/llm.js?v=1" defer></script>
@@ -95,6 +96,7 @@
           <li>Open a figure with a near-continuous map: a spectroscopy map, a fluorescence image with a calibration bar (or drop / paste it).</li>
           <li><b>Plot area</b>: click the top-left and bottom-right corners of the image area, inside the axes.</li>
           <li><b>Colorbar</b>: click the two ends of the colorbar, then click at least two ticks and type their values.</li>
+          <li><b>Scale</b> (optional): for images without axes, click both ends of a scale bar and type its length. Profiles can then be plotted in µm, mm, …</li>
           <li><b>Axes</b> (optional): click two or more labelled ticks on each axis and type their values. Without them, coordinates are pixels.</li>
           <li><b>Results</b>: bin size 1 gives one value per pixel; larger bins take the median and smooth out JPEG noise. <b>Profiles</b> give values along a line. Download CSVs or export the project zip.</li>
         </ol>
@@ -286,7 +288,7 @@
         <div class="fields">
           <label class="field">Length <input id="scale-length" type="number" min="0" step="any" value="1"></label>
           <label class="field">Unit
-            <select id="scale-unit"><option value="cm">cm</option><option value="mm">mm</option></select>
+            <select id="scale-unit"><option value="cm">cm</option><option value="mm">mm</option><option value="µm">µm</option><option value="nm">nm</option></select>
           </label>
         </div>
         <p id="scale-info" class="hint">Click both ends of a scale bar (or any known distance) to report areas in real units.</p>
@@ -352,6 +354,11 @@
         <div id="profile-view" hidden>
           <p id="profile-problem" class="notice"></p>
           <div class="fields">
+            <label class="field" title="What the plot's horizontal axis shows: axis values (with axis ticks), or the distance from the profile's start in pixels or in scale-bar units. Shared with the Results card's Coordinates.">X axis <select id="profile-x">
+              <option value="axis">Axis</option>
+              <option value="px">px</option>
+              <option value="length">Scale bar</option>
+            </select></label>
             <label class="field" title="Divide each profile by its own maximum or mean to compare shapes rather than signal levels">Scale <select id="profile-norm">
               <option value="raw">Values</option>
               <option value="max">÷ each max</option>
@@ -363,8 +370,8 @@
             <button class="btn" id="profile-sweep" aria-pressed="false" title="Move the profile across the plot area, perpendicular to itself, and back (Shortcut: K)" data-hotkey="sweepProfile" data-title="Move the profile across the plot area, perpendicular to itself, and back (Shortcut: {key})">Sweep</button>
             <label class="check" title="Keep going until no part of the line is inside the plot area, then turn. Off: turn as soon as the line touches an edge.">
               <input id="profile-sweep-runoff" type="checkbox"> Run off the edge</label>
-            <span id="profile-sweep-at" class="muted"></span>
           </div>
+          <p id="profile-sweep-at" class="profile-at" title="Where the profile's midpoint is, across the direction it sweeps (units as in Coordinates)"></p>
           <canvas id="profile-plot" class="profile-plot" aria-label="Values along the selected profiles"></canvas>
           <div class="card-actions">
             <button class="btn" id="profile-csv">Download profile CSV</button>
@@ -381,6 +388,11 @@
         </div>
         <div class="fields">
           <label class="field" title="Side of the square bins in pixels of the rendered image; each bin is the median of its pixels. 1 = one value per pixel.">Bin size (px) <input id="map-bin" type="number" min="1" max="256" step="1"></label>
+          <label class="field" title="How x and y are reported in the CSVs and the status bar: axis values (with axis ticks), pixels from the plot's top-left corner, or scale-bar lengths from that corner. Shared with the profile plot's X axis.">Coordinates <select id="map-units">
+            <option value="axis">Axis</option>
+            <option value="px">px</option>
+            <option value="length">Scale bar</option>
+          </select></label>
         </div>
         <p id="map-problem" class="notice"></p>
         <p id="map-summary" class="hint"></p>

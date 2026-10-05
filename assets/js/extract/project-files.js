@@ -115,8 +115,8 @@ Load this zip back into Colormeris to review or re-run the extraction.
   // Results come from extractMap (map/field.js, loaded after this file, so its
   // flag constants are looked up on CM at call time).
 
-  // Column headers of a map: axis names when calibrated, else pixel offsets.
-  const mapAxisNames = (result) => [result.xAxis ? 'x' : 'x_px', result.yAxis ? 'y' : 'y_px'];
+  // Column headers of a map: axis names, or pixel or scale-bar offsets (see mapCoord).
+  const mapAxisNames = (result) => [result.xName ?? (result.xAxis ? 'x' : 'x_px'), result.yName ?? (result.yAxis ? 'y' : 'y_px')];
 
   // Matrix layout: header row of x at bin centres, first column y at bin centres,
   // rows top to bottom as on the page.
@@ -154,26 +154,28 @@ Load this zip back into Colormeris to review or re-run the extraction.
 
   // One line per profile sample (from sampleProfile). With norm = {mode,
   // divisor} ('max' | 'mean', see profileDivisor), a value_per_<mode> column
-  // follows the value. Samples outside the plot area are left out.
-  function profileCsv(samples, norm = null) {
-    const head = ['d_px', 'x', 'y', 'page_x', 'page_y', 'value', ...(norm ? [`value_per_${norm.mode}`] : []), 'deltaE', 'flagged', 'clipped'];
+  // follows the value. With a scale-bar unit, a d_<unit> column follows d_px.
+  // Samples outside the plot area are left out.
+  function profileCsv(samples, norm = null, unit = null) {
+    const head = ['d_px', ...(unit ? [`d_${unit}`] : []), 'x', 'y', 'page_x', 'page_y', 'value', ...(norm ? [`value_per_${norm.mode}`] : []), 'deltaE', 'flagged', 'clipped'];
     const lines = [csvLine(head)];
     for (const s of samples) {
       if (s.outside) continue;
+      const len = unit ? [formatNumber(s.len)] : [];
       const scaled = norm ? [formatNumber(s.value / norm.divisor)] : [];
       lines.push(
-        [s.d.toFixed(2), formatNumber(s.x), formatNumber(s.y), s.px.toFixed(2), s.py.toFixed(2), formatNumber(s.value), ...scaled, s.deltaE.toFixed(2), s.flagged ? 1 : 0, s.clipped ? 1 : 0].join(','),
+        [s.d.toFixed(2), ...len, formatNumber(s.x), formatNumber(s.y), s.px.toFixed(2), s.py.toFixed(2), formatNumber(s.value), ...scaled, s.deltaE.toFixed(2), s.flagged ? 1 : 0, s.clipped ? 1 : 0].join(','),
       );
     }
     return lines.join('\n') + '\n';
   }
 
   // Several profiles in one long table with a profile column: [{name,
-  // samples, norm}] (norm as in profileCsv, the same mode for all).
-  function profilesCsv(entries) {
-    const lines = [`profile,${profileCsv([], entries[0]?.norm).trim()}`];
+  // samples, norm}] (norm and unit as in profileCsv, the same for all).
+  function profilesCsv(entries, unit = null) {
+    const lines = [`profile,${profileCsv([], entries[0]?.norm, unit).trim()}`];
     for (const { name, samples, norm } of entries) {
-      for (const line of profileCsv(samples, norm).trim().split('\n').slice(1)) lines.push(`${csvEscape(name)},${line}`);
+      for (const line of profileCsv(samples, norm, unit).trim().split('\n').slice(1)) lines.push(`${csvEscape(name)},${line}`);
     }
     return lines.join('\n') + '\n';
   }
@@ -193,7 +195,7 @@ Load this zip back into Colormeris to review or re-run the extraction.
       let name = safeFileName(l.name);
       while (used.has(name)) name += '_';
       used.add(name);
-      files.push({ path: `data/${base}_profile_${name}.csv`, content: profileCsv(samples) });
+      files.push({ path: `data/${base}_profile_${name}.csv`, content: profileCsv(samples, null, CM.lengthPerPixel(panel.scale) ? panel.scale.unit : null) });
     }
     return files;
   }

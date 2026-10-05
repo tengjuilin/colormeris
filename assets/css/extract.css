@@ -331,3 +331,6 @@ kbd {
 .profile-plot { display: block; width: 100%; height: 140px; margin-top: var(--space-2); cursor: crosshair; touch-action: none; }
 #profile-view .card-actions { margin-top: var(--space-3); }
 #profile-edit .fields { margin-top: var(--space-2); }
+/* Where the edited profile lies across the plot, above the profile plot. */
+.profile-at { margin: var(--space-2) 0 0; font-size: var(--fs-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
+.profile-at:empty { display: none; }

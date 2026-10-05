@@ -5,7 +5,7 @@
     sampleProfiles,
     mapProblem,
     mapAt,
-    axisCoords,
+    mapCoord,
     axisT,
     onAxisEdge,
     mapPanelFiles,
@@ -13,12 +13,16 @@
     createProfile,
     pastedProfiles,
     bilinear,
+    invertBilinear,
     reconPixels,
     formatNumber,
     FLAG_DELTA_E,
     FLAG_LOW,
     FLAG_HIGH,
     setupMapSidebar,
+    scaleBarClick,
+    drawScaleBar,
+    drawScalePreview,
   } = CM;
 
   // Map tool: read near-continuous fields (spectroscopy maps, fluorescence
@@ -81,7 +85,7 @@
   // is cached apart from the profiles: drawing or dragging a profile must not
   // read the whole map again.
   function computeResult(panel, image) {
-    const key = JSON.stringify([panel.grid.corners, panel.colorbar, panel.settings, panel.map.bin, panel.map.x, panel.map.y]);
+    const key = JSON.stringify([panel.grid.corners, panel.colorbar, panel.settings, panel.map.bin, panel.map.x, panel.map.y, panel.map.units, panel.scale]);
     let hit = state.field.get(panel.id);
     if (!hit || hit.key !== key || hit.image !== image) {
       hit = { key, image, result: extractField(image, panel) };
@@ -96,16 +100,17 @@
     title: 'Colormeris · Map',
     plotArea: true,
     computeResult,
-    resultKey: (panel) => [panel.grid.corners, panel.colorbar, panel.settings, panel.map],
+    resultKey: (panel) => [panel.grid.corners, panel.colorbar, panel.settings, panel.map, panel.scale],
     panelProblem: mapProblem,
     panelFiles: (panels, results, bases) => panels.flatMap((p, i) => mapPanelFiles(p, results[i], bases[i])),
-    hasCalibration: (p) => p.map.x.ticks.length > 0 || p.map.y.ticks.length > 0 || p.map.profiles.length > 0,
-    sections: ['sec-axes', 'sec-profiles', 'sec-map-results'],
+    hasCalibration: (p) => p.map.x.ticks.length > 0 || p.map.y.ticks.length > 0 || p.map.profiles.length > 0 || !!p.scale,
+    sections: ['sec-scale', 'sec-axes', 'sec-profiles', 'sec-map-results'],
     gridTexts: ['Click the top-left corner of the plot area (inside the axes).', 'Click the bottom-right corner.'],
     modeTexts: {
       xtick: ['Click a labelled tick on the x axis, then type its value. Press Done when finished.'],
       ytick: ['Click a labelled tick on the y axis, then type its value. Press Done when finished.'],
       profile: ['Click the start of the profile line.', 'Click its end. Hold Alt to disable axis snapping.'],
+      scale: ['Click one end of the scale bar.', 'Click the other end. Hold Alt to disable axis snapping.'],
     },
     onModeChange,
     onClick,
@@ -203,6 +208,7 @@
       ws.drawHandle(ctx, v, l.b, color, 'circle');
       label(ctx, a, l.name, color, 'above');
     }
+    if (panel.scale) drawScaleBar(ws, ctx, v, panel.scale);
     drawTrace(ctx, v, panel);
   }
 
@@ -267,6 +273,8 @@
     } else if (m.type === 'profile' && m.points.length === 1) {
       // In the color the new profile will get.
       line(ctx, v, m.points[0], ws.snapAxis(m.points[0], hover), PROFILE_COLORS[panel.map.profiles.length % PROFILE_COLORS.length]);
+    } else {
+      drawScalePreview(ws, ctx, v, m, hover);
     }
   }
 
@@ -282,10 +290,16 @@
   function hoverText(panel, cell, p) {
     traceFromImage(panel, p);
     if (!panel.grid.corners) return '';
-    const at = axisCoords(panel, p);
-    if (at.u < 0 || at.u >= 1 || at.v < 0 || at.v >= 1) return '';
-    const x = at.x !== null ? `x ${formatNumber(at.x)}` : `x ${at.px.toFixed(1)} px`;
-    const y = at.y !== null ? `y ${formatNumber(at.y)}` : `y ${at.py.toFixed(1)} px`;
+    const { u, v } = invertBilinear(panel.grid.corners, p);
+    if (u < 0 || u >= 1 || v < 0 || v >= 1) return '';
+    // As in the CSVs (Coordinates in the Results card).
+    const coord = (key, t) => {
+      const c = mapCoord(panel, key);
+      const unit = c.kind === 'px' ? ' px' : c.kind === 'length' ? ` ${panel.scale.unit}` : '';
+      return `${key} ${c.kind === 'px' ? c.at(t).toFixed(1) : formatNumber(c.at(t))}${unit}`;
+    };
+    const x = coord('x', u);
+    const y = coord('y', v);
     const hit = mapAt(ws.resultFor(panel), panel, p);
     if (!hit) return `${x}, ${y}`;
     const end = hit.flags & FLAG_HIGH ? ' · at colorbar top' : hit.flags & FLAG_LOW ? ' · at colorbar bottom' : '';
@@ -299,6 +313,7 @@
     ws.setPressed($('axis-x-add'), type === 'xtick');
     ws.setPressed($('axis-y-add'), type === 'ytick');
     ws.setPressed($('profile-add'), type === 'profile');
+    ws.setPressed($('scale-place'), type === 'scale');
   }
 
   function nextProfileName(panel) {
@@ -316,6 +331,7 @@
       focusAxisTick(key, tick.id);
       return true;
     }
+    if (mode?.type === 'scale') return scaleBarClick(ws, mode, p, e);
     if (mode?.type === 'profile') {
       const q = mode.points.length === 1 && !e.altKey ? ws.snapAxis(mode.points[0], p) : p;
       mode.points.push(q);

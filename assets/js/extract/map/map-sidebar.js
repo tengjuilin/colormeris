@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { mapSize, axisFn, axisT, axisEdgePoint, axisCoords, sweepRange, sampleProfile, profileAxisKey, profileLength, profileEndForLength, profileDivisor, mapMatrixCsv, mapLongCsv, profileCsv, profilesCsv, formatNumber, safeFileName } = CM;
+  const { mapSize, axisFn, axisT, axisEdgePoint, sweepRange, sampleProfile, profileAxisKey, profileXKind, coordKind, mapCoord, invertBilinear, lengthPerPixel, profileLength, profileEndForLength, profileDivisor, mapMatrixCsv, mapLongCsv, profileCsv, profilesCsv, formatNumber, safeFileName } = CM;
 
   // Map tool, DOM: the sidebar cards (Axes, Profiles, Results), the profile
   // plot and the CSV downloads. Set up by map-tool.js.
@@ -15,9 +15,27 @@
     const { $, app, viewer } = ws;
 
     function renderSidebar(panel) {
+      renderScale(panel);
       renderAxes(panel);
       renderProfiles(panel);
       renderResults(panel);
+    }
+
+    // ---------------------------------------------------------------- scale bar
+    // The card's buttons and fields are bound in roi/roi-sidebar.js.
+
+    function renderScale(panel) {
+      const sc = panel.scale;
+      $('scale-clear').disabled = !sc;
+      if (sc) {
+        ws.setValue($('scale-length'), sc.length);
+        ws.setValue($('scale-unit'), sc.unit);
+        const px = Math.hypot(sc.p2.x - sc.p1.x, sc.p2.y - sc.p1.y);
+        $('scale-info').textContent = `${px.toFixed(1)} px = ${sc.length} ${sc.unit} · ${(px / sc.length).toFixed(2)} px per ${sc.unit}`;
+      } else {
+        $('scale-info').textContent = 'Click both ends of a scale bar (or any known distance) to plot profiles against real lengths.';
+      }
+      ws.setBadge($('scale-state'), sc ? `${sc.length} ${sc.unit}` : 'pixels', !!sc);
     }
 
     // ---------------------------------------------------------------- axes
@@ -169,17 +187,20 @@
       if (!sel) return;
       ws.setValue($('profile-name'), sel.name);
       ws.setValue($('profile-width'), sel.halfWidth);
-      const { length, key: lengthKey } = profileLength(panel, sel);
+      const { length, kind } = profileLength(panel, sel);
+      const unit = kind === 'length' ? panel.scale.unit : kind;
       ws.setValue($('profile-length'), Number(length.toPrecision(6)));
-      $('profile-length-label').textContent = `Length (${lengthKey || 'px'})`;
-      $('profile-length-field').title = lengthKey
-        ? `Span of ${lengthKey} values along the profile. Typing a length moves its end; the start and direction stay.`
-        : 'Length of the profile in pixels. Typing a length moves its end; the start and direction stay.';
+      $('profile-length-label').textContent = `Length (${unit})`;
+      $('profile-length-field').title =
+        (kind === 'x' || kind === 'y' ? `Span of ${kind} values along the profile.` : `Length of the profile in ${kind === 'px' ? 'pixels' : unit}.`) +
+        ' Typing a length moves its end; the start and direction stay.';
       $('profile-delete').title = shown.length > 1 ? `Delete the ${shown.length} selected profiles (Del)` : 'Delete (Del)';
       const results = ws.resultFor(panel).profiles || {};
       const series = [];
       const errors = [];
       ws.setValue($('profile-norm'), state.profileNorm);
+      // Show what is plotted, which may be a fallback from the choice.
+      renderUnits($('profile-x'), panel, shown.some((l) => profileAxisKey(panel, l)), kind === 'x' || kind === 'y' ? 'axis' : kind);
       for (const l of shown) {
         const samples = results[l.id];
         const norm = Array.isArray(samples) ? profileDivisor(samples, state.profileNorm) : null;
@@ -216,13 +237,16 @@
       if (plot) drawProfiles(plot.panel, plot.series);
     }
 
-    // Plot against the calibrated axis the lines mostly run along, else against
-    // the distance along the lines in pixels. Overlaid profiles share it.
+    // Plot against what the X axis select asks for (see profileXKind):
+    // the calibrated axis the lines mostly run along, the distance along the
+    // lines in scale-bar units, or in pixels. Overlaid profiles share it, so
+    // lines along different axes fall back to a distance.
     function plotAxis(panel, series) {
-      const keys = new Set(series.map((s) => profileAxisKey(panel, s.profile)));
-      const key = keys.size === 1 ? [...keys][0] : null;
-      if (key) return { get: (s) => s[key], name: key };
-      return { get: (s) => s.d, name: 'distance (px)' };
+      const kinds = new Set(series.map((s) => profileXKind(panel, s.profile)));
+      const kind = kinds.size === 1 ? [...kinds][0] : kinds.has('length') || lengthPerPixel(panel.scale) !== null ? 'length' : 'px';
+      if (kind === 'x' || kind === 'y') return { get: (s) => s[kind], name: kind, short: kind };
+      if (kind === 'length') return { get: (s) => s.len, name: `distance (${panel.scale.unit})`, short: 'd' };
+      return { get: (s) => s.d, name: 'distance (px)', short: 'd' };
     }
 
     // series: [{profile, samples, divisor, color}]; values are plotted
@@ -345,7 +369,7 @@
       const name = many ? `${line.profile.name} · ` : '';
       // Normalized values are followed by the value they come from.
       const value = line.divisor === 1 ? shortLabel(s.value) : `${shortLabel(line.ys[i])} (${shortLabel(s.value)})`;
-      const label = `${name}${axis.name === 'distance (px)' ? 'd' : axis.name} ${shortLabel(line.xs[i])}: ${value}`;
+      const label = `${name}${axis.short} ${shortLabel(line.xs[i])}: ${value}`;
       ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
       ctx.textBaseline = 'top';
       // Readout on the side of the guide with more room.
@@ -499,14 +523,21 @@
         return;
       }
       const across = Math.abs(sel.b.x - sel.a.x) >= Math.abs(sel.b.y - sel.a.y) ? 'y' : 'x';
-      const c = axisCoords(panel, { x: (sel.a.x + sel.b.x) / 2, y: (sel.a.y + sel.b.y) / 2 });
-      at.textContent = c[across] !== null ? `at ${across} ${formatNumber(c[across])}` : `at ${across} ${c[`p${across}`].toFixed(1)} px`;
+      const { u, v } = invertBilinear(panel.grid.corners, { x: (sel.a.x + sel.b.x) / 2, y: (sel.a.y + sel.b.y) / 2 });
+      // In the units of the Coordinates setting, as in the CSVs and status bar.
+      const c = mapCoord(panel, across);
+      const value = c.at(across === 'x' ? u : v);
+      const unit = c.kind === 'px' ? ' px' : c.kind === 'length' ? ` ${panel.scale.unit}` : '';
+      at.textContent = `Line at ${across} = ${c.kind === 'px' ? value.toFixed(1) : formatNumber(value)}${unit}`;
     }
 
     // ---------------------------------------------------------------- results
 
     function renderResults(panel) {
       ws.setValue($('map-bin'), panel.map.bin);
+      const axisFns = ['x', 'y'].map((k) => !!(panel.grid.corners && axisFn(panel, k).fn));
+      // With one axis calibrated, 'axis' reports the other in length or pixels.
+      renderUnits($('map-units'), panel, axisFns.some(Boolean), axisFns.some(Boolean) && panel.map.units === 'axis' ? 'axis' : coordKind(panel, 'x'));
       const res = ws.resultFor(panel);
       $('map-dl-csv').disabled = $('map-dl-long').disabled = !!res.error;
       $('map-axis-hint').textContent = res.axisProblems?.join(' ') || '';
@@ -527,6 +558,17 @@
         s.flagged ? `${s.flagged} flagged (${pct(s.flagged)}%, ΔE > ${panel.settings.maxDeltaE})` : 'no flagged values',
         clipped ? `${clipped} at a colorbar end (${pct(clipped)}%, may be clipped)` : 'none at a colorbar end',
       ].join(' · ');
+    }
+
+    // A units select (profile-x or map-units): options that are not
+    // available are disabled, the length option is named by its unit, and it
+    // shows `value`, what is reported.
+    function renderUnits(select, panel, hasAxis, value) {
+      const [axisOpt, , lengthOpt] = select.options;
+      axisOpt.disabled = !hasAxis;
+      lengthOpt.disabled = lengthPerPixel(panel.scale) === null;
+      lengthOpt.textContent = panel.scale?.unit ?? 'Scale bar';
+      ws.setValue(select, value);
     }
 
     function sizeText(panel) {
@@ -578,6 +620,8 @@
       const image = app.pages.get(panel.page)?.imageData;
       if (l && image) sw.yRange = sweepValueRange(image, panel, { ...l, a: sw.a0, b: sw.b0 }, sw);
     });
+    // One setting for the profile plot and the matrix, edited from either card.
+    for (const id of ['profile-x', 'map-units']) $(id).addEventListener('change', (e) => ws.commit((p) => (p.map.units = e.target.value)));
     $('profile-norm').addEventListener('change', (e) => {
       state.profileNorm = e.target.value;
       // The fixed value axis was measured in the old scale.
@@ -601,7 +645,8 @@
         .filter((l) => Array.isArray(results[l.id]))
         .map((l) => ({ name: l.name, samples: results[l.id], norm: normOf(results[l.id]) }));
       if (!entries.length) return;
-      const [csv, suffix] = entries.length === 1 ? [profileCsv(entries[0].samples, entries[0].norm), `_profile_${safeFileName(entries[0].name)}`] : [profilesCsv(entries), '_profiles'];
+      const unit = lengthPerPixel(panel.scale) !== null ? panel.scale.unit : null;
+      const [csv, suffix] = entries.length === 1 ? [profileCsv(entries[0].samples, entries[0].norm, unit), `_profile_${safeFileName(entries[0].name)}`] : [profilesCsv(entries, unit), '_profiles'];
       ws.download(new Blob([csv], { type: 'text/csv' }), ws.csvName(panel, suffix));
     });
     ws.bindNumber('map-bin', (p, v) => (p.map.bin = Math.min(256, Math.max(1, Math.round(v)))));

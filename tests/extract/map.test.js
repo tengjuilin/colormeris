@@ -197,6 +197,63 @@ test('a profile length is set in axis units or pixels', () => {
   assert.equal(profileEndForLength(panel, prof, 0), null);
 });
 
+test('a scale bar measures profiles in real units', () => {
+  const { img, panel } = scene();
+  const { lengthPerPixel, profileXKind, profileLength, profileEndForLength } = CM;
+  // 40 px = 10 µm: 0.25 µm per pixel.
+  panel.scale = { p1: { x: 0, y: 0 }, p2: { x: 40, y: 0 }, length: 10, unit: 'µm' };
+  close(lengthPerPixel(panel.scale), 0.25, 1e-12);
+  assert.equal(lengthPerPixel(null), null);
+  const prof = createProfile({ x: X0 + 10, y: Y0 + 20 }, { x: X0 + 50, y: Y0 + 50 }); // 50 px
+  // Without axes the scale bar is the default; pixels on request.
+  assert.equal(profileXKind(panel, prof), 'length');
+  assert.equal(profileXKind(panel, prof, 'px'), 'px');
+  close(profileLength(panel, prof, 'length').length, 12.5, 1e-9);
+  close(profileLength(panel, prof, 'px').length, 50, 1e-9);
+  const b = profileEndForLength(panel, prof, 25, 'length');
+  close(b.x, X0 + 90, 1e-9);
+  close(b.y, Y0 + 80, 1e-9);
+  // A calibrated axis wins for 'axis'; 'length' still picks the scale bar.
+  panel.map.x.ticks = [createAxisTick({ x: X0, y: 0 }, 0), createAxisTick({ x: X0 + W, y: 0 }, 4)];
+  assert.equal(profileXKind(panel, prof, 'axis'), 'x');
+  assert.equal(profileXKind(panel, prof, 'length'), 'length');
+  // Without a scale bar 'length' falls back.
+  assert.equal(profileXKind({ ...panel, scale: null }, prof, 'length'), 'x');
+  // Samples carry the distance in µm, from the start of the line; the CSV a d_µm column.
+  panel.map.profiles.push(prof);
+  const samples = extractMap(img, panel).profiles[prof.id];
+  close(samples.at(-1).len, 12.5, 1e-9);
+  assert.equal(samples[0].len, 0);
+  const lines = profileCsv(samples, null, 'µm').trim().split('\n');
+  assert.match(lines[0], /^d_px,d_µm,x,/);
+  assert.equal(lines.at(-1).split(',')[1], '12.5');
+  assert.match(mapPanelFiles(panel, extractMap(img, panel), 'fig').at(-1).content, /^d_px,d_µm,/);
+});
+
+test('the matrix reports pixels, scale-bar lengths or axis values', () => {
+  const { img, panel } = scene();
+  panel.map.bin = 50;
+  // 0.5 µm per pixel.
+  panel.scale = { p1: { x: 0, y: 0 }, p2: { x: 20, y: 0 }, length: 10, unit: 'µm' };
+  // 'axis' without ticks falls back to the scale bar.
+  assert.match(mapMatrixCsv(panel, extractMap(img, panel)), /^y_µm\\x_µm,12\.5,37\.5,62\.5,87\.5\n12\.5,/);
+  panel.map.units = 'px';
+  assert.match(mapMatrixCsv(panel, extractMap(img, panel)), /^y_px\\x_px,25,75,125,175\n25,/);
+  // With x ticks, 'axis' gives x values and y still in µm; 'length' gives µm for both.
+  panel.map.x.ticks = [createAxisTick({ x: X0, y: 0 }, 0), createAxisTick({ x: X0 + W, y: 0 }, 4)];
+  panel.map.units = 'axis';
+  assert.match(mapLongCsv([{ panel, result: extractMap(img, panel) }]), /^panel,page,row,col,x,y_µm,/);
+  panel.map.units = 'length';
+  assert.match(mapMatrixCsv(panel, extractMap(img, panel)), /^y_µm\\x_µm,/);
+  // Profiles follow the same setting.
+  const prof = createProfile({ x: X0 + 10, y: Y0 + 20 }, { x: X0 + 50, y: Y0 + 20 });
+  assert.equal(CM.profileXKind(panel, prof), 'length');
+  panel.map.units = 'px';
+  assert.equal(CM.profileXKind(panel, prof), 'px');
+  panel.map.units = 'axis';
+  assert.equal(CM.profileXKind(panel, prof), 'x');
+});
+
 test('several profiles go into one long CSV', () => {
   const { profilesCsv } = CM;
   const s = { d: 0, x: null, y: null, px: 1, py: 2, value: 0.5, deltaE: 1, flagged: false, clipped: false };

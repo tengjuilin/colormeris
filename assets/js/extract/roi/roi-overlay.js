@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { roiInstances, shapeOutline, boxGeom, colorbarProblem, panelClassifier, readPixel, boxLabel, roiControlPoints, roiFromLocal, metricValue, shortNumber } = CM;
+  const { roiInstances, shapeOutline, boxGeom, colorbarProblem, panelClassifier, readPixel, boxLabel, roiControlPoints, roiFromLocal, metricValue, shortNumber, drawScaleBar, drawScalePreview } = CM;
 
   // ROI tool, DOM: what the tool draws over the image (regions with their
   // labels, edit handles, the scale bar, the signal mask, previews while
@@ -57,7 +57,7 @@
           for (const q of roiControlPoints(sel)) ws.drawHandle(ctx, v, roiFromLocal(sel, panel.grid, inst.row, inst.col, q), color, sel.shape === 'polygon' ? 'circle' : 'square');
         }
       }
-      if (panel.scale) drawScale(ctx, v, panel.scale);
+      if (panel.scale) drawScaleBar(ws, ctx, v, panel.scale);
     }
 
     // Adds a closed polygon to the current path.
@@ -68,27 +68,6 @@
         else ctx.lineTo(s.x, s.y);
       });
       ctx.closePath();
-    }
-
-    function drawScale(ctx, v, scale) {
-      const a = v.toScreen(scale.p1);
-      const b = v.toScreen(scale.p2);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ws.strokeDual(ctx, '#22d3ee', 2);
-      for (const q of [scale.p1, scale.p2]) ws.drawHandle(ctx, v, q, '#22d3ee', 'circle');
-      const label = `${scale.length} ${scale.unit}`;
-      ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
-      ctx.textBaseline = 'bottom';
-      const w = ctx.measureText(label).width;
-      const mx = (a.x + b.x) / 2 - w / 2;
-      const my = Math.min(a.y, b.y) - 6;
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-      ctx.strokeText(label, mx, my);
-      ctx.fillStyle = '#22d3ee';
-      ctx.fillText(label, mx, my);
     }
 
     function drawModePreview(ctx, v, m, hover) {
@@ -106,13 +85,8 @@
         });
         ws.strokeDual(ctx, '#00e5ff', 1.5, [6, 4]);
         m.points.forEach((q, i) => ws.drawHandle(ctx, v, q, i === 0 ? '#ffd400' : '#00e5ff', 'circle'));
-      } else if (m.type === 'scale' && m.points.length === 1 && hover) {
-        const a = v.toScreen(m.points[0]);
-        const b = v.toScreen(ws.snapAxis(m.points[0], hover));
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ws.strokeDual(ctx, '#22d3ee', 1.5, [6, 4]);
+      } else {
+        drawScalePreview(ws, ctx, v, m, hover);
       }
     }
 
