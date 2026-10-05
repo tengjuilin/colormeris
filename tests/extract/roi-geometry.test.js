@@ -99,3 +99,23 @@ test('control points, box size, equal shapes and translation', () => {
   assert.deepEqual(CM.translateGeom('rect', rect.geom, 1, -1), { cx: 6, cy: 4, rx: 2, ry: 1 });
   assert.deepEqual(CM.translateGeom('polygon', { points: [{ x: 0, y: 0 }] }, 2, 3), { points: [{ x: 2, y: 3 }] });
 });
+
+test('clampShift keeps bounds inside the limit', () => {
+  const lim = { x0: 0, y0: 0, x1: 1, y1: 1 };
+  const b = { x0: 0.2, y0: 0.2, x1: 0.6, y1: 0.5 };
+  assert.deepEqual(CM.clampShift(b, 1, -1, lim), { dx: 0.4, dy: -0.2 });
+  assert.deepEqual(CM.clampShift(b, 0.1, 0.1, lim), { dx: 0.1, dy: 0.1 });
+  assert.deepEqual(CM.clampPoint({ x: -3, y: 2 }, lim), { x: 0, y: 1 });
+});
+
+test('fitGeom moves and shrinks a shape into the limit', () => {
+  const lim = { x0: 0, y0: 0, x1: 1, y1: 1 };
+  const moved = CM.fitGeom('ellipse', { cx: 0.9, cy: 0.5, rx: 0.2, ry: 0.1 }, lim);
+  close(moved.cx, 0.8, 1e-12);
+  assert.equal(moved.rx, 0.2);
+  const big = CM.fitGeom('rect', { cx: 0.5, cy: 0.5, rx: 1, ry: 0.25 }, lim);
+  assert.deepEqual(big, { cx: 0.5, cy: 0.5, rx: 0.5, ry: 0.125 });
+  const poly = CM.fitGeom('polygon', { points: [{ x: -0.5, y: 0 }, { x: 0.5, y: 0 }, { x: 0, y: 0.5 }] }, lim);
+  const b = CM.boundsOf(poly.points);
+  assert.ok(b.x0 >= 0 && b.x1 <= 1 && b.y0 >= 0 && b.y1 <= 1);
+});

@@ -79,11 +79,27 @@
     return stats;
   }
 
+  // Classifier and per-outline stats, kept per image while the colorbar and
+  // settings stay the same. Dragging a region recomputes the results every
+  // frame; without this each frame rebuilt the color cache (labToT for every
+  // color) and re-read every region, not just the moved one.
+  const quantCache = new WeakMap();
+  function quantCacheFor(img, panel) {
+    const key = JSON.stringify([panel.colorbar, panel.settings]);
+    let hit = quantCache.get(img);
+    if (!hit || hit.key !== key) {
+      hit = { key, classify: makeClassifier(img, panel), stats: new Map() };
+      quantCache.set(img, hit);
+    }
+    return hit;
+  }
+
   // One row per ROI copy: {roi, row, col, outline, stats}, or {error}.
   function quantifyPanel(img, panel) {
     const error = roiPanelProblem(panel);
     if (error) return { error };
-    const classify = makeClassifier(img, panel);
+    const cache = quantCacheFor(img, panel);
+    const classify = cache.classify;
     const pxArea = pixelArea(panel.scale);
     const rows = [];
     for (const roi of panel.rois) {
@@ -94,7 +110,14 @@
           const cell = cellAt(panel.grid, centroid(inst.outline));
           if (cell) ({ row, col } = cell);
         }
-        rows.push({ roi, row, col, outline: inst.outline, stats: quantifyOutline(img, inst.outline, classify, pxArea) });
+        const statsKey = JSON.stringify([pxArea, inst.outline]);
+        let stats = cache.stats.get(statsKey);
+        if (!stats) {
+          if (cache.stats.size > 5000) cache.stats.clear();
+          stats = quantifyOutline(img, inst.outline, classify, pxArea);
+          cache.stats.set(statsKey, stats);
+        }
+        rows.push({ roi, row, col, outline: inst.outline, stats });
       }
     }
     return { rows, pxArea, unit: pxArea ? panel.scale.unit : null };

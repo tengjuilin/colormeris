@@ -20,6 +20,11 @@
     gridBoxSize,
     equalBoxGeom,
     translateGeom,
+    fromBox,
+    boundsOf,
+    clampPoint,
+    clampShift,
+    fitGeom,
     setupRoiOverlay,
     setupRoiSidebar,
   } = CM;
@@ -78,11 +83,13 @@
     onHandleDrag,
     wantsDrag: () => ws.app.mode?.type === 'ellipse' || ws.app.mode?.type === 'rect',
     onDragStart: (p, e) => {
-      state.draft = { shape: ws.app.mode.type, a: p, b: p, equal: e.shiftKey };
+      const lim = drawLimit(p);
+      const a = clampPoint(p, lim);
+      state.draft = { shape: ws.app.mode.type, a, b: a, equal: e.shiftKey, lim };
     },
     onDragMove: (p, e) => {
       if (!state.draft) return;
-      state.draft.b = p;
+      state.draft.b = clampPoint(p, state.draft.lim);
       state.draft.equal = e.shiftKey;
       ws.viewer.requestDraw();
     },
@@ -93,6 +100,37 @@
     onKey,
     renderSidebar,
   });
+
+  // ---------------------------------------------------------------- bounds
+  // Regions stay inside the grid (or the image without one), and a copied
+  // region stays inside its box.
+
+  const UNIT = { x0: 0, y0: 0, x1: 1, y1: 1 };
+
+  function gridLimit(grid) {
+    if (grid.corners) return boundsOf(grid.corners);
+    const img = app.imageData;
+    return { x0: 0, y0: 0, x1: img.width, y1: img.height };
+  }
+
+  // Where a shape started at p may extend: its box when it will be copied
+  // into every box, else the grid.
+  function drawLimit(p) {
+    const grid = ws.activePanel().grid;
+    const lim = gridLimit(grid);
+    const cell = grid.corners && $('roi-replicate').checked ? cellAt(grid, clampPoint(p, lim)) : null;
+    if (!cell) return lim;
+    return boundsOf([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }].map((q) => fromBox(grid, q, cell.row, cell.col)));
+  }
+
+  const geomBounds = (shape, geom) => boundsOf(roiControlPoints({ shape, geom }));
+
+  // Limit for one copy's own coordinates (box coordinates minus its offset).
+  function localLimit(roi, grid, row, col) {
+    if (!roi.replicate) return gridLimit(grid);
+    const o = boxOffset(roi, row, col);
+    return { x0: -o.dx, y0: -o.dy, x1: 1 - o.dx, y1: 1 - o.dy };
+  }
 
   // ---------------------------------------------------------------- drawing regions
 
@@ -111,9 +149,9 @@
     let roi;
     const cell = grid.corners ? cellAt(grid, centre) : null;
     if ($('roi-replicate').checked && cell) {
-      roi = createRoi(shape, geomToBox(shape, geomPx, grid, cell.row, cell.col), { name: nextRoiName(panel) });
+      roi = createRoi(shape, fitGeom(shape, geomToBox(shape, geomPx, grid, cell.row, cell.col), UNIT), { name: nextRoiName(panel) });
     } else {
-      roi = createRoi(shape, geomPx, { name: nextRoiName(panel), replicate: false });
+      roi = createRoi(shape, fitGeom(shape, geomPx, gridLimit(grid)), { name: nextRoiName(panel), replicate: false });
       if ($('roi-replicate').checked && grid.corners) ws.toast('Drawn outside the grid, so it was added as a single region.');
     }
     ws.setMode(null);
@@ -126,7 +164,7 @@
     const d = state.draft;
     state.draft = null;
     if (!d) return;
-    const geom = boxGeom(d.a, p, e.shiftKey);
+    const geom = boxGeom(d.a, clampPoint(p, d.lim), e.shiftKey);
     if (geom.rx < 1.5 || geom.ry < 1.5) {
       ws.toast('That region is too small; drag a larger shape.', true);
       viewer.requestDraw();
@@ -151,7 +189,8 @@
       const first = mode.points[0];
       if (mode.points.length >= 3 && (e.detail >= 2 || Math.hypot(p.x - first.x, p.y - first.y) <= tol)) closePolygon();
       else {
-        mode.points.push(p);
+        if (!mode.points.length) mode.lim = drawLimit(p);
+        mode.points.push(clampPoint(p, mode.lim));
         ws.updateModebar();
         viewer.requestDraw();
       }
@@ -235,24 +274,40 @@
         handle.offset = { ...boxOffset(roi, handle.row, handle.col) };
       }
       const now = roi.replicate ? toBox(grid, p, handle.row, handle.col) : p;
-      const dx = now.x - handle.start.x;
-      const dy = now.y - handle.start.y;
+      let dx = now.x - handle.start.x;
+      let dy = now.y - handle.start.y;
+      const b = geomBounds(roi.shape, handle.geom);
       if (roi.replicate && !e.altKey) {
         // Nudge this box's copy only.
-        roi.offsets[offsetKey(handle.row, handle.col)] = { dx: handle.offset.dx + dx, dy: handle.offset.dy + dy };
+        const o = handle.offset;
+        ({ dx, dy } = clampShift({ x0: b.x0 + o.dx, y0: b.y0 + o.dy, x1: b.x1 + o.dx, y1: b.y1 + o.dy }, dx, dy, UNIT));
+        roi.offsets[offsetKey(handle.row, handle.col)] = { dx: o.dx + dx, dy: o.dy + dy };
       } else {
+        if (roi.replicate) {
+          // Every copy moves, so the copy with the largest offset sets the limit.
+          const corners = [];
+          for (let row = 0; row < grid.rows; row++) {
+            for (let col = 0; col < grid.cols; col++) {
+              const o = row === handle.row && col === handle.col ? handle.offset : boxOffset(roi, row, col);
+              corners.push({ x: b.x0 + o.dx, y: b.y0 + o.dy }, { x: b.x1 + o.dx, y: b.y1 + o.dy });
+            }
+          }
+          ({ dx, dy } = clampShift(boundsOf(corners), dx, dy, UNIT));
+        } else ({ dx, dy } = clampShift(b, dx, dy, gridLimit(grid)));
         roi.geom = translateGeom(roi.shape, handle.geom, dx, dy);
         if (roi.replicate) roi.offsets[offsetKey(handle.row, handle.col)] = handle.offset;
       }
     } else if (handle.kind === 'roiCorner') {
-      const q = roiToLocal(roi, grid, handle.row, handle.col, p);
+      const lim = localLimit(roi, grid, handle.row, handle.col);
+      const q = clampPoint(roiToLocal(roi, grid, handle.row, handle.col, p), lim);
       const opposite = roiControlPoints(roi)[(handle.i + 2) % 4];
       roi.geom = e.shiftKey ? equalBoxGeom(opposite, q, roi.replicate ? gridBoxSize(grid) : { w: 1, h: 1 }) : boxGeom(opposite, q, false);
+      if (e.shiftKey) roi.geom = fitGeom(roi.shape, roi.geom, lim);
       // Keep dragging whichever corner is now under the pointer.
       const pts = roiControlPoints(roi);
       handle.i = pts.reduce((best, c, i) => (Math.hypot(c.x - q.x, c.y - q.y) < Math.hypot(pts[best].x - q.x, pts[best].y - q.y) ? i : best), 0);
     } else if (handle.kind === 'roiVertex') {
-      roi.geom.points[handle.i] = roiToLocal(roi, grid, handle.row, handle.col, p);
+      roi.geom.points[handle.i] = clampPoint(roiToLocal(roi, grid, handle.row, handle.col, p), localLimit(roi, grid, handle.row, handle.col));
     }
     ws.changed({ light: true });
   }

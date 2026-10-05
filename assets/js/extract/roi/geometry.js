@@ -203,7 +203,55 @@
     return { ...geom, cx: geom.cx + dx, cy: geom.cy + dy };
   }
 
+  // ---------------------------------------------------------------- bounds
+  // Limits are {x0, y0, x1, y1}: [0, 1]² for a box copy, the grid or image in
+  // pixels for a single region.
+
+  function boundsOf(points) {
+    const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    for (const p of points) {
+      b.x0 = Math.min(b.x0, p.x);
+      b.y0 = Math.min(b.y0, p.y);
+      b.x1 = Math.max(b.x1, p.x);
+      b.y1 = Math.max(b.y1, p.y);
+    }
+    return b;
+  }
+
+  const clampTo = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+
+  function clampPoint(p, lim) {
+    return { x: clampTo(p.x, lim.x0, lim.x1), y: clampTo(p.y, lim.y0, lim.y1) };
+  }
+
+  // Shift (dx, dy) cut back so that bounds b moved by it stay inside lim. A
+  // shape larger than lim is pinned to lim's top-left edge.
+  function clampShift(b, dx, dy, lim) {
+    return {
+      dx: Math.max(Math.min(dx, lim.x1 - b.x1), lim.x0 - b.x0),
+      dy: Math.max(Math.min(dy, lim.y1 - b.y1), lim.y0 - b.y0),
+    };
+  }
+
+  // Geometry moved and, if needed, shrunk about its centre so it fits in lim.
+  function fitGeom(shape, geom, lim) {
+    const pts = shape === 'polygon' ? geom.points : roiControlPoints({ shape, geom });
+    const b = boundsOf(pts);
+    const k = Math.min(1, (lim.x1 - lim.x0) / (b.x1 - b.x0 || 1), (lim.y1 - lim.y0) / (b.y1 - b.y0 || 1));
+    const cx = (b.x0 + b.x1) / 2;
+    const cy = (b.y0 + b.y1) / 2;
+    const scale = (p) => ({ x: cx + (p.x - cx) * k, y: cy + (p.y - cy) * k });
+    const g = shape === 'polygon' ? { points: geom.points.map(scale) } : { ...geom, rx: geom.rx * k, ry: geom.ry * k };
+    const sb = { x0: cx - (cx - b.x0) * k, y0: cy - (cy - b.y0) * k, x1: cx + (b.x1 - cx) * k, y1: cy + (b.y1 - cy) * k };
+    const { dx, dy } = clampShift(sb, 0, 0, lim);
+    return translateGeom(shape, g, dx, dy);
+  }
+
   Object.assign(CM, {
+    boundsOf,
+    clampPoint,
+    clampShift,
+    fitGeom,
     shapeOutline,
     offsetKey,
     boxOffset,
