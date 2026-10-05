@@ -124,9 +124,11 @@
       best = seed;
       bestD = dist(lab, samples[seed].lab);
     }
+    // ΔE76 is at least |ΔL| (no factor), which prunes the same way without a seed.
+    const bound = prune || (dist === deltaE76 ? 1 : 0);
     const L = lab[0];
     for (let i = 0; i < samples.length; i++) {
-      if (prune && Math.abs(L - samples[i].lab[0]) > prune * bestD) continue;
+      if (bound && Math.abs(L - samples[i].lab[0]) > bound * bestD) continue;
       const d = dist(lab, samples[i].lab);
       if (d < bestD || (d === bestD && i < best)) {
         bestD = d;

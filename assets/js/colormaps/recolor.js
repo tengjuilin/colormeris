@@ -27,6 +27,10 @@
     const cache = new Map(); // rgb as one int -> [t, deltaE]
     const d = img.data;
     let i = 0;
+    // Neighbors often have the same color (flat areas, background), so the
+    // last one is kept at hand and the Map is only asked when it changes.
+    let lastKey = -1;
+    let last = null;
     function step(maxPixels = Infinity) {
       const end = Math.min(n, i + maxPixels);
       for (; i < end; i++) {
@@ -43,14 +47,17 @@
           b = Math.round(b * k + 255 * (1 - k));
         }
         const key = (r << 16) | (g << 8) | b;
-        let hit = cache.get(key);
-        if (!hit) {
-          const m = labToT(rgbToLab([r, g, b]), samples, INDEX_DE);
-          hit = [m.t, m.deltaE];
-          cache.set(key, hit);
+        if (key !== lastKey) {
+          last = cache.get(key);
+          if (!last) {
+            const m = labToT(rgbToLab([r, g, b]), samples, INDEX_DE);
+            last = [m.t, m.deltaE];
+            cache.set(key, last);
+          }
+          lastKey = key;
         }
-        t[i] = hit[0];
-        de[i] = hit[1];
+        t[i] = last[0];
+        de[i] = last[1];
       }
       return i / n;
     }
@@ -101,8 +108,13 @@
 
   // Returns { width, height, data, changed, total } with a new RGBA byte
   // array; total is the number of pixels in the region (all without one).
+  // The last LUT is kept: dragging the tolerance recolors with the same map.
+  let lastLut = null;
   function recolorPixels(img, index, map, { tolerance = 12, reversed = false, flip = false, region = null } = {}) {
-    const lut = mapLut(map, reversed);
+    if (lastLut?.rgbs !== map.rgbs || lastLut.kind !== map.kind || lastLut.reversed !== reversed) {
+      lastLut = { rgbs: map.rgbs, kind: map.kind, reversed, lut: mapLut(map, reversed) };
+    }
+    const { lut } = lastLut;
     const src = img.data;
     const out = new Uint8ClampedArray(src);
     const { t, de } = index;
@@ -119,7 +131,11 @@
       out[o + 3] = 255;
       changed++;
     }
-    const total = region ? region.reduce((a, v) => a + v, 0) : t.length;
+    let total = t.length;
+    if (region) {
+      total = 0;
+      for (let i = 0; i < region.length; i++) total += region[i];
+    }
     return { width: img.width, height: img.height, data: out, changed, total };
   }
 

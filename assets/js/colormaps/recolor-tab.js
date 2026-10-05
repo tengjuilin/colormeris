@@ -218,14 +218,15 @@
       const s = CM.sampleColorbar(img, start, end, half, 256);
       if (s.length < 2) { status.textContent = 'That line is too short.'; return; }
       samples = s;
-      describeOld(s.map((x) => x.rgb), Boolean(k));
-      buildIndex();
+      buildIndex(() => describeOld(s.map((x) => x.rgb), Boolean(k)));
     }
 
     // Name the old map when it is a known one, and read the bar in its
     // direction, so the low end stays the low end whichever way it was drawn.
+    let idMaps = null; // built once; the matcher caches each map's Lab by its colors
     function describeOld(rgbs, snapped) {
-      const maps = data.maps.map((m) => ({ name: m.name, kind: m.kind, rgbs: base(m) }));
+      idMaps ??= data.maps.map((m) => ({ name: m.name, kind: m.kind, rgbs: base(m) }));
+      const maps = idMaps;
       const best = CM.identifyColorbar(rgbs, maps)[0];
       const level = best ? CM.matchLevel(best.score) : 'none';
       flip = level !== 'none' && best.reversed;
@@ -240,12 +241,15 @@
       if (!snapped) oldNote.append(' The line could not be snapped to a colorbar; drag along the middle of the bar.');
     }
 
-    function buildIndex() {
+    // `first` runs before the pixels, after the status has been painted: naming
+    // the old map compares it with every known one, a few hundred ms.
+    function buildIndex(first) {
       const my = ++job;
       const ix = CM.createIndexer(fig.img, samples);
       status.textContent = 'Reading the colors…';
       const tick = () => {
         if (my !== job) return; // a newer calibration or another image
+        if (first) { first(); first = null; }
         const done = ix.step(CHUNK);
         if (done < 1) {
           status.textContent = `Reading the colors… ${pct(done)}`;
@@ -257,29 +261,47 @@
         status.textContent = '';
         controls.hidden = download.hidden = false;
         strips.hidden = false;
-        render();
+        renderNow();
       };
-      setTimeout(tick, 0);
+      // After a frame, so the line and the status show before the work starts.
+      requestAnimationFrame(() => setTimeout(tick, 0));
     }
 
     // ---- recoloring ----
 
+    // Sliders send an input event per pixel moved, and a big figure takes tens
+    // of ms to recolor, so at most one redraw runs per frame.
+    let renderFrame = 0;
     function render() {
+      if (!index || renderFrame) return;
+      renderFrame = requestAnimationFrame(() => { renderFrame = 0; renderNow(); });
+    }
+
+    let stripKey = null; // what the strips show; they only change with it
+    function renderNow() {
       if (!index) return;
+      cancelAnimationFrame(renderFrame);
+      renderFrame = 0;
       const img = fig.img;
-      const r = CM.recolorPixels(img, index, newMap(), { tolerance: tolerance(), reversed: revBox.checked, flip, region });
-      out.width = img.width;
-      out.height = img.height;
+      const m = newMap();
+      const r = CM.recolorPixels(img, index, m, { tolerance: tolerance(), reversed: revBox.checked, flip, region });
+      if (out.width !== img.width || out.height !== img.height) {
+        out.width = img.width;
+        out.height = img.height;
+      }
       outImage = new ImageData(r.data, img.width, img.height);
       out.getContext('2d').putImageData(outImage, 0, 0);
       outData = r.data;
       outPanel.hidden = false;
-      oldStrip.replaceChildren(stripCanvas(samples.map((s) => roundRgb(s.rgb)), false));
-      const m = newMap();
-      const opt = { reversed: revBox.checked, flip };
-      const colors = Array.from({ length: 128 }, (_, i) => roundRgb(CM.newColorAt(m, i / 127, opt)));
-      newStrip.replaceChildren(stripCanvas(colors, m.kind === 'qualitative'));
-      for (const s of [oldStrip, newStrip]) s.append(el('span', { class: 'cmap-rc-mark', hidden: '' }));
+      const key = [samples, m.name, revBox.checked, flip];
+      if (!stripKey || key.some((v, i) => v !== stripKey[i])) {
+        stripKey = key;
+        oldStrip.replaceChildren(stripCanvas(samples.map((s) => roundRgb(s.rgb)), false));
+        const opt = { reversed: revBox.checked, flip };
+        const colors = Array.from({ length: 128 }, (_, i) => roundRgb(CM.newColorAt(m, i / 127, opt)));
+        newStrip.replaceChildren(stripCanvas(colors, m.kind === 'qualitative'));
+        for (const s of [oldStrip, newStrip]) s.append(el('span', { class: 'cmap-rc-mark', hidden: '' }));
+      }
       const where = region ? 'of the pixels in the regions' : 'of the pixels';
       readout.textContent = `${pct(r.changed / (r.total || 1))} ${where} have a color of the bar and are recolored. Hover a color to see where it is.`;
       if (hoverT != null) highlight(hoverT, true);
