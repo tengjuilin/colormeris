@@ -49,18 +49,29 @@
     }
 
     // Segments in the sample colors, or dots. `halo` adds a mid-tone
-    // outline so lines that cross stay readable.
-    function drawSeries(parent, { points, mode, dotR, halo }, px, py) {
+    // outline so lines that cross stay readable. `stroke` (a paint such as
+    // url(#gradient) running along x) draws the line as one path instead of
+    // one segment per sample: Compare's plots held about 15 000 elements.
+    function drawSeries(parent, { points, mode, dotR, halo, stroke }, px, py) {
       if (mode === 'line') {
         const segs = [];
         for (let i = 0; i < points.length - 1; i++) {
           const a = points[i];
           const b = points[i + 1];
           if (a.y == null || b.y == null) continue;
-          segs.push({ x1: px(a.x), y1: py(a.y), x2: px(b.x), y2: py(b.y), color: CM.rgbToHex(a.color) });
+          segs.push({ x1: px(a.x), y1: py(a.y), x2: px(b.x), y2: py(b.y), color: a.color });
         }
-        if (halo) for (const { color, ...xy } of segs) parent.append(svgEl('line', { class: 'cmap-halo', ...xy }));
-        for (const { color, ...xy } of segs) parent.append(svgEl('line', { class: 'cmap-seg', ...xy, stroke: color }));
+        if (!segs.length) return;
+        let d = '';
+        let end = null;
+        for (const g of segs) {
+          if (!end || end[0] !== g.x1 || end[1] !== g.y1) d += `M${g.x1} ${g.y1}`;
+          d += `L${g.x2} ${g.y2}`;
+          end = [g.x2, g.y2];
+        }
+        if (halo) parent.append(svgEl('path', { class: 'cmap-halo', d, fill: 'none' }));
+        if (stroke) parent.append(svgEl('path', { class: 'cmap-seg', d, fill: 'none', stroke }));
+        else for (const { color, ...xy } of segs) parent.append(svgEl('line', { class: 'cmap-seg', ...xy, stroke: CM.rgbToHex(color) }));
       } else {
         const cls = dotR > 3 ? 'cmap-dot' : halo ? 'cmap-pt cmap-pt-halo' : 'cmap-pt';
         for (const p of points) {

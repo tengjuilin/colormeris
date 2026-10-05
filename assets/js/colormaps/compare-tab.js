@@ -34,7 +34,16 @@
     const flipped = new Set();
     const isRev = (map) => ctx.isRev(map) !== flipped.has(map.name);
 
+    // Points per map, direction and quantity: a change to one map (reverse,
+    // add, reorder) redraws the plots without rebuilding the others' points.
+    const seriesOf = new Map();
     function cmpSeries(map, key) {
+      const id = `${map.name}|${isRev(map)}|${key}`;
+      if (!seriesOf.has(id)) seriesOf.set(id, buildSeries(map, key));
+      return seriesOf.get(id);
+    }
+
+    function buildSeries(map, key) {
       const p = profile(map, isRev(map));
       if (key === 'L') return { points: p.pts(p.Ls, (v) => `L* = ${v.toFixed(1)}`), mode: p.qual ? 'dots' : 'line', dotR: p.qual ? 4 : 0 };
       if (key === 'C') return { points: p.pts(p.C, (v) => `C* = ${v.toFixed(1)}`), mode: p.qual ? 'dots' : 'line', dotR: p.qual ? 4 : 0 };
@@ -53,6 +62,26 @@
       if (key === 'h') return { yMax: 360, yTicks: [0, 90, 180, 270, 360] };
       const axis = niceAxis(key === 'C' ? Math.max(100, top * 1.05) : Math.max(top * 1.05, 1));
       return { yMax: axis.top, yTicks: axis.ticks };
+    }
+
+    // One horizontal gradient per map and direction, shared by the line plots
+    // (they have the same x scale): x is the position, so the color at each
+    // x is the map's color there, as with one segment per sample.
+    const gradDefs = svgEl('svg', { class: 'cmap-grad-defs', 'aria-hidden': 'true', focusable: 'false' });
+    const defs = svgEl('defs');
+    gradDefs.append(defs);
+    const gradIds = new Map();
+    function lineGradient(map, px) {
+      const key = `${map.name}|${isRev(map)}`;
+      if (gradIds.has(key)) return gradIds.get(key);
+      const id = `cmap-cg-${gradIds.size}`;
+      const colors = viewData(map, 'orig', isRev(map)).colors;
+      const n = colors.length;
+      const g = svgEl('linearGradient', { id, gradientUnits: 'userSpaceOnUse', x1: px(0), x2: px(1), y1: 0, y2: 0 });
+      colors.forEach((c, i) => g.append(svgEl('stop', { offset: n > 1 ? i / (n - 1) : 0, 'stop-color': CM.rgbToHex(c) })));
+      defs.append(g);
+      gradIds.set(key, id);
+      return id;
     }
 
     function miniStrip(map) {
@@ -76,7 +105,8 @@
       const groups = series.map((s) => {
         if (!s.points) return null;
         const g = svgEl('g', { class: 'cmap-series' });
-        drawSeries(g, { points: s.points, mode: s.mode, dotR: s.dotR || 3, halo: true }, px, py);
+        const stroke = s.mode === 'line' ? `url(#${lineGradient(s.map, px)})` : undefined;
+        drawSeries(g, { points: s.points, mode: s.mode, dotR: s.dotR || 3, halo: true, stroke }, px, py);
         svg.append(g);
         return g;
       });
@@ -405,7 +435,17 @@
       cmp.table.replaceChildren(wrap);
     }
 
+    // The view is rebuilt only while the tab is shown. Changes made from
+    // Browse (the +, Reverse, the tray) mark it stale, and show() catches up.
+    let stale = true;
+
+    function show() {
+      if (stale) render();
+    }
+
     function render() {
+      if (state.tab !== 'compare') { stale = true; return; }
+      stale = false;
       const list = selected.map((n) => mapByName.get(n));
       cmp.count.textContent = list.length ? `Comparing ${list.length} of up to ${MAX_CMP}` : 'Compare';
       cmp.empty.hidden = list.length > 0;
@@ -603,13 +643,13 @@
       const body = el('div', { class: 'cmap-compare-body' });
       const h3 = (t) => el('h3', {}, t);
       body.append(h3('Colormaps'), strips, h3('Profiles'), plot, numsHead, table, sineHead, sineCap, sine);
-      sec.append(head, add, empty, body);
+      sec.append(head, add, empty, body, gradDefs);
       Object.assign(cmp, { sec, picker: picker.input, count, strips, plot, table, sine, sineCap, empty, body, clear, copyLink });
       return sec;
     }
 
     buildCompare();
-    return { sec: cmp.sec, tray, render, syncButton, syncButtons, syncTray, setCompared };
+    return { sec: cmp.sec, tray, render, show, syncButton, syncButtons, syncTray, setCompared };
   }
 
   Object.assign(CM, { setupCmapCompare });

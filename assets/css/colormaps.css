@@ -228,9 +228,11 @@ input.cmap-search { width: 260px; max-width: 100%; }
 .cmap-plot-wrap { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 /* A thin outline in a mid tone: light segments (white centers of diverging maps)
    stay visible on the surface, and crossing lines stay apart. */
-.cmap-plot .cmap-halo { stroke: color-mix(in srgb, var(--text) 40%, var(--surface)); stroke-width: 5; stroke-linecap: round; }
+.cmap-plot .cmap-halo { stroke: color-mix(in srgb, var(--text) 40%, var(--surface)); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
 .cmap-plot .cmap-pt-halo { stroke: var(--surface); stroke-width: 0.8; }
 .cmap-plot .cmap-series { transition: opacity 0.12s; }
+/* Holds Compare's line gradients; display: none would switch them off. */
+.cmap-grad-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 .cmap-plot.has-active .cmap-series:not(.active) { opacity: 0.2; }
 .cmap-plot .cmap-ring { fill: none; stroke: var(--text); stroke-width: 1.5; pointer-events: none; }
 /* Centered under the plots, which stop at 1180 px. */
@@ -271,7 +273,7 @@ input.cmap-search { width: 260px; max-width: 100%; }
 .cmap-plot .cmap-axes { stroke: var(--muted); stroke-width: 1; }
 .cmap-plot .cmap-tick { fill: var(--muted); font-size: 11px; font-family: var(--font); }
 .cmap-plot .cmap-axis-label { fill: var(--text); font-size: 12px; font-family: var(--font); }
-.cmap-plot .cmap-seg { stroke-width: 3; stroke-linecap: round; }
+.cmap-plot .cmap-seg { stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .cmap-plot .cmap-pt { stroke: none; }
 .cmap-plot .cmap-dot { stroke: var(--text); stroke-width: 1; }
 .cmap-plot .cmap-linear { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; }

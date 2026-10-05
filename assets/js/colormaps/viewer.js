@@ -159,6 +159,7 @@
       identify.sec.hidden = tab !== 'identify';
       recolor.sec.hidden = tab !== 'recolor';
       cvd.sec.hidden = tab !== 'cvd';
+      if (tab === 'compare') compare.show();
       if (tab === 'cvd') cvd.show();
       ctx.hideTip();
       detail.place();
