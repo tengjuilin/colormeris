@@ -1,13 +1,11 @@
 (function (CM) {
   'use strict';
-  const { createAgentRunner, parsePages, cellSamplePolygon, DEFAULT_LLM, DEFAULT_REVIEWER } = CM;
+  const { createAgentRunner, parsePages, cellSamplePolygon, DEFAULT_LLM, DEFAULT_REVIEWER, loadOpenRouterSdk, makeOpenRouterClient, DEFAULT_LABELS_MODEL } = CM;
 
   // Agent card of the heatmap tool: model choice, running and stopping the
   // agent, its log, and the checks left for a human. The key, base URL and
   // limits are in the Settings dialog (settings-dialog.js).
-  // The OpenRouter SDK (assets/vendor/openrouter) is loaded on first use.
-
-  const SDK_SRC = 'assets/vendor/openrouter/openrouter.min.js';
+  // The OpenRouter SDK is loaded on first use (agent/openrouter-client.js).
 
   function setupAgentPanel(ws, api, settingsUi) {
     const { $, app } = ws;
@@ -19,11 +17,12 @@
     const agent = () => settingsUi.get().agent;
     $('agent-llm').value = agent().llm || DEFAULT_LLM;
     $('agent-reviewer').value = agent().reviewer || DEFAULT_REVIEWER;
+    $('agent-labels').value = agent().labels || DEFAULT_LABELS_MODEL;
     if (agent().key) $('agent-settings').open = false;
     // The folded Models line still shows which LLM will run.
     const showModel = () => ($('agent-model-note').textContent = $('agent-llm').value.trim() || DEFAULT_LLM);
     showModel();
-    for (const [id, key] of [['agent-llm', 'llm'], ['agent-reviewer', 'reviewer']]) {
+    for (const [id, key] of [['agent-llm', 'llm'], ['agent-reviewer', 'reviewer'], ['agent-labels', 'labels']]) {
       $(id).addEventListener('change', () => {
         agent()[key] = $(id).value.trim();
         settingsUi.save();
@@ -36,32 +35,8 @@
 
     // ------------------------------------------------------------ SDK
 
-    let sdkPromise = null;
-    function loadSdk() {
-      if (globalThis.OpenRouterSDK) return Promise.resolve(globalThis.OpenRouterSDK);
-      sdkPromise ??= new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = SDK_SRC;
-        s.onload = () => resolve(globalThis.OpenRouterSDK);
-        s.onerror = () => {
-          sdkPromise = null;
-          reject(new Error('Could not load the OpenRouter SDK.'));
-        };
-        document.head.append(s);
-      });
-      return sdkPromise;
-    }
-
-    function makeClient(sdk, key) {
-      const base = agent().base;
-      return new sdk.OpenRouter({
-        // Behind a proxy the key can be empty; the proxy replaces this header.
-        apiKey: key || 'proxy',
-        appTitle: 'Colormeris',
-        ...(location.protocol.startsWith('http') ? { httpReferer: location.origin } : {}),
-        ...(base ? { serverURL: base } : {}),
-      });
-    }
+    const loadSdk = loadOpenRouterSdk;
+    const makeClient = (sdk, key) => makeOpenRouterClient(sdk, { key, base: agent().base });
 
     // Model lists for the pickers (public; no key needed).
     let modelsLoaded = false;
@@ -90,6 +65,7 @@
     }
     $('agent-llm').addEventListener('focus', loadModels);
     $('agent-reviewer').addEventListener('focus', loadModels);
+    $('agent-labels').addEventListener('focus', loadModels);
 
     // ------------------------------------------------------------ run
 

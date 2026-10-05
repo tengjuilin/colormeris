@@ -90,7 +90,7 @@
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
 
-  const AGENT_DEFAULTS = { key: '', rememberKey: false, minConfidence: 0.9, maxSteps: 80, base: '', llm: '', reviewer: '' };
+  const AGENT_DEFAULTS = { key: '', rememberKey: false, minConfidence: 0.9, maxSteps: 80, base: '', llm: '', reviewer: '', labels: '' };
 
   function defaultSettings() {
     return {
@@ -118,6 +118,7 @@
       base: str(a.base),
       llm: str(a.llm),
       reviewer: str(a.reviewer),
+      labels: str(a.labels),
     };
     for (const [kind, defs] of Object.entries(MATCHING_DEFAULTS)) {
       const m = raw.matching?.[kind] || {};

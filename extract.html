@@ -7,7 +7,7 @@
   <meta name="description" content="Turn colors in scientific figures back into numbers: heatmap grids and signal inside regions of interest (ROI).">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%23dfe3ff'/%3E%3Crect x='8' width='8' height='8' fill='%235560f0'/%3E%3Crect y='8' width='8' height='8' fill='%232530e0'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23a3a9ff'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="assets/css/base.css?v=3">
-  <link rel="stylesheet" href="assets/css/extract.css?v=9">
+  <link rel="stylesheet" href="assets/css/extract.css?v=10">
   <script src="assets/vendor/jszip/jszip.min.js" defer></script>
   <!-- Classic (non-module) scripts so the page also works when opened from disk. Order matters. -->
   <script src="assets/js/core/color.js?v=2" defer></script>
@@ -23,11 +23,11 @@
   <script src="assets/js/extract/roi/geometry.js?v=2" defer></script>
   <script src="assets/js/extract/roi/quantify.js?v=4" defer></script>
   <script src="assets/js/extract/map/field.js?v=13" defer></script>
-  <script src="assets/js/extract/settings.js?v=6" defer></script>
+  <script src="assets/js/extract/settings.js?v=7" defer></script>
   <script src="assets/js/extract/workspace/history.js?v=1" defer></script>
   <script src="assets/js/extract/workspace/overlay.js?v=3" defer></script>
   <script src="assets/js/extract/workspace/interact.js?v=6" defer></script>
-  <script src="assets/js/extract/workspace/grid-card.js?v=2" defer></script>
+  <script src="assets/js/extract/workspace/grid-card.js?v=3" defer></script>
   <script src="assets/js/colormaps/map-picker.js?v=2" defer></script>
   <script src="assets/js/extract/workspace/colorbar-card.js?v=5" defer></script>
   <script src="assets/js/extract/workspace/panels.js?v=3" defer></script>
@@ -46,9 +46,12 @@
   <script src="assets/js/agent/api.js?v=2" defer></script>
   <script src="assets/js/agent/llm.js?v=1" defer></script>
   <script src="assets/js/agent/runner.js?v=1" defer></script>
-  <script src="assets/js/agent/agent-card.js?v=1" defer></script>
+  <script src="assets/js/agent/labels.js?v=3" defer></script>
+  <script src="assets/js/agent/openrouter-client.js?v=1" defer></script>
+  <script src="assets/js/agent/labels-reader.js?v=2" defer></script>
+  <script src="assets/js/agent/agent-card.js?v=3" defer></script>
   <script src="assets/js/extract/settings-dialog.js?v=6" defer></script>
-  <script src="assets/js/extract/main.js?v=2" defer></script>
+  <script src="assets/js/extract/main.js?v=3" defer></script>
 </head>
 <body class="extract">
   <header class="topbar">
@@ -176,6 +179,13 @@
         <details class="options" data-tool="heatmap">
           <summary>Row and column labels <span id="grid-labels-note" class="summary-note"></span></summary>
           <div class="options-body">
+            <div class="card-actions">
+              <button class="btn" id="grid-read-labels" title="Send the current view to a vision LLM (Agent card, Label reader) and fill in both lists for this panel. Zoom so the grid and its labels are visible.">Read labels with AI</button>
+            </div>
+            <label class="field" title="OpenRouter model id; needs vision and tools. Key and base URL are the Agent's (Settings → Agent).">Model
+              <input id="agent-labels" type="text" list="agent-llm-list" spellcheck="false">
+            </label>
+            <p class="hint" id="grid-read-labels-hint"></p>
             <label class="field">Rows (top → bottom)
               <textarea id="grid-row-labels" rows="3" spellcheck="false" placeholder="One per line or comma-separated; blank = R1, R2, …"></textarea>
             </label>

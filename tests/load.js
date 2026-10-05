@@ -20,5 +20,6 @@ import '../assets/js/extract/roi/quantify.js';
 import '../assets/js/extract/map/field.js';
 import '../assets/js/agent/schema.js';
 import '../assets/js/agent/llm.js';
+import '../assets/js/agent/labels.js';
 
 export default globalThis.Colormeris;

@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { createWorkspace, setupHeatmapTool, setupRoiTool, setupMapTool, createAgentApi, setupAgentPanel, setupSettings } = CM;
+  const { createWorkspace, setupHeatmapTool, setupRoiTool, setupMapTool, createAgentApi, setupAgentPanel, setupLabelReader, setupSettings } = CM;
 
   // One page, three tools sharing one workspace: the loaded file, pages and
   // project (with every tool's panels) persist when switching tools. The tool
@@ -34,6 +34,8 @@
     window.colormeris = createAgentApi(ws);
     // LLM agent with a vision reviewer for heatmaps (agent/agent-card.js, agent/runner.js).
     setupAgentPanel(ws, window.colormeris, settings);
+    // Grid card: read row and column labels with a vision LLM (agent/labels-reader.js).
+    setupLabelReader(ws, settings);
   } catch (err) {
     showStartupError(err);
   }

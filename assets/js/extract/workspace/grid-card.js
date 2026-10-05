@@ -27,6 +27,7 @@
       w.setNextStep($('grid-place'), !g.corners && (w.tool().kind === 'heatmap' || plotArea));
       $('grid-zoom').disabled = !g.corners;
       $('grid-detect').disabled = !g.corners;
+      if ($('grid-read-labels')) $('grid-read-labels').disabled = !g.corners || $('grid-read-labels').dataset.busy === '1';
     }
 
     $('grid-place').addEventListener('click', () => w.setMode(app.mode?.type === 'grid' ? null : 'grid'));
