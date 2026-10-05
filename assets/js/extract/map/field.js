@@ -15,6 +15,7 @@
     bilinear,
     invertBilinear,
     readPixel,
+    colorAtT,
     createProfile,
   } = CM;
 
@@ -235,15 +236,32 @@
     const n = nu * nv;
     if (binBuf[0].length < n) binBuf = [new Float64Array(n), new Float64Array(n), new Float64Array(n)];
     const [r, g, b] = binBuf;
+    const [tl, tr, br, bl] = corners;
+    const { width: W, height: H, data: d } = img;
     let k = 0;
     for (let j = 0; j < nv; j++) {
       const vv = v + ((j + 0.5) / nv - 0.5) * dv;
+      // Along a row of samples the bilinear map is linear in u: left + u * span.
+      const lx = tl.x + vv * (bl.x - tl.x);
+      const ly = tl.y + vv * (bl.y - tl.y);
+      const sx = tr.x + vv * (br.x - tr.x) - lx;
+      const sy = tr.y + vv * (br.y - tr.y) - ly;
       for (let i = 0; i < nu; i++, k++) {
-        const p = bilinear(corners, u + ((i + 0.5) / nu - 0.5) * du, vv);
-        const px = readPixel(img, p.x - 0.5, p.y - 0.5);
-        r[k] = px[0];
-        g[k] = px[1];
-        b[k] = px[2];
+        const uu = u + ((i + 0.5) / nu - 0.5) * du;
+        // readPixel(img, p.x - 0.5, p.y - 0.5), inlined.
+        const xi = Math.min(W - 1, Math.max(0, Math.round(lx + uu * sx - 0.5)));
+        const yi = Math.min(H - 1, Math.max(0, Math.round(ly + uu * sy - 0.5)));
+        const q = (yi * W + xi) * 4;
+        const a = d[q + 3] / 255;
+        if (a >= 1) {
+          r[k] = d[q];
+          g[k] = d[q + 1];
+          b[k] = d[q + 2];
+        } else {
+          r[k] = d[q] * a + 255 * (1 - a);
+          g[k] = d[q + 1] * a + 255 * (1 - a);
+          b[k] = d[q + 2] * a + 255 * (1 - a);
+        }
       }
     }
     return [median(r, n), median(g, n), median(b, n)];
@@ -254,6 +272,32 @@
     values.sort();
     const m = n >> 1;
     return n % 2 ? values[m] : (values[m - 1] + values[m]) / 2;
+  }
+
+  // RGBA pixels (one per bin) of the reconstruction: each value repainted with
+  // its colorbar color. Bins share few distinct t (one per distinct color
+  // read), so each t is converted once; pixels are written as 32-bit words.
+  function reconPixels(result) {
+    const out = new Uint8ClampedArray(result.t.length * 4);
+    const px = new Uint32Array(out.buffer);
+    const word = new Uint8ClampedArray(4);
+    const wordView = new Uint32Array(word.buffer);
+    const byT = new Map();
+    for (let i = 0; i < result.t.length; i++) {
+      const t = result.t[i];
+      let w = byT.get(t);
+      if (w === undefined) {
+        const [r, g, b] = colorAtT(result.samples, t);
+        word[0] = r;
+        word[1] = g;
+        word[2] = b;
+        word[3] = 255;
+        w = wordView[0];
+        byT.set(t, w);
+      }
+      px[i] = w;
+    }
+    return out;
   }
 
   // Axis coordinates of a page point: {x, y}, with null for an uncalibrated
@@ -471,6 +515,7 @@
 
   Object.assign(CM, {
     MAX_MAP_CELLS,
+    reconPixels,
     FLAG_DELTA_E,
     FLAG_LOW,
     FLAG_HIGH,

@@ -319,3 +319,15 @@ test('profiles follow changes to the colorbar, its ticks and the image despite t
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) setPixel(img2, X0 + x, Y0 + y, cmap(VIRIDISH, 0.9));
   close(sampleProfile(img2, panel, prof)[100].value, 0.9, 0.02);
 });
+
+test('reconPixels repaints each bin with its colorbar color', () => {
+  const { img, panel } = scene();
+  panel.map.bin = 4;
+  const res = extractMap(img, panel);
+  const px = CM.reconPixels(res);
+  assert.equal(px.length, res.values.length * 4);
+  for (const i of [0, 7, res.values.length - 1]) {
+    const want = Uint8ClampedArray.from([...CM.colorAtT(res.samples, res.t[i]), 255]);
+    assert.deepEqual(Array.from(px.subarray(i * 4, i * 4 + 4)), Array.from(want));
+  }
+});

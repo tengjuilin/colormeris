@@ -13,7 +13,7 @@
     createProfile,
     pastedProfiles,
     bilinear,
-    colorAtT,
+    reconPixels,
     formatNumber,
     FLAG_DELTA_E,
     FLAG_LOW,
@@ -131,31 +131,30 @@
       state.layers.set(result.values, hit);
     }
     if (state.showRecon && !hit.recon) {
-      hit.recon = paintLayer(result, (i) => [...colorAtT(result.samples, result.t[i]), 255]);
+      hit.recon = paintLayer(result, reconPixels(result));
     }
     if (state.showFlags && !hit.flags) {
-      hit.flags = paintLayer(result, (i) => {
-        const f = result.flags[i];
-        if (f & FLAG_DELTA_E) return [255, 40, 40, 200];
-        if (f & FLAG_HIGH) return [255, 0, 200, 170];
-        if (f & FLAG_LOW) return [0, 229, 255, 170];
-        return null;
+      const colors = [
+        [FLAG_DELTA_E, [255, 40, 40, 200]],
+        [FLAG_HIGH, [255, 0, 200, 170]],
+        [FLAG_LOW, [0, 229, 255, 170]],
+      ].map(([flag, rgba]) => [flag, new Uint32Array(new Uint8ClampedArray(rgba).buffer)[0]]);
+      const out = new Uint8ClampedArray(result.flags.length * 4);
+      const px = new Uint32Array(out.buffer);
+      result.flags.forEach((f, i) => {
+        if (f) px[i] = colors.find(([flag]) => f & flag)?.[1] ?? 0;
       });
+      hit.flags = paintLayer(result, out);
     }
     return hit;
   }
 
-  function paintLayer(result, colorOf) {
+  // A canvas of result.cols × result.rows from RGBA pixels.
+  function paintLayer(result, pixels) {
     const canvas = document.createElement('canvas');
     canvas.width = result.cols;
     canvas.height = result.rows;
-    const c2d = canvas.getContext('2d');
-    const out = c2d.createImageData(result.cols, result.rows);
-    for (let i = 0; i < result.values.length; i++) {
-      const color = colorOf(i);
-      if (color) out.data.set(color, i * 4);
-    }
-    c2d.putImageData(out, 0, 0);
+    canvas.getContext('2d').putImageData(new ImageData(pixels, result.cols, result.rows), 0, 0);
     return canvas;
   }
 
