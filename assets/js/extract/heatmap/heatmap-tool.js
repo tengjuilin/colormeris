@@ -39,33 +39,38 @@
     ctx.closePath();
   }
 
-  // result.cells → hex color of each cell's repainted value, kept per result:
-  // the colors only change with the values, but the overlay redraws on every
-  // pan, zoom and hover.
+  // result.cells → cells grouped by the hex color of their repainted value,
+  // kept per result: the colors only change with the values, but the overlay
+  // redraws on every pan, zoom and hover.
   const reconColors = new WeakMap();
   function reconColorsFor(result) {
     let hit = reconColors.get(result);
     if (!hit) {
-      hit = result.cells.map((row) => row.map((c) => rgbToHex(colorAtT(result.samples, c.t))));
+      hit = new Map();
+      result.cells.forEach((row, r) =>
+        row.forEach((c, k) => {
+          const hex = rgbToHex(colorAtT(result.samples, c.t));
+          if (!hit.has(hex)) hit.set(hex, []);
+          hit.get(hex).push([r, k]);
+        }),
+      );
       reconColors.set(result, hit);
     }
     return hit;
   }
 
-  // Reconstruction: repaint each sampled area with the color its value maps to.
+  // Reconstruction: repaint each sampled area with the color its value maps to,
+  // one path and fill per color.
   function drawUnderGrid(ctx, v, panel, active) {
     if (!active || !state.showRecon) return;
     const result = ws.resultFor(panel);
     if (!result.cells) return;
     const g = panel.grid;
-    const colors = reconColorsFor(result);
-    for (let r = 0; r < g.rows; r++) {
-      for (let k = 0; k < g.cols; k++) {
-        ctx.beginPath();
-        addPolygon(ctx, v, cellSamplePolygon(g, r, k));
-        ctx.fillStyle = colors[r][k];
-        ctx.fill();
-      }
+    for (const [hex, cells] of reconColorsFor(result)) {
+      ctx.beginPath();
+      for (const [r, k] of cells) addPolygon(ctx, v, cellSamplePolygon(g, r, k));
+      ctx.fillStyle = hex;
+      ctx.fill();
     }
   }
 

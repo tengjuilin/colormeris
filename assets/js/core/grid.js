@@ -91,14 +91,16 @@
     return [d[i] * a + 255 * (1 - a), d[i + 1] * a + 255 * (1 - a), d[i + 2] * a + 255 * (1 - a)];
   }
 
+  // Median of a typed array (sorted in place; typed-array sort is numeric).
   function median(values) {
-    values.sort((a, b) => a - b);
+    values.sort();
     const m = values.length >> 1;
     return values.length % 2 ? values[m] : (values[m - 1] + values[m]) / 2;
   }
 
   // Per-channel median color over the central part of a cell. Sampling density
-  // is roughly one sample per image pixel.
+  // is roughly one sample per image pixel. Same samples as readPixel at
+  // bilinear(u, v), inlined: this runs for every pixel of every cell.
   function sampleCell(img, grid, row, col) {
     const { u0, u1, v0, v1 } = cellSampleBounds(grid, row, col);
     const c = grid.corners;
@@ -112,18 +114,36 @@
     );
     const nu = Math.max(1, Math.ceil(width * (u1 - u0)));
     const nv = Math.max(1, Math.ceil(height * (v1 - v0)));
-    const rs = [];
-    const gs = [];
-    const bs = [];
+    const n = nu * nv;
+    const rs = new Float64Array(n);
+    const gs = new Float64Array(n);
+    const bs = new Float64Array(n);
+    const { width: W, height: H, data: d } = img;
+    const [tl, tr, br, bl] = c;
+    let k = 0;
     for (let j = 0; j < nv; j++) {
       const v = v0 + ((j + 0.5) / nv) * (v1 - v0);
+      // Along a row of samples the bilinear map is linear in u: left + u * span.
+      const lx = tl.x + v * (bl.x - tl.x);
+      const ly = tl.y + v * (bl.y - tl.y);
+      const sx = tr.x + v * (br.x - tr.x) - lx;
+      const sy = tr.y + v * (br.y - tr.y) - ly;
       for (let i = 0; i < nu; i++) {
         const u = u0 + ((i + 0.5) / nu) * (u1 - u0);
-        const p = bilinear(c, u, v);
-        const [r, g, b] = readPixel(img, p.x, p.y);
-        rs.push(r);
-        gs.push(g);
-        bs.push(b);
+        const xi = Math.min(W - 1, Math.max(0, Math.round(lx + u * sx)));
+        const yi = Math.min(H - 1, Math.max(0, Math.round(ly + u * sy)));
+        const q = (yi * W + xi) * 4;
+        const a = d[q + 3] / 255;
+        if (a >= 1) {
+          rs[k] = d[q];
+          gs[k] = d[q + 1];
+          bs[k] = d[q + 2];
+        } else {
+          rs[k] = d[q] * a + 255 * (1 - a);
+          gs[k] = d[q + 1] * a + 255 * (1 - a);
+          bs[k] = d[q + 2] * a + 255 * (1 - a);
+        }
+        k++;
       }
     }
     return [median(rs), median(gs), median(bs)];

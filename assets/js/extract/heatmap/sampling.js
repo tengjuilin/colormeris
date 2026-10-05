@@ -20,12 +20,18 @@
     const samples = colorbarSamples(img, cb);
     const valueAt = makeValueFn(ticksWithT(cb), cb.scale);
     const { rows, cols } = panel.grid;
+    // Heatmaps repeat colors a lot (flat cells, few levels), and the colorbar
+    // match is the costly part, so match each distinct color once.
+    const matches = new Map();
     const cells = [];
     for (let r = 0; r < rows; r++) {
       const row = [];
       for (let c = 0; c < cols; c++) {
         const rgb = sampleCell(img, panel.grid, r, c);
-        const { t, deltaE } = labToT(rgbToLab(rgb), samples, panel.settings.distance);
+        const key = rgb.join(',');
+        let match = matches.get(key);
+        if (!match) matches.set(key, (match = labToT(rgbToLab(rgb), samples, panel.settings.distance)));
+        const { t, deltaE } = match;
         row.push({ rgb, t, value: valueAt(t), deltaE, flagged: deltaE > panel.settings.maxDeltaE });
       }
       cells.push(row);
