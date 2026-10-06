@@ -89,12 +89,28 @@
       (Math.hypot(c[3].x - c[0].x, c[3].y - c[0].y) / g.rows) * v.scale,
     );
     if (cellPx > 10 && !state.showRecon) {
-      ctx.beginPath();
-      for (let r = 0; r < g.rows; r++) for (let k = 0; k < g.cols; k++) if (!result.cells?.[r][k].empty) addPolygon(ctx, v, cellSamplePolygon(g, r, k, radius(r, k)));
-      ctx.setLineDash([3, 3]);
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-      ctx.stroke();
+      // The outline adapts to the sampled color: dark on light cells, white on
+      // dark ones. Before there is a result, white dashes over a dark line.
+      const light = new Path2D();
+      const dark = new Path2D();
+      const unknown = new Path2D();
+      for (let r = 0; r < g.rows; r++) {
+        for (let k = 0; k < g.cols; k++) {
+          const cell = result.cells?.[r][k];
+          if (cell?.empty) continue;
+          const path = !cell ? unknown : luminance(cell.rgb) > 0.45 ? light : dark;
+          addPolygon(path, v, cellSamplePolygon(g, r, k, radius(r, k)));
+        }
+      }
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.stroke(unknown);
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.stroke(light);
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.stroke(dark);
+      ctx.stroke(unknown);
       ctx.setLineDash([]);
     }
     if (!result.cells) return;
