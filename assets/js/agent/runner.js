@@ -1,19 +1,25 @@
 (function (CM) {
   'use strict';
   const {
-    AGENT_SYSTEM_PROMPT, REVIEWER_PROMPT, LLM_ACTIONS, RUNNER_TOOLS, validateRunnerTool, llmTools, toReviewItem, reviewContent, reviewTool, parseReviewAnswers, fromReviewAnswer, panelRegion, colorbarRegion, reviewAdvice,
+    AGENT_SYSTEM_PROMPT, LLM_ACTIONS, RUNNER_TOOLS, validateRunnerTool, llmTools,
     createRetryGuard, progressNote, finishCheck, pruneImages, toolResultText,
     bilinear, outerCorners, cellSamplePolygon, colorAtT, rgbToHex, ticksWithT, renderPdfPage,
   } = CM;
 
   // Runs the extraction agent: an LLM (any OpenRouter chat model with vision
   // and tools) drives the page through the typed agent API and looks at it
-  // through rendered page images with pixel rulers; a reviewer (a smaller
-  // vision model) looks at each panel with overlays and answers the typed
-  // checks. `client` is an OpenRouter SDK client (or anything with chat.send).
+  // through rendered page images with pixel rulers. `client` is an OpenRouter
+  // SDK client (or anything with chat.send).
 
   const MAX_VIEW = 1024; // longest side of images sent to the LLM
-  const REVIEW_VIEW = 768; // and to the reviewer, which gets several per panel
+  // Prompt caching (openrouter.ai/docs/guides/best-practices/prompt-caching):
+  // a top-level cache_control makes Anthropic models cache everything up to
+  // the last block and move the breakpoint forward each step, and the other
+  // providers cache the shared prefix on their own. The system prompt, the
+  // tools and the old messages are identical from step to step. The 1-hour
+  // lifetime costs more per write than the 5-minute one but a run can pause
+  // for longer than 5 minutes (a slow model, a stalled tab).
+  const CACHE_CONTROL = { type: 'ephemeral', ttl: '1h' };
   // Rulers sit outside the picture on the right and bottom, so image pixel
   // (0, 0) is exactly the top-left corner of the region shown. (With rulers on
   // the left and top, models that measure from the image corner were off by
@@ -187,59 +193,17 @@
       return { dataUrl: out.toDataURL('image/jpeg', 0.85), note: `Pages ${from}–${to} of ${n}.` };
     }
 
-    // ------------------------------------------------------------ review
-
-    // Images the reviewer judges a panel from: the figure, both overlays, and
-    // a zoom on the colorbar. The panel's page must be the current one.
-    function reviewImages(panel) {
-      const { canvas } = app.pages.get(ws.currentPage());
-      const size = { width: canvas.width, height: canvas.height };
-      const region = panelRegion(panel, size);
-      if (!region) return [];
-      const view = (label, args) => ({ label, ...renderView({ ...args, maxSide: REVIEW_VIEW }) });
-      const out = [
-        view('Figure', { region }),
-        view('Calibration overlay', { region, overlay: 'calibration' }),
-        view('Reconstruction', { region, overlay: 'reconstruction' }),
-      ];
-      const bar = colorbarRegion(panel, size);
-      if (bar) out.push(view('Colorbar zoom with calibration overlay', { region: bar, overlay: 'calibration' }));
-      return out;
-    }
-
-    // Context a question needs beyond its own evidence.
-    async function panelContext(panelId) {
-      const r = await api.run('get_results', { panelId });
-      const res = r.result;
-      if (!r.ok || !res || res.error) return {};
-      const vals = res.values.flat().filter(Number.isFinite);
-      const panel = app.project.panels.find((p) => p.id === panelId);
-      const tickVals = panel.colorbar.ticks.map((k) => k.value).filter(Number.isFinite);
-      const des = res.deltaE.flat().filter(Number.isFinite).sort((a, b) => a - b);
-      const at = (f) => (des.length ? Math.round(des[Math.min(des.length - 1, Math.floor(f * des.length))] * 100) / 100 : null);
-      const tickSpan = tickVals.length ? Math.max(...tickVals) - Math.min(...tickVals) : 0;
-      const valSpan = vals.length ? Math.max(...vals) - Math.min(...vals) : 0;
-      return {
-        fit: { medianDeltaE: at(0.5), p95DeltaE: at(0.95), threshold: res.maxDeltaE, rangeOverTicks: tickSpan ? Math.round((valSpan / tickSpan) * 100) / 100 : null, distinctValues: new Set(vals.map((v) => v.toPrecision(6))).size },
-        flaggedCount: res.flagged.length,
-        cellCount: vals.length,
-        excludedCount: res.excluded?.length ?? 0,
-        valueRange: vals.length ? [Math.min(...vals), Math.max(...vals)] : null,
-        tickRange: tickVals.length ? [Math.min(...tickVals), Math.max(...tickVals)] : null,
-      };
-    }
-
     // ------------------------------------------------------------ run
 
-    // settings: {client, llmModel, reviewModel, pages: [n], maxSteps,
-    // signal, onEvent(type, data), focus}. `focus`
-    // ({panelId, note}) asks the agent to fix one rejected panel.
+    // settings: {client, llmModel, pages: [n], maxSteps, signal,
+    // onEvent(type, data), focus}. `focus` ({panelId, note}) asks the agent to
+    // fix one rejected panel.
     async function run(settings) {
-      const { client, llmModel, reviewModel, pages, maxSteps = 60, signal, onEvent = () => {}, focus } = settings;
-      // Same evidence, same answer: a question id contains the hash of what
-      // it judges, so repeated resolves never pay twice for it.
-      const reviewCache = new Map();
-      const usage = { llmCost: 0, reviewCost: 0, reviewMs: 0, promptTokens: 0, completionTokens: 0, steps: 0, reviews: 0 };
+      const { client, llmModel, pages, maxSteps = 60, signal, onEvent = () => {}, focus } = settings;
+      // One id for the whole run keeps the requests on the provider that
+      // holds the cache (sticky routing).
+      const sessionId = `colormeris-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const usage = { llmCost: 0, promptTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, completionTokens: 0, steps: 0 };
       const emit = (type, data) => onEvent(type, { ...data, usage: { ...usage } });
       // What the model has looked at and built, so it cannot stop after the
       // first heatmap (see finishCheck).
@@ -250,80 +214,6 @@
           .filter((p) => p.tool === 'heatmap' && pages.includes(p.page))
           .map((p) => ({ id: p.id, name: p.name, page: p.page, ready: !ws.resultFor(p).error, started: !!(p.grid.corners || p.colorbar.start || p.grid.rowLabels.length || p.grid.colLabels.length) }));
       const progress = () => progressNote({ pages, viewedPages, panels: runPanels(), currentPage: ws.currentPage() });
-
-      // One reviewer call per panel: its images and all its open checks.
-      async function reviewPanel(pid, group) {
-        await api.run('select_panel', { panelId: pid });
-        const panel = app.project.panels.find((p) => p.id === pid);
-        const context = await panelContext(pid);
-        const items = group.map((q) => ({ q, item: toReviewItem(q, context) }));
-        const images = reviewImages(panel);
-        const { content, keys } = reviewContent({ panelName: panel.name, items, images });
-        const t0 = performance.now();
-        const res = await client.chat.send(
-          {
-            chatRequest: {
-              model: reviewModel,
-              messages: [{ role: 'system', content: REVIEWER_PROMPT }, { role: 'user', content }],
-              tools: [reviewTool(items, keys)],
-              toolChoice: { type: 'function', function: { name: 'answer' } },
-              maxTokens: 2048,
-              temperature: 0,
-            },
-          },
-          { signal },
-        );
-        usage.reviewCost += res.usage?.cost || 0;
-        usage.reviewMs += performance.now() - t0;
-        usage.reviews++;
-        const answers = parseReviewAnswers(res.choices?.[0]?.message);
-        return items.map(({ q, item }, i) => {
-          const raw = answers[keys[i]];
-          fromReviewAnswer(q, item, raw); // throws on an invalid answer, so it is not cached
-          reviewCache.set(q.id, { item, raw });
-          return q.id;
-        });
-      }
-
-      async function resolveQuestions(panelId) {
-        const qr = await api.run('get_questions', panelId ? { panelId } : {});
-        if (!qr.ok) return qr;
-        // Skip questions already sent to a human in this run.
-        const open = qr.result.filter((q) => !q.escalated);
-        const errors = new Map(); // q.id → message
-        const byPanel = new Map();
-        for (const q of open.filter((x) => !reviewCache.has(x.id))) byPanel.set(q.panelId, [...(byPanel.get(q.panelId) || []), q]);
-        const back = ws.activePanel()?.id;
-        for (const [pid, group] of byPanel) {
-          try {
-            await reviewPanel(pid, group);
-          } catch (err) {
-            if (signal?.aborted) throw err;
-            for (const q of group) errors.set(q.id, err.message);
-          }
-        }
-        if (back && byPanel.size) await api.run('select_panel', { panelId: back });
-        const results = [];
-        // Answer one by one: applying one answer can change the others.
-        for (const q of open) {
-          let out;
-          try {
-            if (errors.has(q.id)) throw new Error(errors.get(q.id));
-            const { item, raw } = reviewCache.get(q.id);
-            out = fromReviewAnswer(q, item, raw);
-          } catch (err) {
-            results.push({ type: q.type, panelId: q.panelId, error: err.message });
-            continue;
-          }
-          const r = await api.run('answer_question', { questionId: q.id, answer: out.answer, confidence: out.confidence ?? 0, source: 'reviewer', model: reviewModel });
-          const item = { type: q.type, panelId: q.panelId, evidence: q.evidence, answer: out.answer, confidence: out.confidence, reason: out.reason, applied: r.ok ? r.result.applied : false, ...(r.ok ? {} : { error: r.error }) };
-          results.push(item);
-          emit('review', item);
-        }
-        const panelName = (id) => app.project.panels.find((p) => p.id === id)?.name || id;
-        const advice = reviewAdvice(results, panelName);
-        return { ok: true, result: { reviews: results, advice, stillOpen: (await api.run('get_questions', panelId ? { panelId } : {})).result?.length ?? 0, next: progress() } };
-      }
 
       async function callTool(name, args) {
         if (LLM_ACTIONS.includes(name)) {
@@ -345,7 +235,6 @@
           return { ok: true, image };
         }
         if (name === 'view_pages_overview') return { ok: true, image: await renderOverview(args.from, args.to) };
-        if (name === 'resolve_questions') return resolveQuestions(args.panelId);
         if (name === 'finish' && !focus) {
           const why = finishCheck({ pages, viewedPages, panels: runPanels(), ...finishState });
           if (why) {
@@ -363,7 +252,7 @@
       const panelsNow = (await api.run('get_state')).result.panels;
       const target = focus && panelsNow.find((p) => p.id === focus.panelId);
       const focusText = target
-        ? `\n\nThis is a redo. A reviewer rejected panel "${target.name}" (id ${target.id})${focus.note ? ` with the note: "${focus.note}"` : ''}. Its current calibration: ${JSON.stringify({ grid: target.grid, colorbar: target.colorbar })}. Do not add panels. select_panel it, find what is wrong (grid corners, grid size, colorbar ends, ticks or scale), fix it, check with overlays, then resolve_questions and finish.`
+        ? `\n\nThis is a redo. Panel "${target.name}" (id ${target.id}) was rejected${focus.note ? ` with the note: "${focus.note}"` : ''}. Its current calibration: ${JSON.stringify({ grid: target.grid, colorbar: target.colorbar })}. Do not add panels. select_panel it, find what is wrong (grid corners, grid size, colorbar ends, ticks or scale), fix it, check with overlays, then finish.`
         : '';
       if (!first.ok) throw new Error(first.error);
       const opening = pages.length > 1 && app.pdfDoc ? await renderOverview(pages[0], pages[Math.min(pages.length, 12) - 1]) : renderView();
@@ -390,11 +279,13 @@
         if (signal?.aborted) throw new DOMException('Stopped', 'AbortError');
         usage.steps++;
         emit('thinking', { step: usage.steps });
-        const res = await client.chat.send({ chatRequest: { model: llmModel, messages: pruneImages(messages), tools, toolChoice: 'auto', maxTokens: 4096 } }, { signal });
+        const res = await client.chat.send({ chatRequest: { model: llmModel, messages: pruneImages(messages), tools, toolChoice: 'auto', maxTokens: 4096, cacheControl: CACHE_CONTROL, sessionId } }, { signal });
         const msg = res.choices?.[0]?.message;
         if (!msg) throw new Error('The model returned no message.');
         usage.llmCost += res.usage?.cost || 0;
         usage.promptTokens += res.usage?.promptTokens || 0;
+        usage.cachedTokens += res.usage?.promptTokensDetails?.cachedTokens || 0;
+        usage.cacheWriteTokens += res.usage?.promptTokensDetails?.cacheWriteTokens || 0;
         usage.completionTokens += res.usage?.completionTokens || 0;
         messages.push({ role: 'assistant', content: msg.content ?? '', ...(msg.toolCalls?.length ? { toolCalls: msg.toolCalls } : {}) });
         const text = typeof msg.content === 'string' ? msg.content : '';
@@ -416,7 +307,7 @@
           }
           const name = call.function.name;
           // Retries are counted per tool and panel (the one named, else the active one).
-          const panelKey = args?.panelId || (name === 'resolve_questions' ? 'all' : ws.activePanel()?.id);
+          const panelKey = args?.panelId || ws.activePanel()?.id;
           if (!result) {
             emit('tool', { name, args });
             result = guard.before(name, panelKey);
@@ -447,8 +338,6 @@
         }
       }
 
-      // Every panel gets its checks, even if the model stopped early.
-      if (!signal?.aborted) await resolveQuestions();
       const out = { summary: summary ?? (usage.steps >= maxSteps ? `Stopped after ${maxSteps} steps.` : 'The model stopped without a summary.'), usage };
       emit('done', out);
       return out;

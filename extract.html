@@ -7,7 +7,7 @@
   <meta name="description" content="Turn colors in scientific figures back into numbers: heatmap grids and signal inside regions of interest (ROI).">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%23dfe3ff'/%3E%3Crect x='8' width='8' height='8' fill='%235560f0'/%3E%3Crect y='8' width='8' height='8' fill='%232530e0'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23a3a9ff'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="assets/css/base.css?v=3">
-  <link rel="stylesheet" href="assets/css/extract.css?v=10">
+  <link rel="stylesheet" href="assets/css/extract.css?v=11">
   <script src="assets/vendor/jszip/jszip.min.js" defer></script>
   <!-- Classic (non-module) scripts so the page also works when opened from disk. Order matters. -->
   <script src="assets/js/core/color.js?v=2" defer></script>
@@ -23,7 +23,7 @@
   <script src="assets/js/extract/roi/geometry.js?v=2" defer></script>
   <script src="assets/js/extract/roi/quantify.js?v=4" defer></script>
   <script src="assets/js/extract/map/field.js?v=13" defer></script>
-  <script src="assets/js/extract/settings.js?v=7" defer></script>
+  <script src="assets/js/extract/settings.js?v=8" defer></script>
   <script src="assets/js/extract/workspace/history.js?v=1" defer></script>
   <script src="assets/js/extract/workspace/overlay.js?v=5" defer></script>
   <script src="assets/js/extract/workspace/interact.js?v=7" defer></script>
@@ -42,16 +42,16 @@
   <script src="assets/js/extract/roi/roi-tool.js?v=4" defer></script>
   <script src="assets/js/extract/map/map-sidebar.js?v=14" defer></script>
   <script src="assets/js/extract/map/map-tool.js?v=16" defer></script>
-  <script src="assets/js/agent/schema.js?v=4" defer></script>
-  <script src="assets/js/agent/api.js?v=3" defer></script>
-  <script src="assets/js/agent/llm.js?v=1" defer></script>
-  <script src="assets/js/agent/runner.js?v=3" defer></script>
+  <script src="assets/js/agent/schema.js?v=5" defer></script>
+  <script src="assets/js/agent/api.js?v=4" defer></script>
+  <script src="assets/js/agent/llm.js?v=2" defer></script>
+  <script src="assets/js/agent/runner.js?v=4" defer></script>
   <script src="assets/js/agent/labels.js?v=3" defer></script>
   <script src="assets/js/agent/openrouter-client.js?v=1" defer></script>
   <script src="assets/js/agent/labels-reader.js?v=2" defer></script>
-  <script src="assets/js/agent/agent-card.js?v=3" defer></script>
+  <script src="assets/js/agent/agent-card.js?v=4" defer></script>
   <script src="assets/js/extract/settings-dialog.js?v=6" defer></script>
-  <script src="assets/js/extract/main.js?v=3" defer></script>
+  <script src="assets/js/extract/main.js?v=4" defer></script>
 </head>
 <body class="extract">
   <header class="topbar">
@@ -112,16 +112,13 @@
           <h2>Agent</h2>
           <span id="agent-badge" class="badge">off</span>
         </div>
-        <p class="hint">An LLM finds and calibrates the heatmaps with your own OpenRouter key; a smaller vision model reviews each panel. <b>Page images and extracted values are sent to OpenRouter and the model providers you pick.</b></p>
+        <p class="hint">An LLM finds and calibrates the heatmaps with your own OpenRouter key. <b>Page images and extracted values are sent to OpenRouter and the model providers you pick.</b></p>
         <details class="options" id="agent-settings" open>
           <summary>Models <span id="agent-model-note" class="summary-note"></span></summary>
           <div class="options-body">
             <label class="field">LLM (vision and tools)
               <input id="agent-llm" type="text" list="agent-llm-list" spellcheck="false">
               <datalist id="agent-llm-list"></datalist>
-            </label>
-            <label class="field">Reviewer (vision and tools)
-              <input id="agent-reviewer" type="text" list="agent-llm-list" spellcheck="false">
             </label>
             <p class="hint">API key, confidence and step limits are in <button type="button" class="link" id="agent-open-settings">Settings</button>.</p>
           </div>
@@ -552,7 +549,7 @@
         </label>
         <label class="check small"><input id="agent-remember" type="checkbox"> Remember the key in this browser</label>
         <div class="row">
-          <label class="field" title="Reviewer answers below this confidence are left for you under Needs review">Min. confidence <input id="agent-minconf" type="number" min="0" max="1" step="0.01" class="num"></label>
+          <label class="field" title="Answers to typed questions below this confidence (given through the API) are left for you under Needs review">Min. confidence <input id="agent-minconf" type="number" min="0" max="1" step="0.01" class="num"></label>
           <label class="field" title="The run stops after this many LLM calls">Max. steps <input id="agent-steps" type="number" min="5" max="400" class="num"></label>
         </div>
         <label class="field">API base URL (optional) <input id="agent-base" type="url" spellcheck="false" placeholder="https://openrouter.ai/api/v1"></label>

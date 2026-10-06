@@ -89,11 +89,11 @@ Large maps take a moment: a 600 × 400 px map at bin 1 takes about 1–2 s with 
 The *Agent* card in the heatmap tool calibrates every heatmap on the chosen pages by itself:
 
 1. **Connect.** Open *Settings → Agent* and enter your [OpenRouter](https://openrouter.ai/keys) key. Or keep it out of the browser: put `OPENROUTER_API_KEY=…` in `.env` (ignored by git), run `npm run proxy`, and set *API base URL* to `http://localhost:8787/api/v1` with the key field empty.
-2. **Pick models.** The LLM needs image input and tool calling; the default is `anthropic/claude-sonnet-5.5`. The reviewer is a smaller vision model that checks each panel; the default is `anthropic/claude-haiku-4.5`.
-3. **Run.** Choose the pages and press *Run agent*. The LLM looks at page images with pixel rulers, zooms in, places the grid, labels, colorbar and ticks, and checks them with overlays. The reviewer then looks at each panel (the figure, both overlays and a colorbar zoom) and answers typed checks: grid size, flagged cells, tick order and final acceptance. Each answer comes with a confidence and a short reason.
-4. **Review.** Checks answered below *Min. confidence* appear under *Needs review*. A rejected panel gets a red dot and stays there until you accept it or it changes. Add a note on what is wrong and press *Redo with agent* to have the agent fix it. *Delete panel* removes a wrong extraction outright (undo brings it back).
+2. **Pick models.** The LLM needs image input and tool calling; the default is `anthropic/claude-sonnet-5.5`. Requests use prompt caching, and the card shows the share of prompt tokens read from the cache.
+3. **Run.** Choose the pages and press *Run agent*. The LLM looks at page images with pixel rulers, zooms in, places the grid, labels, colorbar and ticks, and checks them with overlays.
+4. **Review.** Checks that an external agent answered below *Min. confidence* (through the API) appear under *Needs review*. A rejected panel gets a red dot and stays there until you accept it or it changes. Add a note on what is wrong and press *Redo with agent* to have the agent fix it. *Delete panel* removes a wrong extraction outright (undo brings it back).
 
-The agent retries a failing tool at most 3 times per panel, then skips that step and reports it. It stops after 8 failed calls in a row or after *Max. steps*. The log shows every step, review and the cost so far.
+The agent retries a failing tool at most 3 times per panel, then skips that step and reports it. It stops after 8 failed calls in a row or after *Max. steps*. The log shows every step and the cost so far.
 
 Page images and extracted values are sent to OpenRouter and the model providers you pick.
 
@@ -193,6 +193,6 @@ The code is grouped by page. Files that need no DOM are loaded by the tests thro
 | `assets/js/extract/workspace/` | the shell both tools share: `workspace.js` (state, modes, tool switching) and one file each for undo, overlay drawing, pointer input, the Grid, Colorbar and Panels cards, opening files and pages, export and hotkeys |
 | `assets/js/extract/heatmap/` | heatmap tool: extraction (`sampling.js`) and the tool (`heatmap-tool.js`) |
 | `assets/js/extract/roi/` | ROI tool: region geometry (`geometry.js`), signal statistics (`quantify.js`), the tool, its overlay and its sidebar |
-| `assets/js/agent/` | agent API and heatmap agent: action schema (`schema.js`), `window.colormeris` (`api.js`), prompt and reviewer mapping (`llm.js`), the loop (`runner.js`) and the Agent card (`agent-card.js`) |
+| `assets/js/agent/` | agent API and heatmap agent: action schema (`schema.js`), `window.colormeris` (`api.js`), prompt, tools and retry guard (`llm.js`), the loop (`runner.js`) and the Agent card (`agent-card.js`) |
 | `assets/js/colormaps/` | `colormaps.html`: `viewer.js` (state, tabs, page) with one file per tab, plus strips, plots, footer, URL routing (`route.js`), ratings (`metrics.js`), references and recoloring |
 | `scripts/` | generators and tools: `agent-docs.mjs` (docs/agent.md), `export-mpl-colormaps.py` (colormap data), `make-calibration.mjs` (synthetic test heatmaps, `npm run fixtures`), `bundle-openrouter.mjs`, `embed-pdfjs.mjs`, `openrouter-proxy.mjs` |

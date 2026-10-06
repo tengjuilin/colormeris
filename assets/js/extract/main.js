@@ -32,7 +32,7 @@
 
     // Typed API for software agents (agent/api.js).
     window.colormeris = createAgentApi(ws);
-    // LLM agent with a vision reviewer for heatmaps (agent/agent-card.js, agent/runner.js).
+    // LLM agent for heatmaps (agent/agent-card.js, agent/runner.js).
     setupAgentPanel(ws, window.colormeris, settings);
     // Grid card: read row and column labels with a vision LLM (agent/labels-reader.js).
     setupLabelReader(ws, settings);

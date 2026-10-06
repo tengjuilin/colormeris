@@ -2,7 +2,7 @@
   'use strict';
   const { effectiveLabels, ticksWithT } = CM;
 
-  // Typed interface for software agents (LLMs, reviewer models,
+  // Typed interface for software agents (LLMs, other models,
   // scripts). This file is pure: the action catalogue with JSON Schemas for
   // their arguments, a small validator, the state snapshot and the typed
   // questions an agent answers. agent/api.js binds it to a live workspace as
@@ -34,7 +34,7 @@
           questionId: { type: 'string' },
           answer: { description: 'Must match the question\'s answerSchema.' },
           confidence: { type: 'number', minimum: 0, maximum: 1 },
-          source: { type: 'string', description: 'Who decided, e.g. "reviewer", "claude", "human".' },
+          source: { type: 'string', description: 'Who decided, e.g. "claude", "human".' },
           model: { type: 'string' },
         },
         required: ['questionId', 'answer'],
@@ -399,7 +399,7 @@
 
   // ---------------------------------------------------------------- questions
 
-  // Typed questions: small decisions an agent (or a reviewer model) can
+  // Typed questions: small decisions an agent can
   // answer with a confidence. Each has an id that is stable while
   // its evidence is unchanged, the evidence, and a JSON Schema for the answer.
   //

@@ -1,9 +1,10 @@
 (function (CM) {
   'use strict';
-  const { createAgentRunner, parsePages, cellSamplePolygon, DEFAULT_LLM, DEFAULT_REVIEWER, loadOpenRouterSdk, makeOpenRouterClient, DEFAULT_LABELS_MODEL } = CM;
+  const { createAgentRunner, parsePages, cellSamplePolygon, DEFAULT_LLM, loadOpenRouterSdk, makeOpenRouterClient, DEFAULT_LABELS_MODEL } = CM;
 
   // Agent card of the heatmap tool: model choice, running and stopping the
-  // agent, its log, and the checks left for a human. The key, base URL and
+  // agent, its log, and the checks left for a human (typed questions answered
+  // below the policy confidence through the API, and rejected panels). The key, base URL and
   // limits are in the Settings dialog (settings-dialog.js).
   // The OpenRouter SDK is loaded on first use (agent/openrouter-client.js).
 
@@ -16,13 +17,12 @@
 
     const agent = () => settingsUi.get().agent;
     $('agent-llm').value = agent().llm || DEFAULT_LLM;
-    $('agent-reviewer').value = agent().reviewer || DEFAULT_REVIEWER;
     $('agent-labels').value = agent().labels || DEFAULT_LABELS_MODEL;
     if (agent().key) $('agent-settings').open = false;
     // The folded Models line still shows which LLM will run.
     const showModel = () => ($('agent-model-note').textContent = $('agent-llm').value.trim() || DEFAULT_LLM);
     showModel();
-    for (const [id, key] of [['agent-llm', 'llm'], ['agent-reviewer', 'reviewer'], ['agent-labels', 'labels']]) {
+    for (const [id, key] of [['agent-llm', 'llm'], ['agent-labels', 'labels']]) {
       $(id).addEventListener('change', () => {
         agent()[key] = $(id).value.trim();
         settingsUi.save();
@@ -50,7 +50,7 @@
           for await (const page of await client.models.list(req)) out.push(...page.result.data);
           return out;
         };
-        // One list serves both pickers: the reviewer also needs images and tools.
+        // The agent needs images and tools.
         const llms = await collect({ inputModalities: 'image', supportedParameters: 'tools' });
         fill('agent-llm-list', llms.filter((m) => !m.id.endsWith(':batch')));
       } catch (err) {
@@ -64,7 +64,6 @@
       );
     }
     $('agent-llm').addEventListener('focus', loadModels);
-    $('agent-reviewer').addEventListener('focus', loadModels);
     $('agent-labels').addEventListener('focus', loadModels);
 
     // ------------------------------------------------------------ run
@@ -97,6 +96,8 @@
     }
 
     const money = (v) => (v < 0.01 ? `$${v.toFixed(4)}` : `$${v.toFixed(2)}`);
+    // Share of the prompt tokens read from the provider's cache.
+    const cacheNote = (u) => (u.promptTokens ? ` · ${Math.round((u.cachedTokens / u.promptTokens) * 100)}% cached` : '');
     const pct = (v) => (v === null || v === undefined ? '?' : `${Math.round(v * 100)}%`);
 
     function log(cls, text) {
@@ -114,15 +115,11 @@
 
     function onEvent(type, data) {
       const u = data.usage;
-      $('agent-status').textContent = `Step ${u.steps} · ${u.reviews} reviews · ${money(u.llmCost + u.reviewCost)}`;
+      $('agent-status').textContent = `Step ${u.steps} · ${money(u.llmCost)}${cacheNote(u)}`;
       if (type === 'assistant') log('assistant', data.text);
       else if (type === 'tool') log('tool', `${data.name}(${data.args && Object.keys(data.args).length ? JSON.stringify(data.args) : ''})`);
       else if (type === 'tool-error') log('error', `${data.name}: ${data.error}`);
-      else if (type === 'review') {
-        const name = panelName(data.panelId);
-        log(data.applied ? 'review' : 'escalated', `${name} · ${data.type.replaceAll('_', ' ')}: ${answerText(data.answer)} (${pct(data.confidence)})${data.applied ? '' : ' → needs review'}${data.reason ? ` · ${data.reason}` : ''}${data.error ? ` · ${data.error}` : ''}`);
-        renderReview();
-      } else if (type === 'done') log('done', data.summary);
+      else if (type === 'done') log('done', data.summary);
     }
 
     const panelName = (id) => app.project.panels.find((p) => p.id === id)?.name || id;
@@ -143,20 +140,19 @@
       $('agent-log').replaceChildren();
       $('agent-status').dataset.idle = '';
       updateButtons();
-      log('tool', `${focus ? `Redoing ${panelName(focus.panelId)}` : 'Running'} with ${$('agent-llm').value.trim()} and ${$('agent-reviewer').value.trim()} on page${pages.length === 1 ? '' : 's'} ${pages.join(', ')}.`);
+      log('tool', `${focus ? `Redoing ${panelName(focus.panelId)}` : 'Running'} with ${$('agent-llm').value.trim()} on page${pages.length === 1 ? '' : 's'} ${pages.join(', ')}.`);
       try {
         const sdk = await loadSdk();
         const out = await runner.run({
           client: makeClient(sdk, key),
           llmModel: $('agent-llm').value.trim() || DEFAULT_LLM,
-          reviewModel: $('agent-reviewer').value.trim() || DEFAULT_REVIEWER,
           pages,
           maxSteps,
           signal: abort.signal,
           onEvent,
           focus,
         });
-        $('agent-status').textContent = `Done: ${out.usage.steps} steps, ${out.usage.reviews} reviews, ${money(out.usage.llmCost + out.usage.reviewCost)}.`;
+        $('agent-status').textContent = `Done: ${out.usage.steps} steps, ${money(out.usage.llmCost)}${cacheNote(out.usage)}.`;
       } catch (err) {
         if (err.name === 'AbortError' || abort?.signal.aborted) {
           log('error', 'Stopped.');
@@ -188,8 +184,8 @@
 
     // ------------------------------------------------------------ review
 
-    // Needs review: checks the reviewer was not sure enough about, and
-    // panels whose extraction was rejected. Human answers apply at once and
+    // Needs review: checks answered below the policy confidence, and panels
+    // whose extraction was rejected. Human answers apply at once and
     // are logged with source "human".
     let reviewTimer = null;
     const scheduleReview = () => {
@@ -212,7 +208,7 @@
       head.textContent = `${panelName(q.panelId)}: ${q.prompt}`;
       const hint = document.createElement('div');
       hint.className = 'hint';
-      hint.textContent = `${q.escalated.source || 'The model'} suggested ${answerText(q.escalated.answer)} (${pct(q.escalated.confidence)} sure)`;
+      hint.textContent = `${q.escalated.source || 'An agent'} suggested ${answerText(q.escalated.answer)} (${pct(q.escalated.confidence)} sure)`;
       const row = document.createElement('div');
       row.className = 'card-actions';
       row.append(button('Show', 'subtle', () => showPanel(q.panelId, q)));
@@ -271,7 +267,7 @@
 
     function button(text, cls, onClick) {
       const b = Object.assign(document.createElement('button'), { textContent: text, className: `btn ${cls}`.trim() });
-      // The reviewer's suggested option is shown pressed.
+      // The suggested option is shown pressed.
       if (cls.includes('active')) b.setAttribute('aria-pressed', 'true');
       b.addEventListener('click', onClick);
       return b;

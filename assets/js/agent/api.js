@@ -83,7 +83,7 @@
     }
 
     function questions(panelId) {
-      // The reviewer's questions cover heatmaps and ROI; maps have none yet.
+      // The typed questions cover heatmaps and ROI; maps have none yet.
       const panels = app.project.panels.filter((p) => p.tool !== 'map' && (!panelId || p.id === panelId));
       const results = {};
       const detections = {};

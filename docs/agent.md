@@ -4,7 +4,7 @@
 Colormeris can be driven by software agents in two ways:
 
 - **Agent API** (`window.colormeris`, [assets/js/agent/api.js](../assets/js/agent/api.js)): typed actions any program can call from the page.
-- **Heatmap agent** (the *Agent* card, [assets/js/agent/runner.js](../assets/js/agent/runner.js)): an LLM that calls those actions to calibrate every heatmap on the chosen pages, with a smaller vision model reviewing its work.
+- **Heatmap agent** (the *Agent* card, [assets/js/agent/runner.js](../assets/js/agent/runner.js)): an LLM that calls those actions to calibrate every heatmap on the chosen pages, checking its own work with overlays.
 
 All coordinates are pixels of the panel's page image, the same space as `project.json`.
 
@@ -285,7 +285,7 @@ Answer a question from get_questions. Answers below the policy confidence are lo
 | `questionId` | string | yes |  |
 | `answer` | any | yes | Must match the question's answerSchema. |
 | `confidence` | number (≥ 0, ≤ 1) |  |  |
-| `source` | string |  | Who decided, e.g. "reviewer", "claude", "human". |
+| `source` | string |  | Who decided, e.g. "claude", "human". |
 | `model` | string |  |  |
 
 ### `set_review`
@@ -337,11 +337,10 @@ A panel's review (`accepted` or `rejected`, who decided, confidence and a note) 
 
 ## Heatmap agent
 
-The *Agent* card runs an LLM (default `anthropic/claude-sonnet-5.5`; any OpenRouter model with image input and tool calling) and a reviewer (default `anthropic/claude-haiku-4.5`; a smaller OpenRouter model with image input and tool calling) through the OpenRouter TypeScript SDK.
+The *Agent* card runs an LLM (default `anthropic/claude-sonnet-5.5`; any OpenRouter model with image input and tool calling) through the OpenRouter TypeScript SDK.
 
 1. The LLM sees page images with pixel rulers, finds the heatmaps, and calibrates one panel per heatmap with the actions marked above. It zooms in with `view_page` and checks its work with overlays. `set_colorbar` snaps the line to the strip's centre and its ends to the first and last colored pixel, and `add_tick` snaps to the nearest tick mark (outside the bar or drawn into it), because models read coordinates a few pixels off. `finish` is refused while pages of the run are unseen or panels half done, and the first time it is answered with a per-page checklist, so the model does not stop after the first heatmap.
-2. `resolve_questions` sends the open typed questions to the reviewer, one request per panel. The request holds each question's numeric evidence and options, and four images of the panel: the figure, the calibration overlay, the reconstruction (flagged cells outlined in red) and a zoom on the colorbar. The reviewer must answer with a forced `answer` tool call: one option, a confidence and a short reason per question. Answers are cached by question id. Confident answers are applied, and the LLM gets advice on what to fix, with the reviewer's reasons. The confidence is the reviewer's own estimate, not a calibrated probability.
-3. Answers below *Min. confidence* go to *Needs review* in the card. There you can answer them, accept, reject or delete a panel, and use *Redo with agent* to have the agent fix a rejected panel with your note.
+2. Answers below *Min. confidence* go to *Needs review* in the card. There you can answer them, accept, reject or delete a panel, and use *Redo with agent* to have the agent fix a rejected panel with your note.
 
 ### Images
 
@@ -369,14 +368,6 @@ Thumbnails of up to 12 PDF pages in one image, labelled with page numbers, to fi
 | `from` | integer (≥ 1) | yes |  |
 | `to` | integer (≥ 1) | yes |  |
 
-### `resolve_questions`
-
-Send the open checks of a panel (or of all panels) to the reviewer, a vision model that looks at the panel with overlays. Returns each answer, its confidence, the reviewer's reason and whether it was applied or left for a human.
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `panelId` | string |  |  |
-
 ### `finish`
 
 End the run with a short summary for the user.
@@ -390,13 +381,16 @@ End the run with a short summary for the user.
 | Limit | Value |
 | --- | --- |
 | Attempts of one tool on one panel before it is blocked for that panel | 3 |
-| `resolve_questions` calls per panel | 3 |
 | Failed tool calls in a row before the run stops | 8 |
 | Refused `finish` calls (pages not viewed, partly calibrated panels, final checklist) before `finish` is always accepted | 3 |
 | Steps (LLM calls) per run | *Max. steps* in the card (default 80) |
 | Replies without a tool call before the run ends | 3 |
 
-A failed call's error tells the model which attempt it was and what to do next. Only the three most recent images are kept in the conversation.
+A failed call's error tells the model which attempt it was and what to do next. Old images are replaced by a note, so that between 3 and 6 of the newest stay in the conversation.
+
+### Prompt caching
+
+Every step resends the system prompt, the tool list and the whole conversation. Each request sets a top-level `cache_control` (1-hour lifetime), which makes Anthropic models cache everything up to the last block and move the breakpoint forward as the conversation grows; other providers cache the shared start of the request by themselves. A `session_id` per run keeps the requests on the provider that holds the cache (see the [OpenRouter guide](https://openrouter.ai/docs/guides/best-practices/prompt-caching)). Old images are trimmed in steps of four messages instead of one per step, so the start of the request stays the same for several steps in a row. The card shows the share of prompt tokens read from the cache. Anthropic charges 2× the input price for a 1-hour cache write and 0.1× for a read; models below the minimum prompt size (1024 to 4096 tokens, depending on the model) are not cached.
 
 ### Key and privacy
 
@@ -418,12 +412,12 @@ For each page:
 4. Colorbar: zoom on it. set_colorbar with start and end at the two ends of the colored strip, along its middle. It snaps the line to the strip's centre line and each end to the first and last colored pixel (off the outline), and sets halfWidth from the strip width; read the note it returns. If it says no strip or no edge was found, place those points yourself on a zoomed view: on the centre line, just inside the colored strip, never on the black or grey outline and never short of the last color.
    Ticks: add at least two with add_tick, "at" on the tick mark and the printed number as value (include any ×10^n multiplier). Use the outermost labelled ticks, and a middle one when there is one. add_tick snaps to the nearest tick mark; if its note says no mark was found (bars without marks), put "at" level with the middle of the label text. Read each label carefully (signs, decimals, exponents). If the labels grow by constant factors (1, 10, 100) use set_colorbar_scale log10.
 5. Check: view_page on the heatmap region with overlay "calibration" (grid lines must sit on cell borders, the colorbar line on the middle of the bar from end to end), then zoom on the colorbar alone with overlay "calibration": each orange tick dot must be level with its printed label and show the same number. Then overlay "reconstruction" (repainted cells must match the figure). Fix and re-check if needed.
-6. resolve_questions: a reviewer model looks at each panel with its overlays and answers typed checks (grid size, cells whose color is off the colorbar, tick order, final acceptance) with a confidence and a reason. Low-confidence answers are left for a human. Follow the advice it returns: if a panel is rejected or left for review, look again and fix what you can, then resolve again. Call resolve_questions at most 3 times per panel.
+6. Accept: if the overlays do not match, fix and look again. Do not spend more than two rounds of fixes on one panel.
 
 Errors and retries:
 - When a tool returns ok: false, read the error and change the arguments before calling again. Never repeat an identical call.
 - Each tool gets at most 3 attempts per panel. After the third failure the tool is blocked for that panel: skip the step and move on.
-- If a panel still fails its checks after two rounds of fixes, stop working on it. Leave it for the human and say so in finish.
+- If a panel still looks wrong after two rounds of fixes, stop working on it. Leave it for the human and say so in finish.
 - Give each argument once, in the form its description asks for (e.g. add_tick takes either "at" or "t", never both).
 
 When every heatmap on every page is done, call finish with one line per panel and anything a human should check. The first finish is answered with a checklist: look at each page once more, calibrate any heatmap still missing, then call finish again. Keep your messages short.
