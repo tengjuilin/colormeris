@@ -278,6 +278,8 @@
       g.anchor = anchor;
       Object.assign(g, ANCHOR_DEFAULTS[anchor]);
     });
+    // Start placing right away: the old points no longer mean the same thing.
+    ws.setMode('grid');
   });
   $('grid-shape').addEventListener('change', () => ws.commit((p) => (p.grid.shape = $('grid-shape').value)));
   $('toggle-recon').addEventListener('change', (e) => {

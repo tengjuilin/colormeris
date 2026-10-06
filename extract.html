@@ -35,7 +35,7 @@
   <script src="assets/js/extract/workspace/export.js?v=1" defer></script>
   <script src="assets/js/extract/workspace/hotkeys.js?v=4" defer></script>
   <script src="assets/js/extract/workspace/workspace.js?v=7" defer></script>
-  <script src="assets/js/extract/heatmap/heatmap-tool.js?v=6" defer></script>
+  <script src="assets/js/extract/heatmap/heatmap-tool.js?v=7" defer></script>
   <script src="assets/js/extract/scale-bar.js?v=2" defer></script>
   <script src="assets/js/extract/roi/roi-overlay.js?v=4" defer></script>
   <script src="assets/js/extract/roi/roi-sidebar.js?v=2" defer></script>
@@ -166,7 +166,7 @@
           <h2><span class="step-dot grid-dot"></span><span data-tool="heatmap roi">Grid</span><span data-tool="map" hidden>Plot area</span> <span class="tag" data-tool="roi" hidden>optional</span></h2>
           <span id="grid-state" class="badge"></span>
         </div>
-        <div class="fields" data-tool="heatmap">
+        <div class="fields wide" data-tool="heatmap">
           <label class="field" title="Outer corners: click the grid's outer top-left and bottom-right corners (heatmaps). Dot centers: click the centers of the top-left and bottom-right dots (dot plots without cell borders); each dot is sampled inside its own radius and cells without a dot are left blank.">Click on
             <select id="grid-anchor">
               <option value="corners">Outer corners</option>
@@ -213,7 +213,7 @@
         <details class="options">
           <summary>Options</summary>
           <div class="options-body">
-            <div class="fields" data-tool="heatmap">
+            <div class="fields wide" data-tool="heatmap">
               <label class="field" title="Shape of the sampled area in each cell">Shape
                 <select id="grid-shape">
                   <option value="square">Square</option>
