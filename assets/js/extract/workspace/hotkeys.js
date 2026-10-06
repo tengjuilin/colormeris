@@ -49,8 +49,23 @@
     addHotkey('zoomOut', () => w.viewer.zoomBy(0.8));
     addHotkey('crosshair', () => setCrosshair(!w.viewer.crosshair));
     // Pages flip only when there are several (the page controls are shown).
-    addHotkey('prevPage', () => !$('pdf-controls').hidden && w.goToPage(w.currentPage() - 1));
-    addHotkey('nextPage', () => !$('pdf-controls').hidden && w.goToPage(w.currentPage() + 1));
+    // A page takes a moment to render and currentPage() only changes when it
+    // is shown, so a key pressed meanwhile counts from the page already asked
+    // for (← right after → must not compute from the old page and do nothing).
+    // Flips run one after the other so the last key wins.
+    let wantedPage = null;
+    let flipping = Promise.resolve();
+    function flipPage(step) {
+      if ($('pdf-controls').hidden) return false;
+      const last = app.project.source?.pageCount || 1;
+      const target = Math.min(last, Math.max(1, (wantedPage ?? w.currentPage()) + step));
+      wantedPage = target;
+      flipping = flipping.then(() => w.goToPage(target)).finally(() => {
+        if (wantedPage === target) wantedPage = null;
+      });
+    }
+    addHotkey('prevPage', () => flipPage(-1));
+    addHotkey('nextPage', () => flipPage(1));
 
     window.addEventListener('keydown', (e) => {
       // A modal (the Settings dialog) takes the keyboard.
