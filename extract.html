@@ -11,13 +11,13 @@
   <script src="assets/vendor/jszip/jszip.min.js" defer></script>
   <!-- Classic (non-module) scripts so the page also works when opened from disk. Order matters. -->
   <script src="assets/js/core/color.js?v=2" defer></script>
-  <script src="assets/js/core/grid.js?v=3" defer></script>
+  <script src="assets/js/core/grid.js?v=4" defer></script>
   <script src="assets/js/core/colorbar.js?v=4" defer></script>
   <script src="assets/js/core/colormap-library.js?v=8" defer></script>
   <script src="assets/js/core/colormap-match.js?v=3" defer></script>
-  <script src="assets/js/extract/project.js?v=5" defer></script>
-  <script src="assets/js/extract/heatmap/sampling.js?v=3" defer></script>
-  <script src="assets/js/extract/project-files.js?v=7" defer></script>
+  <script src="assets/js/extract/project.js?v=6" defer></script>
+  <script src="assets/js/extract/heatmap/sampling.js?v=4" defer></script>
+  <script src="assets/js/extract/project-files.js?v=8" defer></script>
   <script src="assets/js/extract/pdf-loader.js?v=1" defer></script>
   <script src="assets/js/extract/viewer.js?v=4" defer></script>
   <script src="assets/js/extract/roi/geometry.js?v=2" defer></script>
@@ -25,8 +25,8 @@
   <script src="assets/js/extract/map/field.js?v=13" defer></script>
   <script src="assets/js/extract/settings.js?v=7" defer></script>
   <script src="assets/js/extract/workspace/history.js?v=1" defer></script>
-  <script src="assets/js/extract/workspace/overlay.js?v=3" defer></script>
-  <script src="assets/js/extract/workspace/interact.js?v=6" defer></script>
+  <script src="assets/js/extract/workspace/overlay.js?v=5" defer></script>
+  <script src="assets/js/extract/workspace/interact.js?v=7" defer></script>
   <script src="assets/js/extract/workspace/grid-card.js?v=3" defer></script>
   <script src="assets/js/colormaps/map-picker.js?v=2" defer></script>
   <script src="assets/js/extract/workspace/colorbar-card.js?v=5" defer></script>
@@ -34,18 +34,18 @@
   <script src="assets/js/extract/workspace/source.js?v=2" defer></script>
   <script src="assets/js/extract/workspace/export.js?v=1" defer></script>
   <script src="assets/js/extract/workspace/hotkeys.js?v=4" defer></script>
-  <script src="assets/js/extract/workspace/workspace.js?v=5" defer></script>
-  <script src="assets/js/extract/heatmap/heatmap-tool.js?v=3" defer></script>
+  <script src="assets/js/extract/workspace/workspace.js?v=7" defer></script>
+  <script src="assets/js/extract/heatmap/heatmap-tool.js?v=5" defer></script>
   <script src="assets/js/extract/scale-bar.js?v=2" defer></script>
   <script src="assets/js/extract/roi/roi-overlay.js?v=4" defer></script>
   <script src="assets/js/extract/roi/roi-sidebar.js?v=2" defer></script>
   <script src="assets/js/extract/roi/roi-tool.js?v=4" defer></script>
   <script src="assets/js/extract/map/map-sidebar.js?v=14" defer></script>
   <script src="assets/js/extract/map/map-tool.js?v=16" defer></script>
-  <script src="assets/js/agent/schema.js?v=3" defer></script>
-  <script src="assets/js/agent/api.js?v=2" defer></script>
+  <script src="assets/js/agent/schema.js?v=4" defer></script>
+  <script src="assets/js/agent/api.js?v=3" defer></script>
   <script src="assets/js/agent/llm.js?v=1" defer></script>
-  <script src="assets/js/agent/runner.js?v=1" defer></script>
+  <script src="assets/js/agent/runner.js?v=3" defer></script>
   <script src="assets/js/agent/labels.js?v=3" defer></script>
   <script src="assets/js/agent/openrouter-client.js?v=1" defer></script>
   <script src="assets/js/agent/labels-reader.js?v=2" defer></script>
@@ -166,8 +166,16 @@
           <h2><span class="step-dot grid-dot"></span><span data-tool="heatmap roi">Grid</span><span data-tool="map" hidden>Plot area</span> <span class="tag" data-tool="roi" hidden>optional</span></h2>
           <span id="grid-state" class="badge"></span>
         </div>
+        <div class="fields" data-tool="heatmap">
+          <label class="field" title="Outer corners: click the grid's outer top-left and bottom-right corners (heatmaps). Dot centers: click the centers of the top-left and bottom-right dots (dot plots without cell borders); each dot is sampled inside its own radius and cells without a dot are left blank.">Click on
+            <select id="grid-anchor">
+              <option value="corners">Outer corners</option>
+              <option value="centers">Dot centers</option>
+            </select>
+          </label>
+        </div>
         <div class="card-actions">
-          <button class="btn" id="grid-place" title="Shortcut: G" data-hotkey="grid" data-title="Shortcut: {key}"><span data-tool="heatmap roi">Place grid corners</span><span data-tool="map" hidden>Place plot area</span></button>
+          <button class="btn" id="grid-place" title="Shortcut: G" data-hotkey="grid" data-title="Shortcut: {key}"><span data-tool="heatmap roi" id="grid-place-label">Place grid corners</span><span data-tool="map" hidden>Place plot area</span></button>
           <button class="btn subtle" id="grid-zoom" title="Zoom to the grid or plot area">Zoom to</button>
           <button class="btn danger" id="grid-clear" data-tool="roi" hidden>Remove</button>
         </div>
@@ -205,7 +213,15 @@
         <details class="options">
           <summary>Options</summary>
           <div class="options-body">
-            <label class="field" data-tool="heatmap" title="Share of each cell that is averaged around its center; lower it to stay clear of cell borders">Sampled area
+            <div class="fields" data-tool="heatmap">
+              <label class="field" title="Shape of the sampled area in each cell">Shape
+                <select id="grid-shape">
+                  <option value="square">Square</option>
+                  <option value="circle">Circle</option>
+                </select>
+              </label>
+            </div>
+            <label class="field" data-tool="heatmap" id="grid-fraction-field" title="Share of each cell that is averaged around its center; lower it to stay clear of cell borders">Sampled area
               <span class="range-row"><input id="grid-fraction" type="range" min="0.1" max="1" step="0.05"><output id="grid-fraction-out"></output></span>
             </label>
             <label class="check"><input id="grid-rect" type="checkbox" checked> Keep rectangular when dragging corners</label>

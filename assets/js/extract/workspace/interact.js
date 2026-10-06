@@ -23,7 +23,7 @@
           const [a, b] = mode.points;
           if (Math.abs(a.x - b.x) < 2 || Math.abs(a.y - b.y) < 2) {
             mode.points.pop();
-            w.toast('Grid is too small; click the opposite corner.', true);
+            w.toast(w.activePanel().grid.anchor === 'centers' ? 'Click the center of the opposite corner dot.' : 'Grid is too small; click the opposite corner.', true);
             return;
           }
           w.setMode(null);
@@ -67,6 +67,8 @@
     // Prefill rows/columns from the colors inside the grid.
     function applyDetectedSize(panel, { onlyIfChanged = false } = {}) {
       if (!panel.grid.corners || !app.imageData) return;
+      // Detection counts cell borders; dot plots have none, so their size is typed.
+      if (panel.grid.anchor === 'centers') return;
       const d = detectGridSize(app.imageData, panel.grid.corners);
       const changedSize = d.rows !== panel.grid.rows || d.cols !== panel.grid.cols;
       panel.grid.rows = d.rows;

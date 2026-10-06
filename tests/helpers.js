@@ -60,3 +60,22 @@ export function paintColorbar(img, x0, x1, y0, y1, stops) {
     for (let x = x0; x <= x1; x++) setPixel(img, x, y, cmap(stops, s));
   }
 }
+
+// Dot plot: a filled circle of radii[r][c] px (0 = no dot) colored by
+// matrix[r][c] at each center, on the image's background. `centers` are the
+// top-left and bottom-right dot centers; dots are evenly spaced between them.
+export function paintDots(img, tl, br, matrix, radii, stops) {
+  const rows = matrix.length;
+  const cols = matrix[0].length;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const R = radii[r][c];
+      if (!R) continue;
+      const cx = tl.x + ((br.x - tl.x) * c) / (cols - 1);
+      const cy = tl.y + ((br.y - tl.y) * r) / (rows - 1);
+      const rgb = cmap(stops, matrix[r][c]);
+      for (let y = Math.floor(cy - R); y <= Math.ceil(cy + R); y++)
+        for (let x = Math.floor(cx - R); x <= Math.ceil(cx + R); x++) if ((x - cx) ** 2 + (y - cy) ** 2 <= R * R) setPixel(img, x, y, rgb);
+    }
+  }
+}

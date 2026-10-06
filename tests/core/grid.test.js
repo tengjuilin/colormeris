@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeImage, paintHeatmap, VIRIDISH } from '../helpers.js';
+import { makeImage, paintHeatmap, paintDots, VIRIDISH } from '../helpers.js';
 import CM from '../load.js';
 
 const { rectCorners, bilinear, invertBilinear, cellAt, sampleCell, readPixel, detectGridSize } = CM;
@@ -86,4 +86,37 @@ test('detectGridSize copes with runs of identical cells', () => {
 test('detectGridSize returns 1 x 1 for a flat block', () => {
   const r = detectCase(1, 1, rectCorners({ x: 20, y: 20 }, { x: 220, y: 340 }), { matrix: [[0.4]], lines: false });
   assert.deepEqual([r.rows, r.cols], [1, 1]);
+});
+
+test('outerCorners extrapolates half a cell beyond the corner dot centers, and back', () => {
+  const { outerCorners, cornerCellCenters } = CM;
+  const grid = { anchor: 'centers', corners: rectCorners({ x: 20, y: 10 }, { x: 80, y: 50 }), rows: 3, cols: 4 };
+  // Spacing 20 px across, 20 px down.
+  outerCorners(grid).forEach((p, i) => {
+    const want = rectCorners({ x: 10, y: 0 }, { x: 90, y: 60 })[i];
+    close(p.x, want.x, 1e-9);
+    close(p.y, want.y, 1e-9);
+  });
+  const back = cornerCellCenters(outerCorners(grid), 3, 4);
+  back.forEach((p, i) => (close(p.x, grid.corners[i].x, 1e-9), close(p.y, grid.corners[i].y, 1e-9)));
+  assert.equal(outerCorners({ ...grid, anchor: 'corners' }), grid.corners);
+});
+
+test('circle sampling reads a disc inside its cell', () => {
+  // A 20 × 20 cell with a red disc of radius 7 on white.
+  const img = makeImage(20, 20);
+  for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) if ((x + 0.5 - 10) ** 2 + (y + 0.5 - 10) ** 2 <= 49) img.data.set([200, 0, 0, 255], (y * 20 + x) * 4);
+  const grid = { corners: rectCorners({ x: 0, y: 0 }, { x: 20, y: 20 }), rows: 1, cols: 1, sampleFraction: 0.75 };
+  // A 15 px square around a radius-7 disc is about 31 % white per channel; a 15 px circle is about 13 %.
+  assert.deepEqual(sampleCell(img, { ...grid, shape: 'circle' }, 0, 0), [200, 0, 0]);
+});
+
+test('dotRadius finds each dot size and no dot in an empty cell', () => {
+  const { dotRadius } = CM;
+  const img = makeImage(160, 100);
+  const radii = [[3, 6, 9, 0], [3, 6, 9, 0]];
+  paintDots(img, { x: 20, y: 30 }, { x: 140, y: 70 }, [[0.2, 0.5, 0.8, 0.5], [0.2, 0.5, 0.8, 0.5]], radii, VIRIDISH);
+  const grid = { anchor: 'centers', corners: rectCorners({ x: 20, y: 30 }, { x: 140, y: 30 + 40 }), rows: 2, cols: 4, sampleFraction: 0.7 };
+  for (let c = 0; c < 3; c++) close(dotRadius(img, grid, 0, c), radii[0][c], 1.01);
+  assert.equal(dotRadius(img, grid, 0, 3), null);
 });

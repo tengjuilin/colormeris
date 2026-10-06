@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { extractPanel, panelProblem, effectiveLabels, cellSamplePolygon, colorAtT, rgbToHex, formatNumber, toWideCsv, toLongCsv, heatmapPanelFiles } = CM;
+  const { extractPanel, panelProblem, effectiveLabels, cellSamplePolygon, outerCorners, cornerCellCenters, ANCHOR_DEFAULTS, bilinear, colorAtT, rgbToHex, formatNumber, toWideCsv, toLongCsv, heatmapPanelFiles } = CM;
 
   // Heatmap tool: extract one value per grid cell by matching the cell's color
   // against the calibrated colorbar. setupHeatmapTool(ws) registers it with a
@@ -49,6 +49,7 @@
       hit = new Map();
       result.cells.forEach((row, r) =>
         row.forEach((c, k) => {
+          if (c.empty) return;
           const hex = rgbToHex(colorAtT(result.samples, c.t));
           if (!hit.has(hex)) hit.set(hex, []);
           hit.get(hex).push([r, k]);
@@ -68,7 +69,7 @@
     const g = panel.grid;
     for (const [hex, cells] of reconColorsFor(result)) {
       ctx.beginPath();
-      for (const [r, k] of cells) addPolygon(ctx, v, cellSamplePolygon(g, r, k));
+      for (const [r, k] of cells) addPolygon(ctx, v, cellSamplePolygon(g, r, k, result.cells[r][k].radius));
       ctx.fillStyle = hex;
       ctx.fill();
     }
@@ -79,31 +80,55 @@
   function drawOverGrid(ctx, v, panel, active) {
     if (!active) return;
     const g = panel.grid;
-    const c = g.corners;
+    const c = outerCorners(g);
+    // With dot centers the sampled circles follow each dot's radius from the result.
+    const result = ws.resultFor(panel);
+    const radius = (r, k) => result.cells?.[r]?.[k]?.radius ?? null;
     const cellPx = Math.min(
       (Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y) / g.cols) * v.scale,
       (Math.hypot(c[3].x - c[0].x, c[3].y - c[0].y) / g.rows) * v.scale,
     );
     if (cellPx > 10 && !state.showRecon) {
       ctx.beginPath();
-      for (let r = 0; r < g.rows; r++) for (let k = 0; k < g.cols; k++) addPolygon(ctx, v, cellSamplePolygon(g, r, k));
+      for (let r = 0; r < g.rows; r++) for (let k = 0; k < g.cols; k++) if (!result.cells?.[r][k].empty) addPolygon(ctx, v, cellSamplePolygon(g, r, k, radius(r, k)));
       ctx.setLineDash([3, 3]);
       ctx.lineWidth = 1;
       ctx.strokeStyle = 'rgba(255,255,255,0.85)';
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    const result = ws.resultFor(panel);
     if (!result.cells) return;
     ctx.beginPath();
     for (let r = 0; r < g.rows; r++) {
       for (let k = 0; k < g.cols; k++) {
-        if (result.cells[r][k].flagged) addPolygon(ctx, v, cellSamplePolygon(g, r, k));
+        if (result.cells[r][k].flagged) addPolygon(ctx, v, cellSamplePolygon(g, r, k, radius(r, k)));
       }
     }
     ctx.lineWidth = 2;
     ctx.strokeStyle = ws.COLORS.flag;
     ctx.stroke();
+    // Empty cells (no dot found) get a small cross at their center.
+    if (cellPx > 6) {
+      ctx.beginPath();
+      const s = Math.min(5, cellPx / 6);
+      for (let r = 0; r < g.rows; r++) {
+        for (let k = 0; k < g.cols; k++) {
+          if (!result.cells[r][k].empty) continue;
+          const p = v.toScreen(bilinear(c, (k + 0.5) / g.cols, (r + 0.5) / g.rows));
+          ctx.moveTo(p.x - s, p.y - s);
+          ctx.lineTo(p.x + s, p.y + s);
+          ctx.moveTo(p.x + s, p.y - s);
+          ctx.lineTo(p.x - s, p.y + s);
+        }
+      }
+      // Dark with a white border, so it shows on the usual white background and on dark figures.
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.stroke();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+      ctx.stroke();
+    }
   }
 
   function hoverText(panel, cell) {
@@ -111,12 +136,23 @@
     const rl = effectiveLabels(panel.grid.rowLabels, panel.grid.rows, 'R')[cell.row];
     const cl = effectiveLabels(panel.grid.colLabels, panel.grid.cols, 'C')[cell.col];
     const c = ws.resultFor(panel).cells?.[cell.row]?.[cell.col];
+    if (c?.empty) return `${rl} / ${cl}: no dot`;
     return c ? `${rl} / ${cl}: ${formatNumber(c.value)}  (ΔE ${c.deltaE.toFixed(1)})` : `${rl} / ${cl}`;
   }
 
   // ---------------------------------------------------------------- sidebar
 
   function renderSidebar(panel) {
+    const g = panel.grid;
+    const dots = g.anchor === 'centers';
+    ws.setValue($('grid-anchor'), g.anchor);
+    ws.setValue($('grid-shape'), g.shape);
+    $('grid-place-label').textContent = dots ? 'Place corner dots' : 'Place grid corners';
+    $('grid-fraction-field').title = dots
+      ? "Share of each dot's own radius that is averaged; lower it to stay clear of the dot's edge"
+      : 'Share of each cell that is averaged around its center; lower it to stay clear of cell borders';
+    $('grid-detect').title = dots ? 'Type rows and columns: detection needs cell borders, which dot plots lack' : 'Guess rows and columns from the image inside the grid';
+    if (dots) $('grid-detect').disabled = true;
     ws.setValue($('grid-fraction'), panel.grid.sampleFraction);
     $('grid-fraction-out').textContent = `${Math.round(panel.grid.sampleFraction * 100)}%`;
     renderResults(panel);
@@ -133,10 +169,13 @@
       return;
     }
     $('result-problem').textContent = '';
-    const values = res.cells.flat().map((c) => c.value);
+    const values = res.cells.flat().map((c) => c.value).filter(Number.isFinite);
     const flagged = res.cells.flat().filter((c) => c.flagged).length;
+    const empty = res.cells.flat().length - values.length;
     $('result-summary').textContent =
-      `${res.rows} × ${res.cols} cells · range ${formatNumber(Math.min(...values))} – ${formatNumber(Math.max(...values))}` +
+      `${res.rows} × ${res.cols} cells` +
+      (values.length ? ` · range ${formatNumber(Math.min(...values))} – ${formatNumber(Math.max(...values))}` : '') +
+      (empty ? ` · ${empty} without a dot (blank)` : '') +
       ` · ${flagged ? `${flagged} flagged (ΔE > ${panel.settings.maxDeltaE}) — outlined in red` : 'no flagged cells'}`;
 
     const rowLabels = effectiveLabels(panel.grid.rowLabels, res.rows, 'R');
@@ -151,6 +190,14 @@
       tr.append(th(rowLabels[r], true));
       row.forEach((c, k) => {
         const td = document.createElement('td');
+        td.dataset.r = r;
+        td.dataset.c = k;
+        if (c.empty) {
+          td.textContent = '–';
+          td.title = `${rowLabels[r]} / ${colLabels[k]}\nno dot (blank)`;
+          tr.append(td);
+          return;
+        }
         td.textContent = Number(c.value.toPrecision(4)).toString();
         td.style.background = rgbToHex(c.rgb);
         td.style.color = luminance(c.rgb) > 0.45 ? '#111' : '#fff';
@@ -204,6 +251,19 @@
   // ---------------------------------------------------------------- bindings
 
   ws.bindNumber('grid-fraction', (p, v) => (p.grid.sampleFraction = v));
+  // Switching what the clicks mean keeps the same cells: placed points are
+  // converted, and the shape and sampled area take the new mode's defaults.
+  $('grid-anchor').addEventListener('change', () => {
+    const anchor = $('grid-anchor').value;
+    ws.commit((p) => {
+      const g = p.grid;
+      if (g.anchor === anchor) return;
+      if (g.corners) g.corners = anchor === 'centers' ? cornerCellCenters(g.corners, g.rows, g.cols) : outerCorners(g);
+      g.anchor = anchor;
+      Object.assign(g, ANCHOR_DEFAULTS[anchor]);
+    });
+  });
+  $('grid-shape').addEventListener('change', () => ws.commit((p) => (p.grid.shape = $('grid-shape').value)));
   $('toggle-recon').addEventListener('change', (e) => {
     state.showRecon = e.target.checked;
     viewer.requestDraw();

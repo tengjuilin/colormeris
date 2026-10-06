@@ -37,7 +37,7 @@
       name,
       page,
       tool,
-      grid: { corners: null, rows: 4, cols: 4, sampleFraction: 0.5, rowLabels: [], colLabels: [], boxLabels: [] },
+      grid: { corners: null, anchor: 'corners', shape: 'square', rows: 4, cols: 4, sampleFraction: 0.5, rowLabels: [], colLabels: [], boxLabels: [] },
       // colormap: {name, reversed} reads colors from a known colormap instead
       // of the bar in the figure; the bar line is then optional.
       colorbar: { start: null, end: null, halfWidth: 2, nSamples: 256, ticks: [], scale: 'linear', colormap: null },
@@ -96,6 +96,12 @@
     return `${effectiveLabels(grid.rowLabels, grid.rows, 'R')[row]} ${effectiveLabels(grid.colLabels, grid.cols, 'C')[col]}`;
   }
 
+  // Grid anchors (what the clicked points are) and sampling shapes, with each
+  // anchor's default shape and sampled area (core/grid.js: outerCorners, dotRadius).
+  const GRID_ANCHORS = ['corners', 'centers'];
+  const GRID_SHAPES = ['square', 'circle'];
+  const ANCHOR_DEFAULTS = { corners: { shape: 'square', sampleFraction: 0.5 }, centers: { shape: 'circle', sampleFraction: 0.7 } };
+
   function parseLabelText(text) {
     const trimmed = text.trim();
     if (!trimmed) return [];
@@ -145,6 +151,8 @@
         tool: p.tool,
         grid: {
           corners: p.grid.corners ? p.grid.corners.map(pt) : null,
+          anchor: p.grid.anchor,
+          shape: p.grid.shape,
           rows: p.grid.rows,
           cols: p.grid.cols,
           sampleFraction: p.grid.sampleFraction,
@@ -294,6 +302,9 @@
         if (!Array.isArray(g.corners) || g.corners.length !== 4) fail(`panel ${i + 1} grid needs 4 corners`);
         p.grid.corners = g.corners.map((c) => readPoint(c, `panel ${i + 1} grid`));
       }
+      // Files from before dot plots have neither: outer corners, square samples.
+      if (GRID_ANCHORS.includes(g.anchor)) p.grid.anchor = g.anchor;
+      if (GRID_SHAPES.includes(g.shape)) p.grid.shape = g.shape;
       p.grid.rows = readInt(g.rows, 4, 1, 1000);
       p.grid.cols = readInt(g.cols, 4, 1, 1000);
       if (Number.isFinite(g.sampleFraction)) p.grid.sampleFraction = Math.min(1, Math.max(0.05, g.sampleFraction));
@@ -376,5 +387,5 @@
     }
   }
 
-  Object.assign(CM, { SCHEMA, SCHEMA_VERSION, APP_VERSION, KINDS, createPanel, createProject, createRoi, createAxisTick, createProfile, effectiveLabels, boxLabel, parseLabelText, ticksWithT, colorbarProblem, serializeProject, parseProject, rescalePanel });
+  Object.assign(CM, { GRID_ANCHORS, GRID_SHAPES, ANCHOR_DEFAULTS, SCHEMA, SCHEMA_VERSION, APP_VERSION, KINDS, createPanel, createProject, createRoi, createAxisTick, createProfile, effectiveLabels, boxLabel, parseLabelText, ticksWithT, colorbarProblem, serializeProject, parseProject, rescalePanel });
 })((globalThis.Colormeris ??= {}));

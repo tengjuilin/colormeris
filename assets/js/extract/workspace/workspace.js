@@ -143,7 +143,9 @@
     colorbar: ['Click one end of the colorbar (middle of the bar).', 'Click the other end. Hold Alt to disable axis snapping.'],
     tick: ['Click a labelled tick on the colorbar, then type its value. Press Done when finished.'],
   };
-  const modeTexts = (type) => tool.modeTexts?.[type] || (type === 'grid' && tool.gridTexts) || MODE_TEXT[type];
+  const CENTER_TEXTS = ['Click the center of the top-left dot.', 'Click the center of the bottom-right dot.'];
+  const modeTexts = (type) =>
+    tool.modeTexts?.[type] || (type === 'grid' && activePanel().grid.anchor === 'centers' && CENTER_TEXTS) || (type === 'grid' && tool.gridTexts) || MODE_TEXT[type];
 
   function setMode(type) {
     if (type && !app.sourceCanvas) return;

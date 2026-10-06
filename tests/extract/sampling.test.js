@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeImage, paintHeatmap, paintColorbar, VIRIDISH } from '../helpers.js';
+import { makeImage, paintHeatmap, paintColorbar, paintDots, VIRIDISH } from '../helpers.js';
 import CM from '../load.js';
 
 const { extractPanel, panelProblem, createPanel, rectCorners } = CM;
@@ -89,4 +89,39 @@ test('a known colormap calibrates without a colorbar in the figure', () => {
   assert.ok(Math.abs(extractPanel(img, p).cells[1][1].value - 10) < 0.1);
   p.colorbar.colormap = { name: 'no-such-map' };
   assert.match(panelProblem(p), /Unknown colormap/);
+});
+
+test('dot plot: dots of varying size are read inside each dot, empty cells are blank', () => {
+  const matrix = [[0.1, 0.4, 0.7], [0.9, 0.3, 0.6]];
+  const radii = [[4, 9, 2.5], [7, 0, 11]];
+  const img = makeImage(200, 260);
+  paintDots(img, { x: 30, y: 60 }, { x: 110, y: 130 }, matrix, radii, VIRIDISH);
+  paintColorbar(img, 150, 160, 20, 219, VIRIDISH);
+  const panel = createPanel('dots');
+  Object.assign(panel.grid, { anchor: 'centers', shape: 'circle', sampleFraction: 0.7, rows: 2, cols: 3 });
+  panel.grid.corners = rectCorners({ x: 30, y: 60 }, { x: 110, y: 130 });
+  panel.colorbar.start = { x: 155, y: 219 };
+  panel.colorbar.end = { x: 155, y: 20 };
+  panel.colorbar.ticks = [{ x: 155, y: 219, value: 0 }, { x: 155, y: 20, value: 10 }];
+  const res = extractPanel(img, panel);
+  assert.equal(res.error, undefined);
+  for (let r = 0; r < 2; r++) {
+    for (let c = 0; c < 3; c++) {
+      const cell = res.cells[r][c];
+      if (!radii[r][c]) {
+        assert.equal(cell.empty, true);
+        assert.ok(Number.isNaN(cell.value));
+        continue;
+      }
+      assert.ok(Math.abs(cell.value - matrix[r][c] * 10) < 0.15, `cell ${r},${c}: ${cell.value} vs ${matrix[r][c] * 10}`);
+    }
+  }
+});
+
+test('dot centers need two rows and two columns', () => {
+  const p = createPanel();
+  p.grid.anchor = 'centers';
+  p.grid.corners = rectCorners({ x: 0, y: 0 }, { x: 10, y: 10 });
+  p.grid.rows = 1;
+  assert.match(panelProblem(p), /at least 2 rows/);
 });

@@ -304,6 +304,8 @@
       grid: g.corners
         ? {
             corners: g.corners.map(pt),
+            ...(g.anchor === 'centers' ? { anchor: 'centers' } : {}),
+            ...(g.shape === 'circle' ? { shape: 'circle' } : {}),
             rows: g.rows,
             cols: g.cols,
             sizeSource: g.autoSize ? 'detected' : 'set',
@@ -346,7 +348,8 @@
       tool: 'heatmap',
       rowLabels,
       colLabels,
-      values: result.cells.map((row) => row.map((c) => c.value)),
+      // Empty cells (dot plots without a dot) are null.
+      values: result.cells.map((row) => row.map((c) => (Number.isFinite(c.value) ? c.value : null))),
       deltaE: result.cells.map((row) => row.map((c) => r2(c.deltaE))),
       maxDeltaE: panel.settings.maxDeltaE,
       flagged,

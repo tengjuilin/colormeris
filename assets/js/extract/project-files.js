@@ -44,8 +44,9 @@
               rowLabels[r],
               colLabels[k],
               formatNumber(c.value),
-              ...c.rgb.map((x) => Math.round(x)),
-              c.deltaE.toFixed(2),
+              // An empty cell (dot plot without a dot) has no color.
+              ...(c.rgb ? c.rgb.map((x) => Math.round(x)) : ['', '', '']),
+              Number.isFinite(c.deltaE) ? c.deltaE.toFixed(2) : '',
               c.flagged ? 1 : 0,
             ]),
           );

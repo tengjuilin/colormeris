@@ -3,7 +3,7 @@
   const {
     AGENT_SYSTEM_PROMPT, REVIEWER_PROMPT, LLM_ACTIONS, RUNNER_TOOLS, validateRunnerTool, llmTools, toReviewItem, reviewContent, reviewTool, parseReviewAnswers, fromReviewAnswer, panelRegion, colorbarRegion, reviewAdvice,
     createRetryGuard, progressNote, finishCheck, pruneImages, toolResultText,
-    bilinear, cellSamplePolygon, colorAtT, rgbToHex, ticksWithT, renderPdfPage,
+    bilinear, outerCorners, cellSamplePolygon, colorAtT, rgbToHex, ticksWithT, renderPdfPage,
   } = CM;
 
   // Runs the extraction agent: an LLM (any OpenRouter chat model with vision
@@ -111,7 +111,8 @@
           if (res.cells) {
             for (let r = 0; r < g.rows; r++) {
               for (let c = 0; c < g.cols; c++) {
-                const poly = cellSamplePolygon(g, r, c).map(toView);
+                if (res.cells[r][c].empty) continue;
+                const poly = cellSamplePolygon(g, r, c, res.cells[r][c].radius).map(toView);
                 ctx.beginPath();
                 poly.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
                 ctx.closePath();
@@ -127,8 +128,13 @@
           }
         }
         if (g.corners && overlay === 'calibration') {
-          for (let c = 0; c <= g.cols; c++) line(bilinear(g.corners, c / g.cols, 0), bilinear(g.corners, c / g.cols, 1), '#e22bd0', c % g.cols ? 1 : 2);
-          for (let r = 0; r <= g.rows; r++) line(bilinear(g.corners, 0, r / g.rows), bilinear(g.corners, 1, r / g.rows), '#e22bd0', r % g.rows ? 1 : 2);
+          // Same grid as the workspace draws: through the dot centers for a dot plot.
+          const dots = g.anchor === 'centers';
+          const frame = dots ? g.corners : outerCorners(g);
+          const nu = dots ? g.cols - 1 : g.cols;
+          const nv = dots ? g.rows - 1 : g.rows;
+          for (let c = 0; c <= nu; c++) line(bilinear(frame, c / nu, 0), bilinear(frame, c / nu, 1), '#e22bd0', c % nu ? 1 : 2);
+          for (let r = 0; r <= nv; r++) line(bilinear(frame, 0, r / nv), bilinear(frame, 1, r / nv), '#e22bd0', r % nv ? 1 : 2);
         }
         const cb = panel.colorbar;
         if (cb.start && cb.end && overlay === 'calibration') {

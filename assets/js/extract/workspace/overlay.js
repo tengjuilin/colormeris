@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { bilinear, rectCorners, pointAtT, projectT } = CM;
+  const { bilinear, outerCorners, rectCorners, pointAtT, projectT } = CM;
 
   // What the workspace draws over the image: grids, colorbars with their
   // ticks, handles and rubber bands while placing. Tools draw their own parts
@@ -47,20 +47,27 @@
     function drawGrid(ctx, v, panel, active) {
       const g = panel.grid;
       if (!g.corners) return;
-      const c = g.corners;
+      // Cells (hover highlight) follow the outer corners. The drawn grid follows
+      // the clicked points: cell borders for a heatmap, but for a dot plot
+      // lines through the dot centers, with its vertices on the corner dots.
+      const c = outerCorners(g);
+      const dots = g.anchor === 'centers';
+      const frame = dots ? g.corners : c;
+      const nu = dots ? g.cols - 1 : g.cols;
+      const nv = dots ? g.rows - 1 : g.rows;
       w.tool().drawUnderGrid?.(ctx, v, panel, active);
 
       // Internal lines.
       ctx.beginPath();
-      for (let k = 1; k < g.cols; k++) {
-        const a = v.toScreen(bilinear(c, k / g.cols, 0));
-        const b = v.toScreen(bilinear(c, k / g.cols, 1));
+      for (let k = 1; k < nu; k++) {
+        const a = v.toScreen(bilinear(frame, k / nu, 0));
+        const b = v.toScreen(bilinear(frame, k / nu, 1));
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
       }
-      for (let r = 1; r < g.rows; r++) {
-        const a = v.toScreen(bilinear(c, 0, r / g.rows));
-        const b = v.toScreen(bilinear(c, 1, r / g.rows));
+      for (let r = 1; r < nv; r++) {
+        const a = v.toScreen(bilinear(frame, 0, r / nv));
+        const b = v.toScreen(bilinear(frame, 1, r / nv));
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
       }
@@ -71,7 +78,7 @@
       ctx.globalAlpha /= 0.8;
 
       w.tool().drawOverGrid?.(ctx, v, panel, active);
-      polyPath(ctx, v, c);
+      polyPath(ctx, v, frame);
       strokeDual(ctx, w.COLORS.grid, 2);
 
       const hl = active && !w.tool().plotArea && (app.tableCell || app.hoverCell);
@@ -86,7 +93,7 @@
         strokeDual(ctx, w.COLORS.highlight, 2);
       }
 
-      if (active) c.forEach((q) => drawHandle(ctx, v, q, w.COLORS.grid));
+      if (active) g.corners.forEach((q) => drawHandle(ctx, v, q, w.COLORS.grid));
     }
 
     function drawColorbar(ctx, v, panel, active) {

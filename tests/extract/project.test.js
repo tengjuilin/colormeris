@@ -203,3 +203,18 @@ test('a known colormap and typed tick positions survive a round trip', () => {
   assert.deepEqual(q.colorbar.ticks[0], { t: 0, value: 1 });
   assert.equal(serializeProject(createProject()).panels[0].colorbar.colormap, undefined);
 });
+
+test('grid anchor and shape round-trip; unknown or missing values fall back to corners and square', () => {
+  const project = createProject();
+  const p = project.panels[0];
+  Object.assign(p.grid, { anchor: 'centers', shape: 'circle', corners: rectCorners({ x: 10, y: 10 }, { x: 110, y: 210 }) });
+  const json = JSON.parse(JSON.stringify(serializeProject(project)));
+  const q = parseProject(json).panels[0];
+  assert.equal(q.grid.anchor, 'centers');
+  assert.equal(q.grid.shape, 'circle');
+  json.panels[0].grid.anchor = 'middle';
+  delete json.panels[0].grid.shape;
+  const r = parseProject(json).panels[0];
+  assert.equal(r.grid.anchor, 'corners');
+  assert.equal(r.grid.shape, 'square');
+});

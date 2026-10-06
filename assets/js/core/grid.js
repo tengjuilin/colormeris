@@ -2,8 +2,9 @@
   'use strict';
 
   // Heatmap grid geometry and pixel sampling.
-  // A grid is defined by four outer corners in image pixel space, ordered
-  // [topLeft, topRight, bottomRight, bottomLeft]. Points inside the grid are
+  // A grid is defined by four points in image pixel space, ordered
+  // [topLeft, topRight, bottomRight, bottomLeft]: its outer corners, or the
+  // centers of its corner cells (see outerCorners). Points inside the grid are
   // addressed with normalized (u, v) in [0, 1]², u along columns, v along rows.
 
   function rectCorners(p1, p2) {
@@ -54,30 +55,65 @@
     return { u, v };
   }
 
+  // A grid's clicked points are either its outer corners (anchor 'corners', the
+  // default) or the centers of its four corner cells (anchor 'centers', for dot
+  // plots without cell borders). Everything below works on the outer corners.
+  const isCenters = (grid) => grid.anchor === 'centers';
+
+  // Outer corners: for centers, extrapolate half a cell beyond the corner
+  // cells' centers. A single row or column has no spacing, so it gets none.
+  function outerCorners(grid) {
+    if (!isCenters(grid)) return grid.corners;
+    const su = grid.cols > 1 ? 0.5 / (grid.cols - 1) : 0;
+    const sv = grid.rows > 1 ? 0.5 / (grid.rows - 1) : 0;
+    const c = grid.corners;
+    return [bilinear(c, -su, -sv), bilinear(c, 1 + su, -sv), bilinear(c, 1 + su, 1 + sv), bilinear(c, -su, 1 + sv)];
+  }
+
+  // The inverse: centers of the four corner cells of a grid given by its outer corners.
+  function cornerCellCenters(outer, rows, cols) {
+    const su = 0.5 / cols;
+    const sv = 0.5 / rows;
+    return [bilinear(outer, su, sv), bilinear(outer, 1 - su, sv), bilinear(outer, 1 - su, 1 - sv), bilinear(outer, su, 1 - sv)];
+  }
+
   function cellAt(grid, p) {
-    const { u, v } = invertBilinear(grid.corners, p);
+    const { u, v } = invertBilinear(outerCorners(grid), p);
     if (u < 0 || u >= 1 || v < 0 || v >= 1) return null;
     return { row: Math.floor(v * grid.rows), col: Math.floor(u * grid.cols) };
   }
 
-  // Normalized bounds of the sampled (central) part of a cell.
-  function cellSampleBounds(grid, row, col) {
-    const f = grid.sampleFraction;
-    const u0 = (col + 0.5 - f / 2) / grid.cols;
-    const u1 = (col + 0.5 + f / 2) / grid.cols;
-    const v0 = (row + 0.5 - f / 2) / grid.rows;
-    const v1 = (row + 0.5 + f / 2) / grid.rows;
-    return { u0, u1, v0, v1 };
+  // Normalized bounds of the sampled (central) part of a cell. With a dot
+  // radius (centers mode, in image pixels) the bounds follow the dot: a circle
+  // of sampleFraction × radius, or the square inscribed in it.
+  function cellSampleBounds(grid, row, col, radius = null) {
+    const uc = (col + 0.5) / grid.cols;
+    const vc = (row + 0.5) / grid.rows;
+    let hu = grid.sampleFraction / 2 / grid.cols;
+    let hv = grid.sampleFraction / 2 / grid.rows;
+    if (radius) {
+      const { width, height } = gridPixelSize(outerCorners(grid));
+      const r = radius * grid.sampleFraction * (grid.shape === 'circle' ? 1 : Math.SQRT1_2);
+      hu = r / width;
+      hv = r / height;
+    }
+    return { u0: uc - hu, u1: uc + hu, v0: vc - hv, v1: vc + hv };
   }
 
-  function cellSamplePolygon(grid, row, col) {
-    const { u0, u1, v0, v1 } = cellSampleBounds(grid, row, col);
-    return [
-      bilinear(grid.corners, u0, v0),
-      bilinear(grid.corners, u1, v0),
-      bilinear(grid.corners, u1, v1),
-      bilinear(grid.corners, u0, v1),
-    ];
+  const CIRCLE_POINTS = 32;
+
+  function cellSamplePolygon(grid, row, col, radius = null) {
+    const { u0, u1, v0, v1 } = cellSampleBounds(grid, row, col, radius);
+    const c = outerCorners(grid);
+    if (grid.shape === 'circle') {
+      const uc = (u0 + u1) / 2;
+      const vc = (v0 + v1) / 2;
+      return Array.from({ length: CIRCLE_POINTS }, (_, i) => {
+        const a = (i / CIRCLE_POINTS) * 2 * Math.PI;
+        return bilinear(c, uc + ((u1 - u0) / 2) * Math.cos(a), vc + ((v1 - v0) / 2) * Math.sin(a));
+      });
+    }
+    return [bilinear(c, u0, v0), bilinear(c, u1, v0), bilinear(c, u1, v1), bilinear(c, u0, v1)];
   }
 
   // Read one pixel as [r, g, b], compositing transparency onto white.
@@ -98,20 +134,14 @@
     return values.length % 2 ? values[m] : (values[m - 1] + values[m]) / 2;
   }
 
-  // Per-channel median color over the central part of a cell. Sampling density
-  // is roughly one sample per image pixel. Same samples as readPixel at
+  // Per-channel median color over the central part of a cell (a circle keeps
+  // only the samples inside the inscribed ellipse). Sampling density is
+  // roughly one sample per image pixel. Same samples as readPixel at
   // bilinear(u, v), inlined: this runs for every pixel of every cell.
-  function sampleCell(img, grid, row, col) {
-    const { u0, u1, v0, v1 } = cellSampleBounds(grid, row, col);
-    const c = grid.corners;
-    const width = Math.max(
-      Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y),
-      Math.hypot(c[2].x - c[3].x, c[2].y - c[3].y),
-    );
-    const height = Math.max(
-      Math.hypot(c[3].x - c[0].x, c[3].y - c[0].y),
-      Math.hypot(c[2].x - c[1].x, c[2].y - c[1].y),
-    );
+  function sampleCell(img, grid, row, col, radius = null) {
+    const { u0, u1, v0, v1 } = cellSampleBounds(grid, row, col, radius);
+    const c = outerCorners(grid);
+    const { width, height } = gridPixelSize(c);
     const nu = Math.max(1, Math.ceil(width * (u1 - u0)));
     const nv = Math.max(1, Math.ceil(height * (v1 - v0)));
     const n = nu * nv;
@@ -120,16 +150,20 @@
     const bs = new Float64Array(n);
     const { width: W, height: H, data: d } = img;
     const [tl, tr, br, bl] = c;
+    const circle = grid.shape === 'circle' && nu > 1 && nv > 1;
     let k = 0;
     for (let j = 0; j < nv; j++) {
-      const v = v0 + ((j + 0.5) / nv) * (v1 - v0);
+      const fv = (j + 0.5) / nv;
+      const v = v0 + fv * (v1 - v0);
       // Along a row of samples the bilinear map is linear in u: left + u * span.
       const lx = tl.x + v * (bl.x - tl.x);
       const ly = tl.y + v * (bl.y - tl.y);
       const sx = tr.x + v * (br.x - tr.x) - lx;
       const sy = tr.y + v * (br.y - tr.y) - ly;
       for (let i = 0; i < nu; i++) {
-        const u = u0 + ((i + 0.5) / nu) * (u1 - u0);
+        const fu = (i + 0.5) / nu;
+        if (circle && (2 * fu - 1) ** 2 + (2 * fv - 1) ** 2 > 1) continue;
+        const u = u0 + fu * (u1 - u0);
         const xi = Math.min(W - 1, Math.max(0, Math.round(lx + u * sx)));
         const yi = Math.min(H - 1, Math.max(0, Math.round(ly + u * sy)));
         const q = (yi * W + xi) * 4;
@@ -146,7 +180,49 @@
         k++;
       }
     }
-    return [median(rs), median(gs), median(bs)];
+    return [median(rs.subarray(0, k)), median(gs.subarray(0, k)), median(bs.subarray(0, k))];
+  }
+
+  // ---- Dot radius (centers mode) ---------------------------------------------
+
+  const DOT_RAYS = 16;
+  // A cell whose center is this close (ΔE76) to the background has no dot.
+  const DOT_MIN_CONTRAST = 10;
+  const DOT_MIN_RADIUS = 1.5;
+
+  function medianColor(colors) {
+    return [0, 1, 2].map((ch) => median(Float64Array.from(colors, (c) => c[ch])));
+  }
+
+  // Radius in image pixels of the dot centered in a cell, or null when the cell
+  // has no dot. The background is read at the cell's corners (between dots);
+  // rays from the center stop where the color leaves the dot, about halfway
+  // between dot and background, and the radius is their median length.
+  function dotRadius(img, grid, row, col) {
+    const { rgbToLab, deltaE76 } = CM;
+    const c = outerCorners(grid);
+    const { width, height } = gridPixelSize(c);
+    const center = bilinear(c, (col + 0.5) / grid.cols, (row + 0.5) / grid.rows);
+    const near = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) near.push(readPixel(img, center.x + dx, center.y + dy));
+    const dot = rgbToLab(medianColor(near));
+    const cornersRgb = [[col, row], [col + 1, row], [col + 1, row + 1], [col, row + 1]].map(([i, j]) => {
+      const p = bilinear(c, i / grid.cols, j / grid.rows);
+      return readPixel(img, p.x, p.y);
+    });
+    const contrast = deltaE76(dot, rgbToLab(medianColor(cornersRgb)));
+    if (contrast < DOT_MIN_CONTRAST) return null;
+    const limit = Math.max(12, contrast / 2);
+    const maxR = Math.min(width / grid.cols, height / grid.rows) / 2;
+    const lengths = new Float64Array(DOT_RAYS);
+    for (let i = 0; i < DOT_RAYS; i++) {
+      const a = (i / DOT_RAYS) * 2 * Math.PI;
+      let s = 0.5;
+      while (s < maxR && deltaE76(dot, rgbToLab(readPixel(img, center.x + s * Math.cos(a), center.y + s * Math.sin(a)))) <= limit) s += 0.5;
+      lengths[i] = Math.min(s, maxR);
+    }
+    const r = median(lengths);
+    return r >= DOT_MIN_RADIUS ? r : null;
   }
 
   // ---- Grid size detection -------------------------------------------------
@@ -390,5 +466,5 @@
     scorePeriod,
     countCells,
     bestCount,
-    rectCorners, bilinear, invertBilinear, cellAt, cellSampleBounds, cellSamplePolygon, readPixel, sampleCell });
+    rectCorners, bilinear, invertBilinear, outerCorners, cornerCellCenters, cellAt, cellSampleBounds, cellSamplePolygon, readPixel, sampleCell, dotRadius });
 })((globalThis.Colormeris ??= {}));

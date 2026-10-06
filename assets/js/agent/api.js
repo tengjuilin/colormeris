@@ -3,7 +3,7 @@
   const {
     AGENT_ACTIONS, AGENT_SCHEMA, AGENT_VERSION, validate, validateAction, normalizeArgs, toolDefinitions, stateSnapshot, heatmapResultJson, roiResultJson, mapResultJson, openQuestions, resultKeyHash,
     createPanel, createRoi, rectCorners, detectGridSize, projectT, pointAtT, refineColorbar, snapTick, readPixel, rgbToLab, sampleColorbar, labToT, makeValueFn, ticksWithT, tickProblem,
-    cellAt, centroid, geomToBox, boxLabel, fileKind,
+    cellAt, centroid, geomToBox, boxLabel, fileKind, ANCHOR_DEFAULTS,
   } = CM;
 
   // Agent API: binds the typed actions of agent/schema.js to a live workspace
@@ -255,6 +255,8 @@
         let detected = null;
         ws.commit((p) => {
           p.grid.corners = cs;
+          // The agent places outer corners; a dot-plot panel goes back to that mode.
+          if (p.grid.anchor !== 'corners') Object.assign(p.grid, { anchor: 'corners', ...ANCHOR_DEFAULTS.corners });
           // Always detect: the LLM's own count would skip the grid-size check.
           detected = applyGridSize(p);
         });
