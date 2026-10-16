@@ -199,7 +199,7 @@
     // onEvent(type, data), focus}. `focus` ({panelId, note}) asks the agent to
     // fix one rejected panel.
     async function run(settings) {
-      const { client, llmModel, pages, maxSteps = 60, signal, onEvent = () => {}, focus } = settings;
+      const { client, llmModel, pages, maxSteps = 60, signal, onEvent = () => {}, focus, systemPrompt } = settings;
       // One id for the whole run keeps the requests on the provider that
       // holds the cache (sticky routing).
       const sessionId = `colormeris-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -258,7 +258,7 @@
       const opening = pages.length > 1 && app.pdfDoc ? await renderOverview(pages[0], pages[Math.min(pages.length, 12) - 1]) : renderView();
       if (!(pages.length > 1 && app.pdfDoc)) viewedPages.add(ws.currentPage());
       const messages = [
-        { role: 'system', content: AGENT_SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt || AGENT_SYSTEM_PROMPT },
         {
           role: 'user',
           content: [

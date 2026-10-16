@@ -131,3 +131,10 @@ test('colors default, normalize and round-trip', () => {
   assert.deepEqual(parseSettings(JSON.parse(JSON.stringify(serializeSettings(s)))).settings.colors, s.colors);
   assert.deepEqual(hexToRgb('#ff8001'), [255, 128, 1]);
 });
+
+test('custom agent prompts are kept, bad ones fall back to the built-in (empty)', () => {
+  const s = normalizeSettings({ agent: { prompt: '  Find heatmaps.  ', labelsPrompt: 42 } });
+  assert.equal(s.agent.prompt, 'Find heatmaps.');
+  assert.equal(s.agent.labelsPrompt, '');
+  assert.equal(defaultSettings().agent.prompt, '');
+});

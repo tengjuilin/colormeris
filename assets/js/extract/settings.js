@@ -90,7 +90,7 @@
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
 
-  const AGENT_DEFAULTS = { key: '', rememberKey: false, minConfidence: 0.9, maxSteps: 80, base: '', llm: '', labels: '' };
+  const AGENT_DEFAULTS = { key: '', rememberKey: false, minConfidence: 0.9, maxSteps: 80, base: '', llm: '', labels: '', prompt: '', labelsPrompt: '' };
 
   function defaultSettings() {
     return {
@@ -118,6 +118,9 @@
       base: str(a.base),
       llm: str(a.llm),
       labels: str(a.labels),
+      // Custom prompts; empty means the built-in one.
+      prompt: str(a.prompt),
+      labelsPrompt: str(a.labelsPrompt),
     };
     for (const [kind, defs] of Object.entries(MATCHING_DEFAULTS)) {
       const m = raw.matching?.[kind] || {};

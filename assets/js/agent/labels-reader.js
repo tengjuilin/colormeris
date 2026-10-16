@@ -66,7 +66,7 @@
           chatRequest: {
             model,
             messages: [
-              { role: 'system', content: LABELS_PROMPT },
+              { role: 'system', content: agent().labelsPrompt || LABELS_PROMPT },
               { role: 'user', content: [{ type: 'text', text: labelsUserText({ rows, cols, box }) }, { type: 'image_url', imageUrl: { url: dataUrl } }] },
             ],
             tools: [labelsTool()],

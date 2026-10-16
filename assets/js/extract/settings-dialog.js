@@ -85,6 +85,7 @@
       ws.setValue($('agent-minconf'), a.minConfidence);
       ws.setValue($('agent-steps'), a.maxSteps);
       ws.setValue($('agent-base'), a.base);
+      for (const p of PROMPTS) ws.setValue($(p.id), a[p.key] || p.fallback());
       const hm = settings.matching.heatmap;
       const iv = settings.matching.roi;
       ws.setValue($('set-hm-distance'), hm.distance);
@@ -115,6 +116,25 @@
       for (const fn of listeners) fn(settings);
     });
     $('agent-base').addEventListener('change', changed);
+    // Prompts show the built-in text when not customized; saving it unchanged
+    // (or empty) stores '' so later versions of the built-in prompt still apply.
+    const PROMPTS = [
+      { id: 'agent-prompt', key: 'prompt', fallback: () => CM.AGENT_SYSTEM_PROMPT || '' },
+      { id: 'agent-labels-prompt', key: 'labelsPrompt', fallback: () => CM.LABELS_PROMPT || '' },
+    ];
+    for (const p of PROMPTS) {
+      $(p.id).addEventListener('change', () => {
+        const v = $(p.id).value.trim();
+        settings.agent[p.key] = v === p.fallback().trim() ? '' : v;
+        if (!v) ws.setValue($(p.id), p.fallback());
+        changed();
+      });
+      $(`${p.id}-reset`).addEventListener('click', () => {
+        settings.agent[p.key] = '';
+        ws.setValue($(p.id), p.fallback());
+        changed();
+      });
+    }
     bindNumber('agent-minconf', 0, 1, (v) => (settings.agent.minConfidence = v));
     bindNumber('agent-steps', 5, 400, (v) => (settings.agent.maxSteps = Math.round(v)));
 

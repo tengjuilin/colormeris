@@ -148,6 +148,7 @@
           llmModel: $('agent-llm').value.trim() || DEFAULT_LLM,
           pages,
           maxSteps,
+          systemPrompt: agent().prompt,
           signal: abort.signal,
           onEvent,
           focus,
