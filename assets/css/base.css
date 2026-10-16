@@ -212,6 +212,79 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .fields > .field input, .fields > .field select { width: 100%; }
 .fields.wide { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 
+/* Sidebar fields: one per row, label on the left, control on the right.
+   Numbers are short and right-aligned; selects and text fill the column.
+   .field.stack puts the label above (textareas). */
+.extract .sidebar .fields { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2); }
+.extract .sidebar .field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 62%);
+  align-items: center;
+  column-gap: var(--space-2);
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.extract .sidebar .field[hidden] { display: none; }
+.extract .sidebar .field > :is(input, select, textarea, div, .range-row, .input-pair) { grid-column: 2; min-width: 0; }
+.extract .sidebar .field > input[type="number"] { justify-self: end; width: 100%; max-width: 8.5em; }
+.extract .sidebar .field.stack { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.extract .sidebar .field .range-row { justify-self: end; }
+/* A number with its unit on one row: Length [1][cm]. */
+.extract .sidebar .input-pair { display: flex; gap: 6px; }
+.extract .sidebar .input-pair > input { flex: 1; min-width: 0; }
+.extract .sidebar .input-pair > select { width: auto; flex: none; }
+
+/* A card's main step spans the card. */
+.btn.block { display: flex; width: 100%; }
+/* Paired actions (Add ticks + Type a tick, Add x + y ticks, shapes) share the
+   card's width in equal halves; an odd one out takes half. */
+.card-actions.split { display: grid; grid-template-columns: 1fr 1fr; }
+.card-actions.split > .btn { width: 100%; min-width: 0; }
+/* Icon-only buttons (with title and aria-label), e.g. in a card head. */
+.head-actions { display: flex; gap: 6px; }
+.extract .sidebar .btn.icon-only { width: var(--control-h-sm); padding: 0; gap: 0; }
+
+/* Button icons: data-icon names one of the masks below; the icon takes the text color. */
+.btn[data-icon]::before {
+  content: '';
+  flex: none;
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+/* Hotkey cap: data-key is set from the current hotkeys (settings-dialog.js). */
+.btn[data-key]:not([data-key=""]):not([data-no-cap])::after {
+  content: attr(data-key);
+  margin-left: 2px;
+  padding: 0 4px;
+  min-width: 16px;
+  line-height: 15px;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 10px;
+  opacity: 0.75;
+}
+.btn[data-icon="place"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='7'/><path d='M12 2v5M12 17v5M2 12h5M17 12h5'/></svg>"); }
+.btn[data-icon="plus"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 5v14M5 12h14'/></svg>"); }
+.btn[data-icon="zoom"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='M21 21l-5-5M8 11h6M11 8v6'/></svg>"); }
+.btn[data-icon="trash"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7'/></svg>"); }
+.btn[data-icon="download"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3v12M7 10l5 5 5-5M4 21h16'/></svg>"); }
+.btn[data-icon="copy"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='12' height='12' rx='2'/><path d='M5 15H3V3h12v2'/></svg>"); }
+.btn[data-icon="detect"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='3' width='18' height='18' rx='1'/><path d='M3 9h18M3 15h18M9 3v18M15 3v18'/></svg>"); }
+.btn[data-icon="type"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 20h4L19 9l-4-4L4 16zM13 7l4 4'/></svg>"); }
+.btn[data-icon="ai"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2zM19 3v4M17 5h4'/></svg>"); }
+.btn[data-icon="ruler"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 17L17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2'/></svg>"); }
+.btn[data-icon="line"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 18L18 6'/><circle cx='5' cy='19' r='2'/><circle cx='19' cy='5' r='2'/></svg>"); }
+.btn[data-icon="layers"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3l9 5-9 5-9-5zM3 13l9 5 9-5'/></svg>"); }
+.btn[data-icon="play"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M7 4l13 8-13 8z'/></svg>"); }
+.btn[data-icon="pause"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M8 5v14M16 5v14'/></svg>"); }
+.btn[data-icon="stop"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><rect x='6' y='6' width='12' height='12' rx='1'/></svg>"); }
+.btn[data-icon="reset"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 12a9 9 0 1 0 3-6.7M3 4v5h5'/></svg>"); }
+.btn[data-icon="settings"] { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 7h9M17 7h3M4 17h3M11 17h9'/><circle cx='15' cy='7' r='2'/><circle cx='9' cy='17' r='2'/></svg>"); }
+
 /* Selectable items (panels, regions, other pages). Pills, so they never look like actions. */
 .chip-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .chip-list:empty { display: none; }
@@ -310,6 +383,12 @@ details.options[open] > summary::before, .help[open] > summary::before { transfo
 .cmap-rc-opt-group { font-size: 11px; color: var(--muted); }
 .cmap-rc-group { padding: 6px 10px 2px; font-size: 11px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .cmap-rc-none { padding: 6px 10px; color: var(--muted); }
+/* In the sidebar the picker's control column is narrow: the list drops under
+   the whole field row instead, so it never sticks out of the card. */
+.extract .sidebar .field:has(.cmap-rc-pick) { position: relative; }
+.extract .sidebar .cmap-rc-pick { position: static; }
+.extract .sidebar .cmap-rc-pick input { width: 100%; }
+.extract .sidebar .cmap-rc-maps { left: 0; right: 0; width: auto; }
 
 .btn.link, button.link {
   border: 0; padding: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline;

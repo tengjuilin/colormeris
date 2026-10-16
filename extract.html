@@ -6,8 +6,8 @@
   <title>Colormeris</title>
   <meta name="description" content="Turn colors in scientific figures back into numbers: heatmap grids and signal inside regions of interest (ROI).">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%23dfe3ff'/%3E%3Crect x='8' width='8' height='8' fill='%235560f0'/%3E%3Crect y='8' width='8' height='8' fill='%232530e0'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23a3a9ff'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="assets/css/base.css?v=3">
-  <link rel="stylesheet" href="assets/css/extract.css?v=11">
+  <link rel="stylesheet" href="assets/css/base.css?v=8">
+  <link rel="stylesheet" href="assets/css/extract.css?v=12">
   <script src="assets/vendor/jszip/jszip.min.js" defer></script>
   <!-- Classic (non-module) scripts so the page also works when opened from disk. Order matters. -->
   <script src="assets/js/core/color.js?v=2" defer></script>
@@ -27,20 +27,20 @@
   <script src="assets/js/extract/workspace/history.js?v=1" defer></script>
   <script src="assets/js/extract/workspace/overlay.js?v=5" defer></script>
   <script src="assets/js/extract/workspace/interact.js?v=7" defer></script>
-  <script src="assets/js/extract/workspace/grid-card.js?v=3" defer></script>
+  <script src="assets/js/extract/workspace/grid-card.js?v=5" defer></script>
   <script src="assets/js/colormaps/map-picker.js?v=2" defer></script>
-  <script src="assets/js/extract/workspace/colorbar-card.js?v=5" defer></script>
-  <script src="assets/js/extract/workspace/panels.js?v=3" defer></script>
+  <script src="assets/js/extract/workspace/colorbar-card.js?v=8" defer></script>
+  <script src="assets/js/extract/workspace/panels.js?v=4" defer></script>
   <script src="assets/js/extract/workspace/source.js?v=2" defer></script>
   <script src="assets/js/extract/workspace/export.js?v=1" defer></script>
   <script src="assets/js/extract/workspace/hotkeys.js?v=5" defer></script>
-  <script src="assets/js/extract/workspace/workspace.js?v=7" defer></script>
+  <script src="assets/js/extract/workspace/workspace.js?v=8" defer></script>
   <script src="assets/js/extract/heatmap/heatmap-tool.js?v=7" defer></script>
   <script src="assets/js/extract/scale-bar.js?v=2" defer></script>
   <script src="assets/js/extract/roi/roi-overlay.js?v=4" defer></script>
-  <script src="assets/js/extract/roi/roi-sidebar.js?v=2" defer></script>
+  <script src="assets/js/extract/roi/roi-sidebar.js?v=5" defer></script>
   <script src="assets/js/extract/roi/roi-tool.js?v=4" defer></script>
-  <script src="assets/js/extract/map/map-sidebar.js?v=14" defer></script>
+  <script src="assets/js/extract/map/map-sidebar.js?v=18" defer></script>
   <script src="assets/js/extract/map/map-tool.js?v=16" defer></script>
   <script src="assets/js/agent/schema.js?v=5" defer></script>
   <script src="assets/js/agent/api.js?v=4" defer></script>
@@ -49,8 +49,8 @@
   <script src="assets/js/agent/labels.js?v=3" defer></script>
   <script src="assets/js/agent/openrouter-client.js?v=1" defer></script>
   <script src="assets/js/agent/labels-reader.js?v=3" defer></script>
-  <script src="assets/js/agent/agent-card.js?v=5" defer></script>
-  <script src="assets/js/extract/settings-dialog.js?v=7" defer></script>
+  <script src="assets/js/agent/agent-card.js?v=7" defer></script>
+  <script src="assets/js/extract/settings-dialog.js?v=8" defer></script>
   <script src="assets/js/extract/main.js?v=4" defer></script>
 </head>
 <body class="extract">
@@ -71,8 +71,8 @@
     </label>
     <span id="source-label" class="source-label muted">No file loaded</span>
     <span class="spacer"></span>
-    <button id="btn-undo" class="btn ghost" title="Undo (Ctrl+Z, ⌘Z on a Mac)" data-hotkey="undo" data-title="Undo" disabled>Undo</button>
-    <button id="btn-redo" class="btn ghost" title="Redo (Ctrl+Shift+Z or Ctrl+Y, ⇧⌘Z on a Mac)" data-hotkey="redo" data-title="Redo" disabled>Redo</button>
+    <button id="btn-undo" data-no-cap class="btn ghost" title="Undo (Ctrl+Z, ⌘Z on a Mac)" data-hotkey="undo" data-title="Undo" disabled>Undo</button>
+    <button id="btn-redo" data-no-cap class="btn ghost" title="Redo (Ctrl+Shift+Z or Ctrl+Y, ⇧⌘Z on a Mac)" data-hotkey="redo" data-title="Redo" disabled>Redo</button>
     <button id="btn-export-zip" class="btn" disabled>Export project (.zip)</button>
     <button id="btn-settings" class="btn ghost" title="Settings: agent, matching, hotkeys" aria-haspopup="dialog">Settings</button>
   </header>
@@ -112,18 +112,12 @@
           <h2>Agent</h2>
           <span id="agent-badge" class="badge">off</span>
         </div>
-        <p class="hint">An LLM finds and calibrates the heatmaps with your own OpenRouter key. <b>Page images and extracted values are sent to OpenRouter and the model providers you pick.</b></p>
-        <details class="options" id="agent-settings" open>
-          <summary>Models <span id="agent-model-note" class="summary-note"></span></summary>
-          <div class="options-body">
-            <label class="field">LLM (vision and tools)
-              <input id="agent-llm" type="text" list="agent-llm-list" spellcheck="false">
-              <datalist id="agent-llm-list"></datalist>
-            </label>
-            <p class="hint">API key, confidence and step limits are in <button type="button" class="link" id="agent-open-settings">Settings</button>.</p>
-          </div>
-        </details>
-        <div class="fields wide">
+        <button type="button" class="btn block" id="agent-open-settings" data-icon="settings" title="API key, base URL, confidence and step limits (Settings → Agent)">API key and limits</button>
+        <div class="fields">
+          <label class="field" title="OpenRouter model id; needs vision and tool calls">Model
+            <input id="agent-llm" type="text" list="agent-llm-list" spellcheck="false">
+            <datalist id="agent-llm-list"></datalist>
+          </label>
           <label class="field">Pages
             <select id="agent-pages">
               <option value="current">Current page</option>
@@ -131,11 +125,11 @@
               <option value="range">Pages…</option>
             </select>
           </label>
-          <input id="agent-range" type="text" placeholder="e.g. 2-4, 7" spellcheck="false" aria-label="Page range" hidden>
+          <label class="field" id="agent-range-field" hidden>Page range <input id="agent-range" type="text" placeholder="e.g. 2-4, 7" spellcheck="false"></label>
         </div>
+        <button class="btn primary block" id="agent-run" data-icon="play" disabled title="An LLM finds and calibrates the heatmaps with your own OpenRouter key. Page images and extracted values are sent to OpenRouter and the model providers you pick.">Run agent</button>
         <div class="card-actions">
-          <button class="btn primary" id="agent-run" disabled>Run agent</button>
-          <button class="btn danger" id="agent-stop" hidden>Stop</button>
+          <button class="btn danger" id="agent-stop" data-icon="stop" hidden>Stop</button>
           <span id="agent-status" class="hint"></span>
         </div>
         <div id="agent-review" class="agent-review" hidden>
@@ -148,22 +142,26 @@
       <section class="card" id="sec-panels" hidden>
         <div class="card-head">
           <h2>Panels <span id="panel-page-note" class="head-note"></span></h2>
-          <button class="btn" id="panel-add">+ Add panel</button>
+          <div class="head-actions">
+            <button class="btn icon-only" id="panel-add" data-icon="plus" title="Add a panel" aria-label="Add a panel"></button>
+            <button class="btn danger icon-only" id="panel-delete" data-icon="trash" title="Delete the panel" aria-label="Delete the panel"></button>
+          </div>
         </div>
         <ul id="panel-list" class="chip-list"></ul>
         <div id="other-pages" class="other-pages" hidden></div>
-        <div class="row">
-          <label class="field grow">Name <input id="panel-name" type="text" spellcheck="false"></label>
-          <button class="btn danger" id="panel-delete">Delete</button>
-        </div>
+        <label class="field">Name <input id="panel-name" type="text" spellcheck="false"></label>
       </section>
 
       <section class="card" id="sec-grid" hidden>
         <div class="card-head">
           <h2><span class="step-dot grid-dot"></span><span data-tool="heatmap roi">Grid</span><span data-tool="map" hidden>Plot area</span> <span class="tag" data-tool="roi" hidden>optional</span></h2>
           <span id="grid-state" class="badge"></span>
+          <div class="head-actions">
+            <button class="btn danger icon-only" id="grid-clear" data-icon="trash" title="Remove the grid or plot area" aria-label="Remove the grid or plot area"></button>
+          </div>
         </div>
-        <div class="fields wide" data-tool="heatmap">
+        <button class="btn primary block" id="grid-place" data-icon="place" title="Shortcut: G" data-hotkey="grid" data-title="Shortcut: {key}"><span data-tool="heatmap roi" id="grid-place-label">Place grid corners</span><span data-tool="map" hidden>Place plot area</span></button>
+        <div class="fields" data-tool="heatmap">
           <label class="field" title="Outer corners: click the grid's outer top-left and bottom-right corners (heatmaps). Dot centers: click the centers of the top-left and bottom-right dots (dot plots without cell borders); each dot is sampled inside its own radius and cells without a dot are left blank.">Click on
             <select id="grid-anchor">
               <option value="corners">Outer corners</option>
@@ -171,30 +169,23 @@
             </select>
           </label>
         </div>
-        <div class="card-actions">
-          <button class="btn" id="grid-place" title="Shortcut: G" data-hotkey="grid" data-title="Shortcut: {key}"><span data-tool="heatmap roi" id="grid-place-label">Place grid corners</span><span data-tool="map" hidden>Place plot area</span></button>
-          <button class="btn subtle" id="grid-zoom" title="Zoom to the grid or plot area">Zoom to</button>
-          <button class="btn danger" id="grid-clear" data-tool="roi" hidden>Remove</button>
-        </div>
         <div class="fields" data-tool="heatmap roi">
           <label class="field">Rows <input id="grid-rows" type="number" min="1" max="1000"></label>
           <label class="field">Columns <input id="grid-cols" type="number" min="1" max="1000"></label>
-          <button class="btn" id="grid-detect" title="Guess rows and columns from the image inside the grid">Detect</button>
         </div>
+        <button class="btn block" id="grid-detect" data-icon="detect" data-tool="heatmap roi" title="Guess rows and columns from the image inside the grid">Detect rows and columns</button>
         <details class="options" data-tool="heatmap">
           <summary>Row and column labels <span id="grid-labels-note" class="summary-note"></span></summary>
           <div class="options-body">
-            <div class="card-actions">
-              <button class="btn" id="grid-read-labels" title="Send the current view to a vision LLM (Agent card, Label reader) and fill in both lists for this panel. Zoom so the grid and its labels are visible.">Read labels with AI</button>
-            </div>
+            <button class="btn primary block" id="grid-read-labels" data-icon="ai" title="Send the current view to a vision LLM (Agent card, Label reader) and fill in both lists for this panel. Zoom so the grid and its labels are visible.">Read labels with AI</button>
             <label class="field" title="OpenRouter model id; needs vision and tools. Key and base URL are the Agent's (Settings → Agent).">Model
               <input id="agent-labels" type="text" list="agent-llm-list" spellcheck="false">
             </label>
             <p class="hint" id="grid-read-labels-hint"></p>
-            <label class="field">Rows (top → bottom)
+            <label class="field stack">Rows (top → bottom)
               <textarea id="grid-row-labels" rows="3" spellcheck="false" placeholder="One per line or comma-separated; blank = R1, R2, …"></textarea>
             </label>
-            <label class="field">Columns (left → right)
+            <label class="field stack">Columns (left → right)
               <textarea id="grid-col-labels" rows="3" spellcheck="false" placeholder="One per line or comma-separated; blank = C1, C2, …"></textarea>
             </label>
           </div>
@@ -202,7 +193,7 @@
         <details class="options" data-tool="roi" hidden>
           <summary>Box names <span id="grid-boxes-note" class="summary-note"></span></summary>
           <div class="options-body">
-            <label class="field">Reading order: left → right, top → bottom
+            <label class="field stack">Box names, left → right, top → bottom
               <textarea id="grid-box-labels" rows="3" spellcheck="false" placeholder="One per line or comma-separated, e.g. B-a11, B-a16, C-a9 …; blank = R1 C1, R1 C2, …"></textarea>
             </label>
           </div>
@@ -210,7 +201,7 @@
         <details class="options">
           <summary>Options</summary>
           <div class="options-body">
-            <div class="fields wide" data-tool="heatmap">
+            <div class="fields" data-tool="heatmap">
               <label class="field" title="Shape of the sampled area in each cell">Shape
                 <select id="grid-shape">
                   <option value="square">Square</option>
@@ -231,13 +222,12 @@
           <h2><span class="step-dot bar-dot"></span>Colorbar</h2>
           <span id="bar-state" class="badge"></span>
         </div>
-        <div class="card-actions">
-          <button class="btn" id="bar-place" title="Shortcut: B" data-hotkey="colorbar" data-title="Shortcut: {key}">Place colorbar ends</button>
-          <button class="btn" id="tick-add" title="Shortcut: T" data-hotkey="ticks" data-title="Shortcut: {key}">Add ticks</button>
-          <button class="btn" id="tick-type" title="Add a tick by typing its value and its position in % along the colorbar (0% at the start, 100% at the end)">Type a tick</button>
-          <button class="btn subtle" id="bar-zoom" title="Zoom to colorbar">Zoom to</button>
+        <button class="btn primary block" id="bar-place" data-icon="place" title="Shortcut: B" data-hotkey="colorbar" data-title="Shortcut: {key}">Place colorbar ends</button>
+        <div class="card-actions split">
+          <button class="btn" id="tick-add" data-icon="plus" title="Shortcut: T" data-hotkey="ticks" data-title="Shortcut: {key}">Add ticks</button>
+          <button class="btn" id="tick-type" data-icon="type" title="Add a tick by typing its value and its position in % along the colorbar (0% at the start, 100% at the end)">Type a tick</button>
         </div>
-        <div class="fields wide">
+        <div class="fields">
           <label class="field" title="Read the colors from the colorbar in the figure, or from a known colormap when the figure's bar is missing, small or compressed">Colors
             <select id="bar-source">
               <option value="figure">Colorbar in the figure</option>
@@ -245,8 +235,8 @@
             </select>
           </label>
         </div>
-        <div id="bar-cmap" class="row bar-cmap" hidden>
-          <div class="field grow"><span>Colormap</span><div id="bar-cmap-pick"></div></div>
+        <div id="bar-cmap" class="fields bar-cmap" hidden>
+          <div class="field"><span>Colormap</span><div id="bar-cmap-pick"></div></div>
           <label class="check" title="Run the colormap from its end to its start"><input id="bar-cmap-rev" type="checkbox"> Reversed</label>
         </div>
         <canvas id="bar-strip" class="bar-strip" width="600" height="28" aria-label="Sampled colorbar"></canvas>
@@ -255,7 +245,6 @@
           <thead><tr><th>Tick value</th><th title="0% at the start of the colorbar (or colormap), 100% at its end">Position</th><th></th></tr></thead>
           <tbody id="tick-list"></tbody>
         </table>
-        <p id="tick-empty" class="hint">No ticks yet. Use <b>Add ticks</b>, click a labelled tick on the bar, type its value, repeat.</p>
         <label class="field">Scale
           <select id="bar-scale">
             <option value="linear">Linear</option>
@@ -283,53 +272,58 @@
           <h2><span class="step-dot roi-dot"></span>Regions</h2>
           <span id="roi-state" class="badge"></span>
         </div>
-        <div class="card-actions" role="toolbar" aria-label="Draw a region">
+        <div class="card-actions split" role="toolbar" aria-label="Draw a region">
           <button class="btn" id="tool-ellipse" aria-pressed="false" title="Ellipse (E) — hold Shift for a circle" data-hotkey="ellipse" data-title="Ellipse ({key}) — hold Shift for a circle"><span class="shape-icon ellipse" aria-hidden="true"></span>Ellipse</button>
           <button class="btn" id="tool-rect" aria-pressed="false" title="Rectangle (R) — hold Shift for a square" data-hotkey="rect" data-title="Rectangle ({key}) — hold Shift for a square"><span class="shape-icon rect" aria-hidden="true"></span>Rectangle</button>
           <button class="btn" id="tool-polygon" aria-pressed="false" title="Polygon (P) — click points, then click the first point or press Enter" data-hotkey="polygon" data-title="Polygon ({key}) — click points, then click the first point or press Enter"><span class="shape-icon polygon" aria-hidden="true"></span>Polygon</button>
         </div>
         <label class="check"><input id="roi-replicate" type="checkbox" checked> Copy new regions into every grid box</label>
         <ul id="roi-list" class="chip-list"></ul>
-        <p id="roi-empty" class="hint">No regions yet. Pick a shape and draw it on the image.</p>
-        <div id="roi-edit" class="row" hidden>
-          <label class="field grow">Selected region <input id="roi-name" type="text" spellcheck="false"></label>
-          <button class="btn" id="roi-reset" title="Put every copy back at the shared position">Reset nudges</button>
-          <button class="btn danger" id="roi-delete" title="Delete (Delete or Backspace; ⌫ on a Mac)">Delete</button>
+        <div id="roi-edit" hidden>
+          <label class="field" title="Drag a copy to nudge it in its box; Alt-drag moves all copies. Handles resize the shape everywhere.">Region name <input id="roi-name" type="text" spellcheck="false"></label>
+          <div class="card-actions">
+            <button class="btn" id="roi-reset" data-icon="reset" title="Put every copy back at the shared position">Reset nudges</button>
+            <button class="btn danger" id="roi-delete" data-icon="trash" title="Delete (Delete or Backspace; ⌫ on a Mac)">Delete</button>
+          </div>
         </div>
-        <p id="roi-hint" class="hint">Drag a copy to nudge it in its box; Alt-drag moves all copies. Handles resize the shape everywhere.</p>
       </section>
 
       <section class="card" id="sec-scale" hidden>
         <div class="card-head">
           <h2>Scale <span class="tag">optional</span></h2>
           <span id="scale-state" class="badge"></span>
+          <div class="head-actions">
+            <button class="btn danger icon-only" id="scale-clear" data-icon="trash" title="Remove the scale bar" aria-label="Remove the scale bar"></button>
+          </div>
         </div>
-        <div class="card-actions">
-          <button class="btn" id="scale-place">Measure scale bar</button>
-          <button class="btn danger" id="scale-clear">Remove</button>
-        </div>
+        <button class="btn block" id="scale-place" data-icon="ruler" title="Click both ends of a scale bar (or any known distance), then type its length">Measure scale bar</button>
         <div class="fields">
-          <label class="field">Length <input id="scale-length" type="number" min="0" step="any" value="1"></label>
-          <label class="field">Unit
-            <select id="scale-unit"><option value="cm">cm</option><option value="mm">mm</option><option value="µm">µm</option><option value="nm">nm</option></select>
-          </label>
+          <div class="field"><label for="scale-length">Length</label>
+            <span class="input-pair">
+              <input id="scale-length" type="number" min="0" step="any" value="1">
+              <select id="scale-unit" aria-label="Unit"><option value="cm">cm</option><option value="mm">mm</option><option value="µm">µm</option><option value="nm">nm</option></select>
+            </span>
+          </div>
         </div>
-        <p id="scale-info" class="hint">Click both ends of a scale bar (or any known distance) to report areas in real units.</p>
+        <p id="scale-info" class="hint"></p>
       </section>
 
       <section class="card" id="sec-axes" hidden>
         <div class="card-head">
-          <h2>Axes <span class="tag">optional</span></h2>
+          <h2 title="Click labelled ticks on each axis and type their values. Without them, coordinates are pixels from the plot's top-left corner.">Axes <span class="tag">optional</span></h2>
           <span id="axes-state" class="badge"></span>
         </div>
+        <div class="card-actions split">
+          <button class="btn" id="axis-x-add" data-icon="plus" aria-pressed="false" title="Shortcut: X" data-hotkey="xtick" data-title="Shortcut: {key}">Add x ticks</button>
+          <button class="btn" id="axis-y-add" data-icon="plus" aria-pressed="false" title="Shortcut: Y" data-hotkey="ytick" data-title="Shortcut: {key}">Add y ticks</button>
+        </div>
         <div class="axis-block">
-          <div class="card-actions">
-            <button class="btn" id="axis-x-add" aria-pressed="false" title="Shortcut: X" data-hotkey="xtick" data-title="Shortcut: {key}">Add x ticks</button>
-            <select id="axis-x-scale" aria-label="X axis scale">
+          <label class="field">X scale
+            <select id="axis-x-scale">
               <option value="linear">Linear</option>
-              <option value="log10">Log₁₀</option>
+              <option value="log10">Log10</option>
             </select>
-          </div>
+          </label>
           <table class="ticks" hidden>
             <thead><tr><th>X value</th><th>Position</th><th></th></tr></thead>
             <tbody id="axis-x-ticks"></tbody>
@@ -337,39 +331,36 @@
           <p id="axis-x-problem" class="hint"></p>
         </div>
         <div class="axis-block">
-          <div class="card-actions">
-            <button class="btn" id="axis-y-add" aria-pressed="false" title="Shortcut: Y" data-hotkey="ytick" data-title="Shortcut: {key}">Add y ticks</button>
-            <select id="axis-y-scale" aria-label="Y axis scale">
+          <label class="field">Y scale
+            <select id="axis-y-scale">
               <option value="linear">Linear</option>
-              <option value="log10">Log₁₀</option>
+              <option value="log10">Log10</option>
             </select>
-          </div>
+          </label>
           <table class="ticks" hidden>
             <thead><tr><th>Y value</th><th>Position</th><th></th></tr></thead>
             <tbody id="axis-y-ticks"></tbody>
           </table>
           <p id="axis-y-problem" class="hint"></p>
         </div>
-        <p class="hint">Click labelled ticks on each axis and type their values. Without them, coordinates are pixels from the plot's top-left corner.</p>
       </section>
 
       <section class="card" id="sec-profiles" hidden>
         <div class="card-head">
           <h2>Profiles</h2>
           <span id="profile-state" class="badge"></span>
+          <div class="head-actions">
+            <button class="btn danger icon-only" id="profile-delete" data-icon="trash" title="Delete (Delete or Backspace; ⌫ on a Mac)" aria-label="Delete (Delete or Backspace; ⌫ on a Mac)" hidden></button>
+          </div>
         </div>
+        <button class="btn block" id="profile-add" data-icon="line" aria-pressed="false" title="Draw a line to read values along it. Shortcut: L" data-hotkey="profile" data-title="Draw a line to read values along it. Shortcut: {key}">Draw profile</button>
         <div class="card-actions">
-          <button class="btn" id="profile-add" aria-pressed="false" title="Shortcut: L" data-hotkey="profile" data-title="Shortcut: {key}">Draw profile</button>
-          <button class="btn subtle" id="profile-all" title="Overlay all profiles in the plot" hidden>Select all</button>
+          <button class="btn subtle" id="profile-all" data-icon="layers" title="Overlay all profiles in the plot; Shift-click chips or lines to pick some" hidden>Overlay all</button>
         </div>
         <ul id="profile-list" class="chip-list"></ul>
         <div id="profile-edit" hidden>
-          <div class="row">
-            <label class="field grow">Name <input id="profile-name" type="text" spellcheck="false"></label>
-            <button class="btn subtle" id="profile-zoom" title="Zoom to the profile">Zoom to</button>
-            <button class="btn danger" id="profile-delete" title="Delete (Delete or Backspace; ⌫ on a Mac)">Delete</button>
-          </div>
           <div class="fields">
+            <label class="field">Name <input id="profile-name" type="text" spellcheck="false"></label>
             <label class="field" id="profile-length-field"><span id="profile-length-label">Length (px)</span> <input id="profile-length" type="number" min="0" step="any" class="num"></label>
             <label class="field" title="Values are averaged over this many pixels on each side of the line">Width (± px) <input id="profile-width" type="number" min="0" max="50" step="1" class="num"></label>
           </div>
@@ -389,18 +380,13 @@
             </select></label>
             <label class="field" title="How fast the profile moves when swept, in page pixels per second">Speed (px/s) <input id="profile-sweep-speed" type="number" min="1" max="500" step="any" value="20" class="num"></label>
           </div>
-          <div class="row tight">
-            <button class="btn" id="profile-sweep" aria-pressed="false" title="Move the profile across the plot area, perpendicular to itself, and back (Shortcut: K)" data-hotkey="sweepProfile" data-title="Move the profile across the plot area, perpendicular to itself, and back (Shortcut: {key})">Sweep</button>
-            <label class="check" title="Keep going until no part of the line is inside the plot area, then turn. Off: turn as soon as the line touches an edge.">
-              <input id="profile-sweep-runoff" type="checkbox"> Run off the edge</label>
-          </div>
+          <label class="check" title="Keep going until no part of the line is inside the plot area, then turn. Off: turn as soon as the line touches an edge.">
+            <input id="profile-sweep-runoff" type="checkbox"> Run off the edge</label>
+          <button class="btn primary block" id="profile-sweep" data-icon="play" aria-pressed="false" title="Move the profile across the plot area, perpendicular to itself, and back (Shortcut: K)" data-hotkey="sweepProfile" data-title="Move the profile across the plot area, perpendicular to itself, and back (Shortcut: {key})">Sweep</button>
           <p id="profile-sweep-at" class="profile-at" title="Where the profile's midpoint is, across the direction it sweeps (units as in Coordinates)"></p>
           <canvas id="profile-plot" class="profile-plot" aria-label="Values along the selected profiles"></canvas>
-          <div class="card-actions">
-            <button class="btn" id="profile-csv">Download profile CSV</button>
-          </div>
+          <button class="btn block" id="profile-csv" data-icon="download">Download profile CSV</button>
         </div>
-        <p id="profile-hint" class="hint"></p>
       </section>
 
       <section class="card" id="sec-map-results" hidden>
@@ -420,9 +406,9 @@
         <p id="map-problem" class="notice"></p>
         <p id="map-summary" class="hint"></p>
         <p id="map-axis-hint" class="hint"></p>
-        <div class="card-actions">
-          <button class="btn primary" id="map-dl-csv">Download CSV</button>
-          <button class="btn" id="map-dl-long">Long CSV</button>
+        <div class="card-actions split">
+          <button class="btn primary" id="map-dl-csv" data-icon="download" title="The value matrix: one row per bin row, one column per bin column">Download CSV</button>
+          <button class="btn" id="map-dl-long" data-icon="download" title="One line per bin with its coordinates, ΔE and flags">Long CSV</button>
         </div>
       </section>
 
@@ -434,10 +420,10 @@
         <p id="result-problem" class="notice"></p>
         <p id="result-summary" class="hint"></p>
         <div class="table-wrap"><table id="result-table" class="result-table"></table></div>
-        <div class="card-actions">
-          <button class="btn primary" id="dl-csv">Download CSV</button>
-          <button class="btn" id="dl-long">Long CSV</button>
-          <button class="btn" id="copy-tsv">Copy table</button>
+        <button class="btn primary block" id="dl-csv" data-icon="download" title="The table as shown: one row per grid row">Download CSV</button>
+        <div class="card-actions split">
+          <button class="btn" id="dl-long" data-icon="download" title="One line per cell with its color, ΔE and flag">Long CSV</button>
+          <button class="btn" id="copy-tsv" data-icon="copy" title="Copy the table to paste into a spreadsheet">Copy table</button>
         </div>
       </section>
 
@@ -462,9 +448,9 @@
           </select>
         </label>
         <div class="table-wrap"><table id="roi-result-table" class="result-table"></table></div>
-        <div class="card-actions">
-          <button class="btn primary" id="roi-dl-csv">Download CSV</button>
-          <button class="btn" id="roi-copy-tsv">Copy table</button>
+        <div class="card-actions split">
+          <button class="btn primary" id="roi-dl-csv" data-icon="download">Download CSV</button>
+          <button class="btn" id="roi-copy-tsv" data-icon="copy" title="Copy the table to paste into a spreadsheet">Copy table</button>
         </div>
       </section>
     </aside>
@@ -495,10 +481,10 @@
       <div class="viewbar" id="view-tools" hidden>
         <span id="source-info" class="source-info"></span>
         <span id="pdf-controls" class="viewbar-group" hidden>
-          <button class="btn icon" id="page-prev" aria-label="Previous page" title="Previous page (←)" data-hotkey="prevPage" data-title="Previous page">‹</button>
+          <button class="btn icon" id="page-prev" data-no-cap aria-label="Previous page" title="Previous page (←)" data-hotkey="prevPage" data-title="Previous page">‹</button>
           <input id="page-input" type="number" min="1" value="1" class="num" aria-label="Page">
           <span id="page-count" class="muted small"></span>
-          <button class="btn icon" id="page-next" aria-label="Next page" title="Next page (→)" data-hotkey="nextPage" data-title="Next page">›</button>
+          <button class="btn icon" id="page-next" data-no-cap aria-label="Next page" title="Next page (→)" data-hotkey="nextPage" data-title="Next page">›</button>
           <select id="scale-select" title="Resolution" aria-label="Resolution">
             <option value="1">72 dpi (1×)</option>
             <option value="2">144 dpi (2×)</option>
@@ -509,10 +495,10 @@
           </select>
         </span>
         <span class="viewbar-group zoom-group">
-          <button class="btn icon" id="zoom-out" title="Zoom out (−)" data-hotkey="zoomOut" data-title="Zoom out">−</button>
+          <button class="btn icon" id="zoom-out" data-no-cap title="Zoom out (−)" data-hotkey="zoomOut" data-title="Zoom out">−</button>
           <input id="zoom-level" class="zoom-level" type="text" inputmode="decimal" value="100%" title="Zoom (100% = actual size); type a value and press Enter" aria-label="Zoom percent">
-          <button class="btn icon" id="zoom-in" title="Zoom in (+)" data-hotkey="zoomIn" data-title="Zoom in">+</button>
-          <button class="btn small" id="zoom-fit" title="Fit (F)" data-hotkey="fit" data-title="Fit">Fit</button>
+          <button class="btn icon" id="zoom-in" data-no-cap title="Zoom in (+)" data-hotkey="zoomIn" data-title="Zoom in">+</button>
+          <button class="btn small" id="zoom-fit" data-no-cap title="Fit (F)" data-hotkey="fit" data-title="Fit">Fit</button>
           <button class="btn small" id="toggle-crosshair" title="Crosshair lines across the canvas (C)" data-hotkey="crosshair" data-title="Crosshair lines across the canvas" aria-pressed="false">Crosshair</button>
           <button class="btn small active" id="toggle-overlay" title="Show the grid and colorbar overlay" aria-pressed="true">Overlay</button>
         </span>

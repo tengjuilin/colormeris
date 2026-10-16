@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { roiCsv, formatNumber, pixelArea, metricValue, shortNumber, roiTableModel } = CM;
+  const { roiCsv, formatNumber, metricValue, shortNumber, roiTableModel } = CM;
 
   // ROI tool, DOM: the sidebar cards (Regions, Scale bar, Results) and their
   // buttons, the results table, CSV download and TSV copy. Set up by roi-tool.js.
@@ -62,8 +62,6 @@
           }),
         );
       }
-      $('roi-empty').hidden = panel.rois.length > 0;
-      $('roi-hint').hidden = !panel.rois.length;
       const sel = rctx.selectedRoi();
       $('roi-edit').hidden = !sel;
       if (sel) {
@@ -72,7 +70,6 @@
       }
       const n = panel.rois.length;
       ws.setBadge($('roi-state'), n ? `${n} region${n === 1 ? '' : 's'}` : 'none', n > 0);
-      $('grid-clear').disabled = !panel.grid.corners;
     }
 
     function renderScale(panel) {
@@ -82,9 +79,9 @@
         ws.setValue($('scale-length'), sc.length);
         ws.setValue($('scale-unit'), sc.unit);
         const px = Math.hypot(sc.p2.x - sc.p1.x, sc.p2.y - sc.p1.y);
-        $('scale-info').textContent = `${px.toFixed(1)} px = ${sc.length} ${sc.unit} · ${(px / sc.length).toFixed(2)} px per ${sc.unit} · one pixel = ${formatNumber(pixelArea(sc))} ${sc.unit}²`;
+        $('scale-info').textContent = `${px.toFixed(1)} px = ${sc.length} ${sc.unit}`;
       } else {
-        $('scale-info').textContent = 'Click both ends of a scale bar (or any known distance) to report areas in real units.';
+        $('scale-info').textContent = '';
       }
       ws.setBadge($('scale-state'), sc ? `${sc.length} ${sc.unit}` : 'pixels', !!sc);
       for (const opt of $('result-metric').querySelectorAll('[data-scaled]')) {
@@ -181,11 +178,6 @@
       if (roi) ws.commit((p) => (p.rois.find((r) => r.id === roi.id).offsets = {}));
     });
     $('roi-delete').addEventListener('click', () => rctx.deleteSelected());
-    $('grid-clear').addEventListener('click', () => {
-      const panel = ws.activePanel();
-      if (panel.rois.some((r) => r.replicate) && !confirm('Regions copied into every box will have no copies without a grid. Remove the grid?')) return;
-      ws.commit((p) => (p.grid.corners = null));
-    });
     $('scale-place').addEventListener('click', () => ws.setMode(app.mode?.type === 'scale' ? null : 'scale'));
     $('scale-clear').addEventListener('click', () => ws.commit((p) => (p.scale = null)));
     ws.bindNumber('scale-length', (p, v) => {

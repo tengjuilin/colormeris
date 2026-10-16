@@ -18,20 +18,15 @@
     const agent = () => settingsUi.get().agent;
     $('agent-llm').value = agent().llm || DEFAULT_LLM;
     $('agent-labels').value = agent().labels || DEFAULT_LABELS_MODEL;
-    if (agent().key) $('agent-settings').open = false;
-    // The folded Models line still shows which LLM will run.
-    const showModel = () => ($('agent-model-note').textContent = $('agent-llm').value.trim() || DEFAULT_LLM);
-    showModel();
     for (const [id, key] of [['agent-llm', 'llm'], ['agent-labels', 'labels']]) {
       $(id).addEventListener('change', () => {
         agent()[key] = $(id).value.trim();
         settingsUi.save();
-        showModel();
       });
     }
     settingsUi.onChange(() => updateButtons());
     $('agent-open-settings').addEventListener('click', () => settingsUi.open('agent'));
-    $('agent-pages').addEventListener('change', () => ($('agent-range').hidden = $('agent-pages').value !== 'range'));
+    $('agent-pages').addEventListener('change', () => ($('agent-range-field').hidden = $('agent-pages').value !== 'range'));
 
     // ------------------------------------------------------------ SDK
 
@@ -76,7 +71,7 @@
       $('agent-badge').textContent = running ? 'running' : 'off';
       $('agent-badge').className = `badge${running ? ' todo' : ''}`;
       if (!running) {
-        const why = !app.sourceCanvas ? 'Open a file first.' : !hasKeyOrProxy() ? 'Add your OpenRouter key in Settings.' : '';
+        const why = !app.sourceCanvas ? 'Open a file first.' : '';
         if (why || $('agent-status').dataset.idle !== 'done') {
           $('agent-status').textContent = why;
           $('agent-status').dataset.idle = '';

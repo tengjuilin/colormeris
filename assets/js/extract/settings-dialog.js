@@ -299,10 +299,13 @@
     });
 
     // Tooltips name the current keys: data-title, with {key} where the keys go
-    // (otherwise they are added in parentheses).
+    // (otherwise they are added in parentheses). Buttons also show the first
+    // key as a key cap (data-key, drawn by CSS).
     function updateTitles() {
       for (const el of document.querySelectorAll('[data-hotkey]')) {
-        const keys = (settings.hotkeys[el.dataset.hotkey] || []).map(label).join(' or ');
+        const combos = settings.hotkeys[el.dataset.hotkey] || [];
+        el.dataset.key = combos.length ? label(combos[0]) : '';
+        const keys = combos.map(label).join(' or ');
         const base = el.dataset.title || '';
         el.title = base.includes('{key}') ? (keys ? base.replace('{key}', keys) : base.replace(/\s*[:(]?\s*\{key\}\)?/, '')) : keys ? `${base} (${keys})` : base;
       }

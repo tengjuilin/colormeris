@@ -24,14 +24,12 @@
       $('grid-labels-note').textContent = g.rowLabels.length || g.colLabels.length ? 'custom' : 'R1…, C1…';
       $('grid-boxes-note').textContent = g.boxLabels.length ? `${g.boxLabels.length} names` : 'R1 C1, …';
       // ROI works without a grid, so its grid is never the next step.
-      w.setNextStep($('grid-place'), !g.corners && (w.tool().kind === 'heatmap' || plotArea));
-      $('grid-zoom').disabled = !g.corners;
       $('grid-detect').disabled = !g.corners;
+      $('grid-clear').disabled = !g.corners;
       if ($('grid-read-labels')) $('grid-read-labels').disabled = !g.corners || $('grid-read-labels').dataset.busy === '1';
     }
 
     $('grid-place').addEventListener('click', () => w.setMode(app.mode?.type === 'grid' ? null : 'grid'));
-    $('grid-zoom').addEventListener('click', () => w.activePanel().grid.corners && w.zoomToPoints(w.activePanel().grid.corners));
     w.bindNumber('grid-rows', (p, v) => {
       p.grid.rows = Math.min(1000, Math.max(1, Math.round(v)));
       p.grid.autoSize = false;
@@ -39,6 +37,11 @@
     w.bindNumber('grid-cols', (p, v) => {
       p.grid.cols = Math.min(1000, Math.max(1, Math.round(v)));
       p.grid.autoSize = false;
+    });
+    $('grid-clear').addEventListener('click', () => {
+      const panel = w.activePanel();
+      if (panel.rois?.some((r) => r.replicate) && !confirm('Regions copied into every box will have no copies without a grid. Remove the grid?')) return;
+      w.commit((p) => (p.grid.corners = null));
     });
     $('grid-detect').addEventListener('click', () => w.commit((p) => w.applyDetectedSize(p)));
     if ($('grid-row-labels')) w.bindText('grid-row-labels', (p, v) => (p.grid.rowLabels = parseLabelText(v)));

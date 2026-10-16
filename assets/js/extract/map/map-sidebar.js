@@ -31,9 +31,9 @@
         ws.setValue($('scale-length'), sc.length);
         ws.setValue($('scale-unit'), sc.unit);
         const px = Math.hypot(sc.p2.x - sc.p1.x, sc.p2.y - sc.p1.y);
-        $('scale-info').textContent = `${px.toFixed(1)} px = ${sc.length} ${sc.unit} · ${(px / sc.length).toFixed(2)} px per ${sc.unit}`;
+        $('scale-info').textContent = `${px.toFixed(1)} px = ${sc.length} ${sc.unit}`;
       } else {
-        $('scale-info').textContent = 'Click both ends of a scale bar (or any known distance) to plot profiles against real lengths.';
+        $('scale-info').textContent = '';
       }
       ws.setBadge($('scale-state'), sc ? `${sc.length} ${sc.unit}` : 'pixels', !!sc);
     }
@@ -176,13 +176,9 @@
       const n = profiles.length;
       ws.setBadge($('profile-state'), n ? `${n} profile${n === 1 ? '' : 's'}` : 'none', n > 0);
       $('profile-all').hidden = n < 2 || shown.length === n;
-      $('profile-hint').textContent = !n
-        ? 'No profiles yet. Draw a line to read values along it, e.g. a spectrum at one time or a line scan across a cell.'
-        : n > 1 && shown.length === 1
-          ? 'Shift-click profiles (chips or lines) to overlay them in the plot.'
-          : '';
       const sel = mctx.selectedProfile();
       $('profile-edit').hidden = !sel;
+      $('profile-delete').hidden = !sel;
       $('profile-view').hidden = !sel;
       if (!sel) return;
       ws.setValue($('profile-name'), sel.name);
@@ -501,6 +497,7 @@
       // Also when another tool's sidebar is shown, so the button is right on return.
       ws.setPressed($('profile-sweep'), false);
       $('profile-sweep').textContent = 'Sweep';
+      $('profile-sweep').dataset.icon = 'play';
       ws.changed();
     }
 
@@ -515,7 +512,11 @@
       const btn = $('profile-sweep');
       const on = !!state.sweep;
       ws.setPressed(btn, on);
-      btn.textContent = on ? 'Pause' : 'Sweep';
+      // Runs every frame while sweeping: touch the label only when it changes,
+      // so a press on the button is never cut short by a replaced text node.
+      const label = on ? 'Pause' : 'Sweep';
+      if (btn.textContent !== label) btn.textContent = label;
+      btn.dataset.icon = on ? 'pause' : 'play';
       btn.disabled = !on && !panel.grid.corners;
       const at = $('profile-sweep-at');
       if (!panel.grid.corners) {
@@ -603,10 +604,6 @@
       ws.changed();
     });
     $('profile-delete').addEventListener('click', () => mctx.deleteSelected());
-    $('profile-zoom').addEventListener('click', () => {
-      const l = mctx.selectedProfile();
-      if (l) ws.zoomToPoints([l.a, l.b]);
-    });
     $('profile-sweep').addEventListener('click', toggleSweep);
     // Switching edges mid-sweep: the new range around where it started.
     $('profile-sweep-runoff').addEventListener('change', (e) => {

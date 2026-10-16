@@ -24,16 +24,7 @@
       w.setBadge($('bar-state'), !ready ? 'not placed' : known ? `${cb.colormap.name}${cb.colormap.reversed ? '_r' : ''} · ${ticksText}` : ticksText, ready && validTicks >= 2);
       $('tick-add').disabled = !cb.start;
       $('tick-type').disabled = !ready;
-      // With a known colormap the bar in the figure is optional, so typing the
-      // ticks is the next step rather than placing the bar.
-      w.setNextStep($('bar-place'), !ready);
-      w.setNextStep($('tick-add'), !!cb.start && !known && validTicks < 2);
-      w.setNextStep($('tick-type'), known && validTicks < 2);
-      $('bar-zoom').disabled = !cb.start;
       renderSource(cb);
-      $('tick-empty').innerHTML = known
-        ? 'No ticks yet. Use <b>Type a tick</b> and enter a value and its position in % along the colormap, or place the colorbar ends and click its ticks.'
-        : 'No ticks yet. Use <b>Add ticks</b>, click a labelled tick on the bar, type its value, repeat. <b>Type a tick</b> enters a position in % instead.';
       renderTicks(cb);
       renderBarStrip(panel);
       scheduleBarMatch(panel);
@@ -44,7 +35,6 @@
       const ticks = ticksWithT(cb);
       const tbody = $('tick-list');
       const key = ticks.map((k) => k.id).join(',');
-      $('tick-empty').hidden = ticks.length > 0;
       tbody.closest('table').hidden = ticks.length === 0;
       if (key !== tickKey) {
         tickKey = key;
@@ -132,7 +122,9 @@
       const cb = panel.colorbar;
       // Before the panel has results, a known colormap still shows its colors.
       const samples = res.samples || (cb.colormap ? CM.colormapSamples(cb.colormap, 128) : null);
-      if (!samples && (!cb.start || !cb.end || !app.imageData)) return;
+      // No colorbar yet: hide the strip rather than show an empty box.
+      canvas.hidden = !samples && (!cb.start || !cb.end || !app.imageData);
+      if (canvas.hidden) return;
       // Draw the raw sampled colors even when ticks are incomplete.
       const width = canvas.width;
       const h = canvas.height;
@@ -241,10 +233,6 @@
       w.setMode('colorbar');
     });
     $('tick-add').addEventListener('click', () => w.setMode(app.mode?.type === 'tick' ? null : 'tick'));
-    $('bar-zoom').addEventListener('click', () => {
-      const cb = w.activePanel().colorbar;
-      if (cb.start) w.zoomToPoints([cb.start, cb.end]);
-    });
     // ---------------------------------------------------------------- known colormap
 
     // The colormap viewer's picker (colormaps/map-picker.js) needs a few of the

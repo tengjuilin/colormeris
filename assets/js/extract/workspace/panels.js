@@ -38,7 +38,9 @@
         }),
       );
       w.setValue($('panel-name'), active.name);
-      $('panel-delete').textContent = w.pagePanels().length < 2 ? 'Clear' : 'Delete';
+      const del = $('panel-delete');
+      del.title = w.pagePanels().length < 2 ? 'Clear the panel' : 'Delete the panel';
+      del.setAttribute('aria-label', del.title);
       renderOtherPages();
     }
 

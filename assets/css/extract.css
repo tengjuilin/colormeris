@@ -29,7 +29,9 @@
   gap: 10px;
 }
 .card[hidden] { display: none; }
-.card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.card-head { display: flex; align-items: center; gap: 8px; }
+/* The status badge sits right after the title; head buttons and toggles go to the right. */
+.card-head > .head-actions, .card-head > .check:not(.check ~ .check) { margin-left: auto; }
 
 .help { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; }
 .help ol { padding-left: 18px; margin: 8px 0; }

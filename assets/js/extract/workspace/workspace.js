@@ -225,11 +225,6 @@
     el.setAttribute('aria-pressed', String(on));
   }
 
-  // The next step of an unfinished panel is the card's primary button.
-  function setNextStep(el, on) {
-    el.classList.toggle('primary', on);
-  }
-
   // ---------------------------------------------------------------- misc UI
 
   let toastTimer;
@@ -350,7 +345,6 @@
     setValue,
     setBadge,
     setPressed,
-    setNextStep,
     toast,
     status,
     zoomToPoints,
