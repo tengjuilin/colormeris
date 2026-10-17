@@ -74,7 +74,14 @@ test('CSV helpers', () => {
   assert.equal(toWideCsv(panel, result), 'row\\col,A,B\nR1,1,2\nR2,3,4.5\n');
   const long = toLongCsv([{ panel, result }]).trim().split('\n');
   assert.equal(long.length, 5);
-  assert.equal(long[4], 'e,1,R2,B,4.5,1,2,3,0.50,0');
+  assert.equal(long[0], 'panel,page,row,col,value,r,g,b,deltaE,flagged,status,bound,reason');
+  assert.equal(long[4], 'e,1,R2,B,4.5,1,2,3,0.50,0,ok,,');
+  // Off-map cells have no value and say why; bounds say which way.
+  const off = { value: NaN, rgb: [128, 128, 128], deltaE: 7.2, flagged: true, status: 'off-map', reason: 'gray' };
+  const low = { value: 0, rgb: [250, 250, 250], deltaE: 4, flagged: false, status: 'clamped', end: 'start', open: 'below' };
+  const lines = toLongCsv([{ panel, result: { rows: 1, cols: 2, cells: [[off, low]] } }]).trim().split('\n');
+  assert.equal(lines[1], 'e,1,R1,A,,128,128,128,7.20,1,off-map,,gray');
+  assert.equal(lines[2], 'e,1,R1,B,0,250,250,250,4.00,0,clamped,<=,');
 });
 
 test('panels keep their page; older files fall back to source.page', () => {
@@ -217,4 +224,13 @@ test('grid anchor and shape round-trip; unknown or missing values fall back to c
   const r = parseProject(json).panels[0];
   assert.equal(r.grid.anchor, 'corners');
   assert.equal(r.grid.shape, 'square');
+});
+
+test('every colorbar scale survives a round trip; unknown ones fall back to linear', () => {
+  for (const scale of [...CM.SCALES, 'cubic']) {
+    const project = createProject();
+    project.panels[0].colorbar.scale = scale;
+    const back = parseProject(JSON.parse(JSON.stringify(serializeProject(project)))).panels[0].colorbar;
+    assert.equal(back.scale, scale === 'cubic' ? 'linear' : scale);
+  }
 });

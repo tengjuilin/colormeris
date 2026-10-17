@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { ticksWithT, pointAtT, colorAtT, readPixel, rgbToHex, makeValueFn, sampleColorbar } = CM;
+  const { ticksWithT, pointAtT, colorAtT, readPixel, rgbToHex, makeValueFn, sampleColorbar, isLogScale } = CM;
 
   // The Colorbar card: ends, the tick table, the sampled strip and the
   // suggested reference colormap. The colors come from the bar in the figure
@@ -287,7 +287,7 @@
       const cb = w.activePanel().colorbar;
       const addEnds = !cb.ticks.length;
       const ids = addEnds ? [w.newTickId(), w.newTickId()] : [];
-      const [lo, hi] = cb.scale === 'log10' ? [1, 10] : [0, 1];
+      const [lo, hi] = isLogScale(cb.scale) ? [1, 10] : [0, 1];
       w.commit((p) => {
         p.colorbar.colormap = { name, reversed: !!reversed };
         if (addEnds) p.colorbar.ticks = [{ id: ids[0], t: 0, value: lo }, { id: ids[1], t: 1, value: hi }];

@@ -29,8 +29,11 @@
   }
 
   // Tidy layout with diagnostics, one line per cell. `items` is [{panel, result}].
+  // status: ok, flagged, clamped (past an end of the bar), off-map (no
+  // value; reason gray, hue or far) or empty; bound: <= or >= when the
+  // value is only a bound (past a bar end, or an open end bin).
   function toLongCsv(items) {
-    const lines = [csvLine(['panel', 'page', 'row', 'col', 'value', 'r', 'g', 'b', 'deltaE', 'flagged'])];
+    const lines = [csvLine(['panel', 'page', 'row', 'col', 'value', 'r', 'g', 'b', 'deltaE', 'flagged', 'status', 'bound', 'reason'])];
     for (const { panel, result } of items) {
       if (result.error) continue;
       const rowLabels = effectiveLabels(panel.grid.rowLabels, result.rows, 'R');
@@ -48,6 +51,9 @@
               ...(c.rgb ? c.rgb.map((x) => Math.round(x)) : ['', '', '']),
               Number.isFinite(c.deltaE) ? c.deltaE.toFixed(2) : '',
               c.flagged ? 1 : 0,
+              c.status || (c.empty ? 'empty' : c.flagged ? 'flagged' : 'ok'),
+              c.open === 'below' ? '<=' : c.open === 'above' ? '>=' : '',
+              c.reason || '',
             ]),
           );
         }),

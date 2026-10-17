@@ -125,7 +125,7 @@
     },
     set_tick_value: { description: 'Change a tick\'s value.', mutates: true, args: { type: 'object', properties: { panelId, tickId: { type: 'string', description: 'From add_tick or get_state.' }, value: { type: 'number' } }, required: ['tickId', 'value'] } },
     remove_tick: { description: 'Remove a tick.', mutates: true, args: { type: 'object', properties: { panelId, tickId: { type: 'string', description: 'From add_tick or get_state.' } }, required: ['tickId'] } },
-    set_colorbar_scale: { description: 'linear, or log10 when the tick labels are raw numbers on a logarithmic bar.', mutates: true, args: { type: 'object', properties: { panelId, scale: { enum: ['linear', 'log10'] } }, required: ['scale'] } },
+    set_colorbar_scale: { description: 'linear; log10 when the tick labels are raw numbers on a logarithmic bar; piecewise (or piecewise-log10 for positive values over decades) when the tick values are uneven along the bar, e.g. a binned bar labelled 1e4, 2e4, 2e5 at its steps: values are interpolated between neighbouring ticks only.', mutates: true, args: { type: 'object', properties: { panelId, scale: { enum: CM.SCALES || ['linear', 'log10'] } }, required: ['scale'] } },
     set_settings: {
       description: 'Matching settings.',
       mutates: true,
@@ -342,17 +342,32 @@
     const rowLabels = effectiveLabels(panel.grid.rowLabels, result.rows, 'R');
     const colLabels = effectiveLabels(panel.grid.colLabels, result.cols, 'C');
     const flagged = [];
-    result.cells.forEach((row, r) => row.forEach((c, k) => c.flagged && flagged.push({ row: r, col: k, deltaE: r2(c.deltaE), rgb: [...c.rgb] })));
+    const offMap = [];
+    result.cells.forEach((row, r) =>
+      row.forEach((c, k) => {
+        if (c.status === 'off-map') offMap.push({ row: r, col: k, reason: c.reason, rgb: [...c.rgb] });
+        else if (c.flagged) flagged.push({ row: r, col: k, deltaE: r2(c.deltaE), rgb: [...c.rgb] });
+      }),
+    );
+    // Values that are bounds (past a bar end, or in an open end bin): ≤ or ≥.
+    const bounds = result.cells.map((row) => row.map((c) => (c.open === 'below' ? '<=' : c.open === 'above' ? '>=' : null)));
     return {
       panelId: panel.id,
       tool: 'heatmap',
       rowLabels,
       colLabels,
-      // Empty cells (dot plots without a dot) are null.
+      // Empty cells (dot plots without a dot) and off-map cells (colors not
+      // on the colormap: gray ND cells, a black diagonal) are null.
       values: result.cells.map((row) => row.map((c) => (Number.isFinite(c.value) ? c.value : null))),
+      ...(bounds.some((row) => row.some(Boolean)) ? { bounds } : {}),
       deltaE: result.cells.map((row) => row.map((c) => r2(c.deltaE))),
       maxDeltaE: panel.settings.maxDeltaE,
+      scale: result.scale ?? panel.colorbar.scale,
+      ...(result.counts ? { counts: { ...result.counts }, clampedShare: r2(result.clampedShare) } : {}),
+      // A binned colorbar: each cell takes its bin's middle value.
+      ...(result.bins ? { bins: result.bins.map((b) => ({ value: b.value, open: b.open, rgb: b.rgb.map((x) => Math.round(x)) })) } : {}),
       flagged,
+      offMap,
     };
   }
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeImage, paintHeatmap, paintColorbar, paintDots, VIRIDISH } from '../helpers.js';
+import { makeImage, setPixel, cmap, paintHeatmap, paintColorbar, paintDots, VIRIDISH } from '../helpers.js';
 import CM from '../load.js';
 
 const { extractPanel, panelProblem, createPanel, rectCorners } = CM;
@@ -124,4 +124,69 @@ test('dot centers need two rows and two columns', () => {
   p.grid.corners = rectCorners({ x: 0, y: 0 }, { x: 10, y: 10 });
   p.grid.rows = 1;
   assert.match(panelProblem(p), /at least 2 rows/);
+});
+
+// A 1 × n heatmap of flat cells with the given colors, 20 px each from (20, 20).
+function paintCells(img, colors) {
+  colors.forEach((rgb, c) => {
+    for (let y = 20; y < 60; y++) for (let x = 20 + 20 * c; x < 40 + 20 * c; x++) setPixel(img, x, y, rgb);
+  });
+  return rectCorners({ x: 20, y: 20 }, { x: 20 + 20 * colors.length, y: 60 });
+}
+
+test('binned bar: cells read the middle of their bin, end bins are open', () => {
+  const BINS = [[33, 137, 199], [136, 219, 251], [212, 235, 251], [245, 230, 225], [253, 175, 163], [247, 106, 94], [247, 45, 41]];
+  const img = makeImage(200, 260);
+  // Seven bins from the bottom (y 219) to the top (y 20), labelled at the six inner boundaries.
+  const yAt = (k) => 219 - (k * 199) / 7;
+  for (let y = 20; y <= 219; y++) for (let x = 150; x <= 160; x++) setPixel(img, x, y, BINS[Math.min(6, Math.floor((219 - y) / (199 / 7)))]);
+  const panel = createPanel('binned');
+  panel.grid.corners = paintCells(img, [BINS[0], BINS[2], BINS[3], BINS[6]]);
+  panel.grid.rows = 1;
+  panel.grid.cols = 4;
+  panel.colorbar.start = { x: 155, y: 219 };
+  panel.colorbar.end = { x: 155, y: 20 };
+  const values = [1e4, 2e4, 2e5, 5e5, 1e6, 3e6];
+  panel.colorbar.ticks = values.map((value, i) => ({ x: 155, y: yAt(i + 1), value }));
+  panel.colorbar.scale = 'piecewise-log10';
+  const res = extractPanel(img, panel);
+  assert.equal(res.bins.length, 7);
+  const [low, b2, b3, high] = res.cells[0];
+  assert.deepEqual([low.value, low.open, low.bin], [1e4, 'below', 0]);
+  assert.ok(Math.abs(b2.value / Math.sqrt(2e4 * 2e5) - 1) < 1e-9, `${b2.value}`);
+  assert.ok(Math.abs(b3.value / Math.sqrt(2e5 * 5e5) - 1) < 1e-9, `${b3.value}`);
+  assert.equal(b2.open, undefined);
+  assert.deepEqual([high.value, high.open], [3e6, 'above']);
+  assert.equal(res.counts.open, 2);
+  assert.equal(res.counts.ok, 4);
+});
+
+test('off-map cells have no value and a reason; cells past an end clamp to it', () => {
+  const img = makeImage(200, 260);
+  paintColorbar(img, 150, 160, 20, 219, VIRIDISH);
+  const panel = createPanel('off-map');
+  // On the map, a gray "ND" cell, a magenta one, black, and a deeper purple
+  // than the bar's low end.
+  const cells = [cmap(VIRIDISH, 0.5), [150, 150, 150], [230, 0, 230], [0, 0, 0], [52, 0, 66]];
+  panel.grid.corners = paintCells(img, cells);
+  panel.grid.rows = 1;
+  panel.grid.cols = cells.length;
+  panel.colorbar.start = { x: 155, y: 219 };
+  panel.colorbar.end = { x: 155, y: 20 };
+  panel.colorbar.ticks = [{ x: 155, y: 219, value: 0 }, { x: 155, y: 20, value: 10 }];
+  const res = extractPanel(img, panel);
+  const [ok, gray, magenta, black, deep] = res.cells[0];
+  assert.equal(res.bins, null);
+  assert.equal(ok.status, 'ok');
+  assert.ok(Math.abs(ok.value - 5) < 0.1);
+  for (const c of [gray, magenta, black]) {
+    assert.equal(c.status, 'off-map');
+    assert.ok(Number.isNaN(c.value));
+    assert.equal(c.flagged, true);
+  }
+  assert.equal(gray.reason, 'gray');
+  assert.equal(black.reason, 'gray');
+  assert.deepEqual([deep.status, deep.end, deep.open, deep.value], ['clamped', 'start', 'below', 0]);
+  assert.deepEqual(res.counts, { cells: 5, ok: 1, flagged: 0, clamped: 1, offMap: 3, empty: 0, open: 1 });
+  assert.ok(Math.abs(res.clampedShare - 0.2) < 1e-12);
 });

@@ -51,21 +51,50 @@
     return { x: start.x + t * (end.x - start.x), y: start.y + t * (end.y - start.y) };
   }
 
+  // Colorbar scales. "linear" and "log10" bars have their ticks on one
+  // straight line (in log10 for a log bar). "piecewise" bars do not: binned
+  // bars label bin boundaries with uneven values (1e4, 2e4, 2e5, 5e5 at even
+  // steps), so values are interpolated between neighbouring ticks only, and
+  // a check should not expect one line. "piecewise-log10" interpolates in
+  // log10 between neighbours. The value function is the same for a scale and
+  // its piecewise twin (it always goes tick to tick); the names tell checks
+  // and readers what the figure promises.
+  const SCALES = ['linear', 'log10', 'piecewise', 'piecewise-log10'];
+  const isLogScale = (scale) => scale === 'log10' || scale === 'piecewise-log10';
+  const isPiecewiseScale = (scale) => scale === 'piecewise' || scale === 'piecewise-log10';
+
+  // The piecewise scale for a set of ticks: log10 between neighbours when
+  // every value is positive and they span at least two decades. Such labels
+  // (1e3, 2e3, 5e3, 1e4, 1e5) sit on a log-like axis, and a bin's geometric
+  // middle (6.3e4 for 2e4–2e5) is its middle on that axis; the arithmetic one
+  // (1.1e5) is not. Values with a 0 or a narrow range (0, 3, … 21) stay linear.
+  function piecewiseScaleFor(ticks) {
+    const v = ticks.map((k) => k.value).filter(Number.isFinite);
+    if (!v.length || v.some((x) => x <= 0)) return 'piecewise';
+    return Math.max(...v) / Math.min(...v) >= 100 ? 'piecewise-log10' : 'piecewise';
+  }
+
   // Validates ticks and returns a problem description, or null when usable.
   function tickProblem(ticks, scale) {
     const valid = ticks.filter((k) => Number.isFinite(k.t) && Number.isFinite(k.value));
     if (valid.length < 2) return 'Add at least two ticks with numeric values.';
-    if (scale === 'log10' && valid.some((k) => k.value <= 0)) return 'Log scale needs positive tick values.';
+    if (isLogScale(scale) && valid.some((k) => k.value <= 0)) return 'Log scale needs positive tick values.';
     const ts = new Set(valid.map((k) => k.t.toFixed(6)));
     if (ts.size < 2) return 'Ticks must be at different positions along the bar.';
+    if (isPiecewiseScale(scale)) {
+      // Between neighbours only works when values rise (or fall) all along.
+      const v = [...valid].sort((a, b) => a.t - b.t).map((k) => k.value);
+      const steps = v.slice(1).map((x, i) => Math.sign(x - v[i]));
+      if (steps.some((s) => s !== steps[0]) || !steps[0]) return 'Piecewise scale needs tick values that rise or fall steadily along the bar.';
+    }
     return null;
   }
 
   // Piecewise-linear t → value through the ticks, extrapolated linearly beyond
-  // the outermost ticks. With scale "log10" interpolation happens in log space.
+  // the outermost ticks. With a log scale interpolation happens in log space.
   function makeValueFn(ticks, scale = 'linear') {
     if (tickProblem(ticks, scale)) return null;
-    const log = scale === 'log10';
+    const log = isLogScale(scale);
     const pts = ticks
       .filter((k) => Number.isFinite(k.t) && Number.isFinite(k.value))
       .map((k) => ({ t: k.t, y: log ? Math.log10(k.value) : k.value }))
@@ -165,6 +194,234 @@
     const a = samples[i].lab;
     const b = samples[i + 1].lab;
     return labToRgb([a[0] + f * (b[0] - a[0]), a[1] + f * (b[1] - a[1]), a[2] + f * (b[2] - a[2])]);
+  }
+
+  // ------------------------------------------------------------ binned bars
+
+  // A binned (discrete) colorbar is a few flat colors with sharp steps
+  // between them. Reading a cell's color as the nearest spot on such a bar
+  // lands anywhere inside a flat bin (in practice near its low end: 1.1e4 in
+  // the 1e4–2e4 bin of a real figure), so cells are matched to whole bins
+  // instead and get the bin's middle value.
+
+  const BIN_STEP = 3; // smallest ΔE76 step between two samples that ends a bin
+  const MAX_BINS = 64;
+
+  const labMedian = (labs) => [0, 1, 2].map((i) => median(labs.map((l) => l[i])));
+
+  // Samples [{t, lab}] → [{t0, t1, lab, rgb}] in order along the bar, or null
+  // when the bar is not binned. Bins are runs of samples joined by small
+  // steps; the short runs between them (anti-aliased edges, tick marks drawn
+  // into the strip) are left out, and a boundary lies halfway across them.
+  // A smooth bar fails because its runs are not flat (or it is one run).
+  function colorbarBins(samples) {
+    const n = samples.length;
+    if (n < 16) return null;
+    const d = [];
+    for (let i = 0; i < n - 1; i++) d.push(deltaE76(samples[i].lab, samples[i + 1].lab));
+    const noise = median(d);
+    const step = Math.max(BIN_STEP, 6 * noise);
+    const runs = [];
+    let from = 0;
+    for (let i = 0; i < n - 1; i++) {
+      if (d[i] <= step) continue;
+      runs.push([from, i]);
+      from = i + 1;
+    }
+    runs.push([from, n - 1]);
+    const minLen = Math.max(3, Math.round(n * 0.01));
+    // Flat: every sample within this of the run's median color. Two similar
+    // bins joined by a soft edge spread wider than that and fail the bar.
+    const flat = Math.max(2.5, 1.5 + 4 * noise);
+    const bins = [];
+    let covered = 0;
+    for (let [a, b] of runs) {
+      if (b - a + 1 < minLen) continue;
+      // The bin's color from the middle of the run. JPEG ringing blurs each
+      // step over a few samples of small steps, which stay in the run: trim
+      // them off its ends (at most a quarter of the run on each side, so a
+      // smooth gradient still fails as not flat).
+      const len = b - a + 1;
+      const lab = labMedian(samples.slice(a + Math.floor(len * 0.2), b + 1 - Math.floor(len * 0.2)).map((s) => s.lab));
+      const cut = Math.floor(len / 4);
+      const off = (i) => deltaE76(samples[i].lab, lab) > flat;
+      let a1 = a;
+      let b1 = b;
+      for (let k = 0; k < cut; k++) {
+        if (off(a + k)) a1 = a + k + 1;
+        if (off(b - k)) b1 = b - k - 1;
+      }
+      [a, b] = [a1, b1];
+      if (b - a + 1 < minLen) continue;
+      for (let i = a; i <= b; i++) if (deltaE76(samples[i].lab, lab) > flat) return null;
+      covered += len;
+      // A spike inside one bin (a tick mark) splits it in two runs of one color.
+      const last = bins[bins.length - 1];
+      if (last && deltaE76(last.lab, lab) <= step) {
+        last.i1 = b;
+        continue;
+      }
+      bins.push({ i0: a, i1: b, lab });
+    }
+    if (bins.length < 2 || bins.length > MAX_BINS || covered < 0.75 * n) return null;
+    const tOf = (i) => samples[i].t;
+    return bins.map((bin, k) => ({
+      t0: k === 0 ? Math.min(tOf(0), tOf(n - 1)) : (tOf(bins[k - 1].i1) + tOf(bin.i0)) / 2,
+      t1: k === bins.length - 1 ? Math.max(tOf(0), tOf(n - 1)) : (tOf(bin.i1) + tOf(bins[k + 1].i0)) / 2,
+      lab: bin.lab,
+      rgb: labToRgb(bin.lab),
+    }));
+  }
+
+  // Bins → bins with {value, open}. A bin's value is the one at its middle
+  // position, which is the middle of its two boundary ticks in the bar's
+  // scale (arithmetic on a linear bar, geometric on a log one) when the ticks
+  // label bin boundaries, and the label itself when they label bin centres.
+  // Boundaries within a few samples of a tick are moved onto it first, so a
+  // middle is exact. A bin past the outermost tick on its side is open-ended
+  // (the bar says "below 1e4" or "above 3e6", not how far): its value is that
+  // tick's value and `open` is 'below' or 'above'; otherwise open is null.
+  function labelBins(bins, ticks, scale = 'linear', nSamples = DEFAULT_SAMPLES) {
+    const valueAt = makeValueFn(ticks, scale);
+    if (!bins || !valueAt) return null;
+    const ts = ticks.filter((k) => Number.isFinite(k.t) && Number.isFinite(k.value)).sort((a, b) => a.t - b.t);
+    const lo = ts[0];
+    const hi = ts[ts.length - 1];
+    const minWidth = Math.min(...bins.map((b) => b.t1 - b.t0));
+    const tol = Math.max(2 / Math.max(1, nSamples - 1), 0.25 * minWidth);
+    const snap = (t) => {
+      let best = t;
+      let gap = tol;
+      for (const k of ts) {
+        if (Math.abs(k.t - t) > gap) continue;
+        gap = Math.abs(k.t - t);
+        best = k.t;
+      }
+      return best;
+    };
+    // Which way values go past a tick: up when the bar's values grow towards it.
+    const past = (tick, inner) => (valueAt(tick.t) >= valueAt(inner) ? 'above' : 'below');
+    return bins.map((bin, i) => {
+      const t0 = snap(bin.t0);
+      const t1 = snap(bin.t1);
+      if (t0 >= hi.t - tol && hi.t < 1 - tol) return { ...bin, t0, t1, value: hi.value, open: past(hi, lo.t) };
+      if (t1 <= lo.t + tol && lo.t > tol) return { ...bin, t0, t1, value: lo.value, open: past(lo, hi.t) };
+      return { ...bin, t0, t1, value: valueAt((t0 + t1) / 2), open: null };
+    });
+  }
+
+  // Index of the bin nearest to a Lab color, with its distance.
+  function nearestBin(lab, bins, distance = 'de2000') {
+    const dist = colorDistance(distance);
+    let best = { index: 0, deltaE: Infinity };
+    bins.forEach((b, index) => {
+      const d = dist(lab, b.lab);
+      if (d < best.deltaE) best = { index, deltaE: d };
+    });
+    return best;
+  }
+
+  // ------------------------------------------------------- off-map colors
+
+  // A cell's color may not be on the colormap at all: gray "ND" (no data)
+  // cells, a black diagonal, a hatched or masked cell. Its nearest bar color
+  // is then meaningless, and with a close-enough lightness the distance can
+  // even stay under the flag threshold (a gray cell read as pale blue at
+  // ΔE2000 7.2). Cells past an end of the bar are different: the figure drew
+  // values beyond its colorbar, along the bar's own color path (paler than a
+  // pale end, darker than a dark one); they clamp to that end.
+
+  const GRAY = 8; // chroma under which a color counts as neutral
+  const GRAY_L = 8; // lightness gap within which a neutral bar color vouches for a neutral cell
+  const END_ZONE = 0.04; // share of the bar at each end where a past-end match lands
+  const OFF_MAP_FACTOR = 2; // ΔE over this × maxDeltaE: off the map whatever its hue
+  const HUE_LIMIT = 45; // hue difference (degrees) between two colorful colors that rules a match out
+
+  const hueOf = (lab) => (Math.atan2(lab[2], lab[1]) * 180) / Math.PI;
+  const hueGap = (a, b) => {
+    const h = Math.abs(hueOf(a) - hueOf(b)) % 360;
+    return h > 180 ? 360 - h : h;
+  };
+  const labMean = (labs) => [0, 1, 2].map((i) => labs.reduce((s, l) => s + l[i], 0) / labs.length);
+
+  // Same color family as a bar end: both near neutral, or close in hue. A
+  // whitish cell past a pale end also counts (colors fade to white).
+  function sameFamily(lab, endLab, lighter) {
+    const c = chroma(lab);
+    const ce = chroma(endLab);
+    if (ce < GRAY + 4) return c < ce + GRAY;
+    if (lighter && c < GRAY) return true;
+    return hueGap(lab, endLab) < 35 && (lighter || c >= 0.4 * ce);
+  }
+
+  // Is the color past the bar end that its match `t` lies at? Either it
+  // lies ahead on the bar's path into that end (from 6–10% inside to the
+  // last 3%, extended), within a tolerance that grows with the distance
+  // (paths curve), or it is lighter or darker than the whole bar. Both need
+  // the end's color family, and at least 3 ΔE76 past the end: a cell that
+  // matches the end color is on the bar. Ends are medians, as the last
+  // sample often holds an anti-aliased edge or the bar's frame, which would
+  // turn the path around. Flat ends (binned bars) have no path and use only
+  // the lightness rule. Returns 'start', 'end' or null.
+  function pastEndOf(lab, t, samples, tol) {
+    const n = samples.length;
+    const take = (a, b) => samples.slice(Math.max(0, a), Math.max(Math.max(0, a) + 1, b)).map((s) => s.lab);
+    const Ls = samples.map((s) => s.lab[0]);
+    const w = Math.max(1, Math.round(n * 0.03));
+    const inA = Math.round(n * 0.06);
+    const inB = Math.max(inA + 1, Math.round(n * 0.1));
+    for (const side of ['start', 'end']) {
+      if (side === 'start' ? t > END_ZONE : t < 1 - END_ZONE) continue;
+      const E = labMedian(side === 'start' ? take(0, w) : take(n - w, n));
+      const I = labMedian(side === 'start' ? take(inA, inB) : take(n - inB, n - inA));
+      const lighter = lab[0] > E[0];
+      if (deltaE76(lab, E) < 3 || !sameFamily(lab, E, lighter)) continue;
+      const beyond = lighter ? lab[0] > Math.max(...Ls) + 3 : lab[0] < Math.min(...Ls) - 3;
+      if (beyond) return side;
+      const v = [E[0] - I[0], E[1] - I[1], E[2] - I[2]];
+      const v2 = v[0] ** 2 + v[1] ** 2 + v[2] ** 2;
+      if (v2 < 9) continue;
+      const off = [lab[0] - E[0], lab[1] - E[1], lab[2] - E[2]];
+      const s = (off[0] * v[0] + off[1] * v[1] + off[2] * v[2]) / v2;
+      const along = s * Math.sqrt(v2);
+      const perp = Math.hypot(off[0] - s * v[0], off[1] - s * v[1], off[2] - s * v[2]);
+      if (along >= 3 && perp <= tol / 2 + 0.5 * along) return side;
+    }
+    return null;
+  }
+
+  // Where a cell color stands against the bar, given its match {t, deltaE}
+  // (from labToT, or a bin's t and distance). Returns {status, end?, reason?}:
+  // 'ok' or 'flagged' (deltaE over maxDeltaE, still read from the bar);
+  // 'clamped' past an end ('start' or 'end'), read as that end; or 'off-map'
+  // (not a colormap color, no value), with reason 'gray' (a neutral color
+  // where the bar has no neutral color of about its lightness: judged
+  // against the bar's own chroma, so a grayscale or white-ended bar keeps
+  // its grays or near-white cells),
+  // 'hue' (both colorful, hues 45° or more apart) or 'far' (ΔE over twice
+  // maxDeltaE). The ΔE between maxDeltaE and twice it is left as flagged:
+  // such cells are often mixed colors at cell edges, which still say roughly
+  // where on the bar they belong.
+  function colorStatus(lab, match, samples, maxDeltaE = 10) {
+    if (!samples.length) return { status: 'ok' };
+    // A color as close to the bar as this is on it, even past the median end
+    // color (a bar that keeps darkening into its last sample).
+    const end = match.deltaE > 2 && pastEndOf(lab, match.t, samples, maxDeltaE);
+    if (end) return { status: 'clamped', end };
+    const i = Math.round(Math.min(1, Math.max(0, match.t)) * (samples.length - 1));
+    const near = match.lab || samples[i].lab;
+    const c = chroma(lab);
+    const cn = chroma(near);
+    // A neutral color is on the map only where the bar is neutral at about
+    // its lightness (a gray or white-ended bar). ΔE2000 forgives lightness
+    // near white, so a mid gray can match a diverging bar's white middle.
+    // "Neutral" scales with the cell's own chroma: test-9's RdBu bar has a
+    // pale cyan of chroma 7 at the L* of its gray ND cells (chroma 0).
+    const neutralAt = (L) => samples.some((x) => chroma(x.lab) < 2 * c + 4 && Math.abs(x.lab[0] - L) <= GRAY_L);
+    if (c < GRAY && !neutralAt(lab[0])) return { status: 'off-map', reason: 'gray' };
+    if (c > 15 && cn > 15 && hueGap(lab, near) > HUE_LIMIT) return { status: 'off-map', reason: 'hue' };
+    if (match.deltaE > OFF_MAP_FACTOR * maxDeltaE) return { status: 'off-map', reason: 'far' };
+    return { status: match.deltaE > maxDeltaE ? 'flagged' : 'ok' };
   }
 
   // ---------------------------------------------------------------- snapping
@@ -348,5 +605,25 @@
     return { t: best / len, moved: Math.round((best - s0) * 10) / 10, point: pt(best) };
   }
 
-  Object.assign(CM, { DEFAULT_SAMPLES, sampleColorbar, colorbarSamples, projectT, pointAtT, tickProblem, makeValueFn, labToT, colorAtT, refineColorbar, snapTick });
+  Object.assign(CM, {
+    DEFAULT_SAMPLES,
+    SCALES,
+    isLogScale,
+    isPiecewiseScale,
+    piecewiseScaleFor,
+    sampleColorbar,
+    colorbarSamples,
+    projectT,
+    pointAtT,
+    tickProblem,
+    makeValueFn,
+    labToT,
+    colorAtT,
+    colorbarBins,
+    labelBins,
+    nearestBin,
+    colorStatus,
+    refineColorbar,
+    snapTick,
+  });
 })((globalThis.Colormeris ??= {}));

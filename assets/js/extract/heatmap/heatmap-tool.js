@@ -49,7 +49,8 @@
       hit = new Map();
       result.cells.forEach((row, r) =>
         row.forEach((c, k) => {
-          if (c.empty) return;
+          // Empty and off-map cells have no value to repaint.
+          if (c.empty || c.status === 'off-map') return;
           const hex = rgbToHex(colorAtT(result.samples, c.t));
           if (!hit.has(hex)) hit.set(hex, []);
           hit.get(hex).push([r, k]);
@@ -147,13 +148,18 @@
     }
   }
 
+  // Why an off-map cell has no value, and the sign of a bound.
+  const OFF_MAP = { gray: 'gray, not on the colorbar', hue: 'a hue not on the colorbar', far: 'far from every colorbar color' };
+  const boundPrefix = (c) => (c.open === 'below' ? '≤' : c.open === 'above' ? '≥' : '');
+
   function hoverText(panel, cell) {
     if (!cell) return '';
     const rl = effectiveLabels(panel.grid.rowLabels, panel.grid.rows, 'R')[cell.row];
     const cl = effectiveLabels(panel.grid.colLabels, panel.grid.cols, 'C')[cell.col];
     const c = ws.resultFor(panel).cells?.[cell.row]?.[cell.col];
     if (c?.empty) return `${rl} / ${cl}: no dot`;
-    return c ? `${rl} / ${cl}: ${formatNumber(c.value)}  (ΔE ${c.deltaE.toFixed(1)})` : `${rl} / ${cl}`;
+    if (c?.status === 'off-map') return `${rl} / ${cl}: no value (${OFF_MAP[c.reason] || 'not on the colorbar'})`;
+    return c ? `${rl} / ${cl}: ${boundPrefix(c)}${formatNumber(c.value)}  (ΔE ${c.deltaE.toFixed(1)})` : `${rl} / ${cl}`;
   }
 
   // ---------------------------------------------------------------- sidebar
@@ -186,13 +192,16 @@
     }
     $('result-problem').textContent = '';
     const values = res.cells.flat().map((c) => c.value).filter(Number.isFinite);
-    const flagged = res.cells.flat().filter((c) => c.flagged).length;
-    const empty = res.cells.flat().length - values.length;
+    const n = res.counts;
+    const flagged = n.flagged + n.offMap;
     $('result-summary').textContent =
       `${res.rows} × ${res.cols} cells` +
       (values.length ? ` · range ${formatNumber(Math.min(...values))} – ${formatNumber(Math.max(...values))}` : '') +
-      (empty ? ` · ${empty} without a dot (blank)` : '') +
-      ` · ${flagged ? `${flagged} flagged (ΔE > ${panel.settings.maxDeltaE}) — outlined in red` : 'no flagged cells'}`;
+      (res.bins ? ` · binned colorbar (${res.bins.length} bins), bin middles` : '') +
+      (n.empty ? ` · ${n.empty} without a dot (blank)` : '') +
+      (n.offMap ? ` · ${n.offMap} not on the colorbar (blank)` : '') +
+      (n.open ? ` · ${n.open} bounds (≤ / ≥)` : '') +
+      ` · ${flagged ? `${flagged} flagged (ΔE > ${panel.settings.maxDeltaE} or off the colorbar) — outlined in red` : 'no flagged cells'}`;
 
     const rowLabels = effectiveLabels(panel.grid.rowLabels, res.rows, 'R');
     const colLabels = effectiveLabels(panel.grid.colLabels, res.cols, 'C');
@@ -214,10 +223,13 @@
           tr.append(td);
           return;
         }
-        td.textContent = Number(c.value.toPrecision(4)).toString();
+        const off = c.status === 'off-map';
+        td.textContent = off ? '–' : boundPrefix(c) + Number(c.value.toPrecision(4)).toString();
         td.style.background = rgbToHex(c.rgb);
         td.style.color = luminance(c.rgb) > 0.45 ? '#111' : '#fff';
-        td.title = `${rowLabels[r]} / ${colLabels[k]}\nvalue ${formatNumber(c.value)}\nΔE ${c.deltaE.toFixed(2)}`;
+        td.title = off
+          ? `${rowLabels[r]} / ${colLabels[k]}\nno value: ${OFF_MAP[c.reason] || 'not on the colorbar'}\nΔE ${c.deltaE.toFixed(2)}`
+          : `${rowLabels[r]} / ${colLabels[k]}\nvalue ${boundPrefix(c)}${formatNumber(c.value)}${c.status === 'clamped' ? ' (past the colorbar\'s end)' : c.open ? ' (open end bin)' : ''}\nΔE ${c.deltaE.toFixed(2)}`;
         td.dataset.r = r;
         td.dataset.c = k;
         if (c.flagged) td.classList.add('flagged');

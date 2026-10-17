@@ -3,7 +3,7 @@
   const {
     AGENT_SYSTEM_PROMPT, LLM_ACTIONS, RUNNER_TOOLS, validateRunnerTool, llmTools,
     createRetryGuard, progressNote, finishCheck, pruneImages, toolResultText,
-    DECISION_SYSTEM_PROMPT, DECISION_LLM_ACTIONS, decisionLlmTools, createDecisionTools,
+    DECISION_SYSTEM_PROMPT, DECISION_LLM_ACTIONS, decisionLlmTools, createDecisionTools, panelBrief,
     bilinear, outerCorners, cellSamplePolygon, colorAtT, rgbToHex, ticksWithT, renderPdfPage,
   } = CM;
 
@@ -107,7 +107,7 @@
       };
     }
 
-    // Numbered boxes (tick-label candidates), numbers outside the box: on
+    // Numbered boxes (tick-label candidates; `color` optional), numbers outside the box: on
     // the right unless that covers another box (labels side by side under a
     // horizontal colorbar, where a number hid the next label's first digit),
     // then below, above or left.
@@ -124,7 +124,8 @@
       const hits = (r) => r.x0 < 0 || r.y0 < 0 || r.x1 > width || r.y1 > height || boxes.some((b) => r.x0 < b.x1 + 2 && r.x1 > b.x0 - 2 && r.y0 < b.y1 + 2 && r.y1 > b.y0 - 2);
       marks.forEach((m, i) => {
         const b = boxes[i];
-        ctx.strokeStyle = '#1565ff';
+        const color = m.color || '#1565ff';
+        ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
         const tw = ctx.measureText(m.label).width + 8;
@@ -137,7 +138,7 @@
           { x0: b.x0 - tw - 2, y0: cy },
         ].map((r) => ({ ...r, x1: r.x0 + tw, y1: r.y0 + 20 }));
         const at = places.find((r) => !hits(r)) || places[0];
-        ctx.fillStyle = '#1565ff';
+        ctx.fillStyle = color;
         ctx.fillRect(at.x0, at.y0, tw, 20);
         ctx.fillStyle = '#fff';
         ctx.fillText(m.label, at.x0 + 4, at.y0 + 11);
@@ -162,7 +163,8 @@
           if (res.cells) {
             for (let r = 0; r < g.rows; r++) {
               for (let c = 0; c < g.cols; c++) {
-                if (res.cells[r][c].empty) continue;
+                // Empty and off-map cells have no value to repaint.
+                if (res.cells[r][c].empty || res.cells[r][c].status === 'off-map') continue;
                 const poly = cellSamplePolygon(g, r, c, res.cells[r][c].radius).map(toView);
                 ctx.beginPath();
                 poly.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
@@ -199,6 +201,10 @@
             ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI);
             ctx.fillStyle = '#f29900';
             ctx.fill();
+            // A white halo keeps the value readable on a dark bar.
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#fff';
+            ctx.strokeText(`${k.value}`, p.x + 7, p.y);
             ctx.fillStyle = '#000';
             ctx.fillText(`${k.value}`, p.x + 7, p.y);
           }
@@ -277,10 +283,12 @@
             viewedPages.add(ws.currentPage());
             return { ok: true, result: `Page ${args.page} shown.`, image: renderView() };
           }
-          // Keep results small: the active panel instead of the full state.
+          // Keep results small: the active panel instead of the full state
+          // (in decision mode without its label lists).
           if (r.state) {
             const { state, ...rest } = r;
-            return { ...rest, activePanel: state.panels.find((p) => p.id === state.activePanelId), page: state.source?.page };
+            const active = state.panels.find((p) => p.id === state.activePanelId);
+            return { ...rest, activePanel: decisionMode ? panelBrief(active) : active, page: state.source?.page };
           }
           return r;
         }
@@ -385,10 +393,11 @@
           if (call.function.name === 'finish' && result.ok && result.finished !== false) summary = args.summary;
           // Decision tools report what the decision model and the app found.
           if (result.ok && decision?.handles(name) && typeof result.result === 'string') emit('result', { name, text: result.result });
-          if (result.image) {
-            images.push(result.image);
-            // Keep a tool's own text (locate_heatmap) next to the image note.
-            result = { ok: true, result: [result.result, `${result.image.note} The image follows.`].filter(Boolean).join(' ') };
+          const shown = result.images || (result.image ? [result.image] : []);
+          if (shown.length) {
+            images.push(...shown);
+            // Keep a tool's own text (locate_heatmap) next to the image notes.
+            result = { ok: true, result: [result.result, ...shown.map((im) => im.note), shown.length > 1 ? 'The images follow.' : 'The image follows.'].filter(Boolean).join(' ') };
           }
           if (!result.ok) emit('tool-error', { name: call.function.name, error: result.error });
           messages.push({ role: 'tool', toolCallId: call.id, content: toolResultText(result) });

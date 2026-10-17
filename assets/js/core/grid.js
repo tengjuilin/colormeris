@@ -458,114 +458,465 @@
     return { rows: rowFit.count, cols: colFit.count, rowConfidence: rowFit.confidence, colConfidence: colFit.confidence };
   }
 
-  // Cell counts of a grid whose outer corners sit exactly on the cell block
-  // (snapped by core/locate.js). For each count k: the share of the k − 1
-  // borders it implies that show a color edge, minus the share of cell
-  // middles that do. detectGridSize looks only at the spacing of edges, so a
-  // heatmap of groups of similar cells (4 replicates per condition) can come
-  // out as one wide cell per group; here the borders must be where k says.
-  // Returns {rows, cols, rowScore, colScore}; a score near 1 is a clean fit,
-  // below ~0.7 the corners are probably not exact.
-  // Lines averaged per profile. One per pixel row (200 here) let the
-  // anti-aliased borders across the lines blur the flat middles; 64 fitted
-  // all 10 heatmaps of example.pdf page 5, 200 only 5.
-  const FIT_LINES = 64;
-  function fitCellCounts(img, corners) {
-    const { width, height } = gridPixelSize(corners);
-    const W = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(width)));
-    const H = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(height)));
-    const fit = (axis, N, lines) => {
-      const prof = edgeProfile(img, corners, axis, N, lines);
-      const even = fitCount(prof);
-      const grouped = fitGroups(prof, blankProfile(img, corners, axis, N, lines));
-      return grouped && grouped.score > even.score ? grouped : even;
-    };
-    const cols = fit('u', W, Math.min(FIT_LINES, H));
-    const rows = fit('v', H, Math.min(FIT_LINES, W));
-    return { rows: rows.count, cols: cols.count, rowScore: rows.score, colScore: cols.score };
-  }
+  // ---- Cell counts from cell borders ---------------------------------------
+  //
+  // fitCellCounts looks for where the cell borders are, not only how far
+  // apart edges are (detectGridSize): a comb of evenly spaced teeth that land
+  // on color edges while the cell middles between them stay flat. Its cell
+  // size and start are fitted freely, so corners a few pixels off, or a frame,
+  // tick marks or a margin inside the box, do not change the count (fitting
+  // k cells exactly between the corners did: a 7 px frame on 37 px rows gave
+  // 339 rows for 40). Evidence for a border is the share of lines across the
+  // grid that change color there, not the mean change: a dendrogram or a
+  // label touching a few lines is strong but rare, and borders between
+  // near-equal replicate cells are faint but show on many lines.
 
-  // Share of lines across the grid that are page white at each sample.
-  function blankProfile(img, corners, axis, samples, lines) {
-    const out = new Float64Array(samples);
+  const FIT_LINES = 64;
+  // Lines come from the middle 80% of the other axis, so a frame or margin
+  // at the ends of a rough box does not hide the borders.
+  const FIT_INSET = 0.1;
+  // A color step (|ΔR|+|ΔG|+|ΔB| over two samples) counts above this, or
+  // above twice the image's noise when that is larger.
+  // Replicate cells differ by 16–23 on the 32 × 9 cytokine heatmap.
+  const STEP_MIN = 12;
+  // A border counts in full when this share of lines changes color there:
+  // neighbouring cells of equal color hide the rest.
+  const BORDER_SHARE = 0.3;
+  // Counts within this score of the best one are ties; the most cells win
+  // (3 cells per tooth fit as well as 1 when every border is strong).
+  const COUNT_TIE = 0.08;
+  // Below this the borders are not where any even spacing puts them.
+  const MIN_FIT = 0.25;
+  // The smallest cell, in pixels (antialiased 1–2 px lines are not cells).
+  const MIN_CELL_PX = 3;
+  // Page white: every channel at least this.
+  const GAP_WHITE = 245;
+
+  // Colors along one axis: entry (j * N + i) * 3 is line j, sample i.
+  function axisColors(img, corners, axis, N, lines) {
+    const out = new Float32Array(lines * N * 3);
     for (let j = 0; j < lines; j++) {
-      const w = (j + 0.5) / lines;
-      for (let i = 0; i < samples; i++) {
-        const s = (i + 0.5) / samples;
+      const w = FIT_INSET + ((1 - 2 * FIT_INSET) * (j + 0.5)) / lines;
+      for (let i = 0; i < N; i++) {
+        const s = (i + 0.5) / N;
         const p = axis === 'u' ? bilinear(corners, s, w) : bilinear(corners, w, s);
-        if (Math.min(...readPixel(img, p.x, p.y)) >= GAP_WHITE) out[i]++;
+        out.set(readPixel(img, p.x, p.y), (j * N + i) * 3);
       }
     }
-    for (let i = 0; i < samples; i++) out[i] /= lines;
     return out;
   }
 
-  // Groups of cells split by white gaps wider than the lines between cells
-  // (4 replicate columns per condition, 9 px apart, with 1–2 px lines inside
-  // a group). The groups shift the cells off an even spacing, so one count
-  // for the whole axis fits badly (score 0.68–0.71 on such a figure) and
-  // the edge spacing says 3 columns for 32. Each group is fitted on its own;
-  // the counts add up when every group fits cleanly with a similar cell size.
-  // Returns {count, score} (the worst group's score) or null.
-  const GAP_WHITE = 245;
-  function fitGroups(prof, blank) {
-    const N = prof.length;
-    const gaps = [];
+  // Per sample: `edge`, the share of lines whose color changes most steeply
+  // there; `ramp`, the share changing at all; `light`, the share that is page
+  // white; and `sep`, whether it is a separator: one neutral color (a white
+  // gap, a black or gray line, a frame) on nearly all lines. A column of
+  // cells is never one color on every line, unless all its cells are equal.
+  function borderEvidence(rgb, N, lines) {
+    const steps = new Float32Array(lines * N);
+    const at = (j, i) => (j * N + i) * 3;
+    for (let j = 0; j < lines; j++)
+      for (let i = 1; i < N - 1; i++) {
+        const a = at(j, i - 1);
+        const b = at(j, i + 1);
+        steps[j * N + i] = Math.abs(rgb[a] - rgb[b]) + Math.abs(rgb[a + 1] - rgb[b + 1]) + Math.abs(rgb[a + 2] - rgb[b + 2]);
+      }
+    // Above the noise: JPEG artifacts make a quarter of the steps 13 or more
+    // on some figures, and none on a clean one.
+    const sorted = Float32Array.from(steps).sort();
+    const T = Math.max(STEP_MIN, 2 * sorted[Math.floor(0.75 * (sorted.length - 1))]);
+    const edge = new Float64Array(N);
+    const ramp = new Float64Array(N);
+    const light = new Float64Array(N);
+    const sep = new Uint8Array(N);
+    const ch = [new Float32Array(lines), new Float32Array(lines), new Float32Array(lines)];
+    // A blurred or upscaled border changes color over several samples; it
+    // counts once per line, where the change is steepest.
+    const steepest = (j, i) => {
+      const d = steps[j * N + i];
+      for (let k = Math.max(1, i - 2); k <= Math.min(N - 2, i + 2); k++) if (steps[j * N + k] > d || (steps[j * N + k] === d && k < i)) return false;
+      return true;
+    };
     for (let i = 0; i < N; i++) {
-      if (blank[i] < 0.9) continue;
-      let j = i;
-      while (j + 1 < N && blank[j + 1] >= 0.9) j++;
-      if (i > 0 && j < N - 1) gaps.push([i, j + 1]);
-      i = j;
+      let n = 0;
+      let r = 0;
+      for (let j = 0; j < lines; j++) {
+        if (steps[j * N + i] > T) (r++, steepest(j, i) && n++);
+        for (let k = 0; k < 3; k++) ch[k][j] = rgb[at(j, i) + k];
+      }
+      edge[i] = n / lines;
+      ramp[i] = r / lines;
+      let w = 0;
+      for (let j = 0; j < lines; j++) w += Math.min(ch[0][j], ch[1][j], ch[2][j]) >= GAP_WHITE;
+      light[i] = w / lines;
+      const m = ch.map((c) => median(Float32Array.from(c)));
+      if (Math.max(...m) - Math.min(...m) > 30) continue;
+      let same = 0;
+      for (let j = 0; j < lines; j++) if (Math.abs(ch[0][j] - m[0]) + Math.abs(ch[1][j] - m[1]) + Math.abs(ch[2][j] - m[2]) <= 30) same++;
+      // 2 for a dark line (frame, black grid line), 1 for a light one.
+      sep[i] = same >= 0.9 * lines ? (Math.max(...m) < 128 ? 2 : 1) : 0;
     }
-    // Group gaps are the widest blank runs (at least 3 samples); the lines
-    // between cells (most runs) are under 40% as wide, though some are
-    // twice as wide as others.
-    const widths = gaps.map(([a, b]) => b - a).sort((a, b) => a - b);
-    const widest = widths[widths.length - 1];
-    const wide = gaps.filter(([a, b]) => b - a >= Math.max(3, 0.6 * widest));
-    if (!wide.length || (wide.length < gaps.length && widths[(widths.length - 1) >> 1] > 0.4 * widest)) return null;
-    const bounds = [0, ...wide.flat(), N];
-    const groups = [];
-    for (let g = 0; g < bounds.length; g += 2) {
-      const [a, b] = [bounds[g], bounds[g + 1]];
-      if (b - a < 2 * MIN_CELL) return null;
-      const f = fitCount(prof.slice(a, b));
-      groups.push({ ...f, size: (b - a) / f.count });
-    }
-    // A gap as wide as a cell is a column of white cells, not a gap.
-    const sizes = groups.map((g) => g.size);
-    if (Math.max(...sizes) > 1.2 * Math.min(...sizes) || widest > 0.5 * Math.min(...sizes)) return null;
-    const score = Math.min(...groups.map((g) => g.score));
-    return score >= 0.7 ? { count: groups.reduce((n, g) => n + g.count, 0), score } : null;
+    return { edge, ramp, light, sep };
   }
 
-  function fitCount(prof) {
-    const N = prof.length;
-    const peak = (pos, r) => {
-      let m = 0;
-      for (let i = Math.max(1, Math.round(pos - r)); i <= Math.min(N - 1, Math.round(pos + r)); i++) m = Math.max(m, prof[i]);
-      return m;
+  // Each separator run between cells, with the color ramps into and out of
+  // it, becomes one border at its middle, so a white gap counts once, not as
+  // two edges (5 × 5 cells with 8 px gaps came out 10 × 10). With `compress`
+  // the run also shrinks to that one sample, so groups of cells split by
+  // gaps wider than the lines inside a group fall on one even spacing; this
+  // is tried as well, since it shifts every later border when only some
+  // lines between cells are found (rows 1–2 px apart on a JPEG). Runs at the
+  // ends (frame, margin) stay, and so do runs `maxRun` wide or more (a
+  // column of white cells). `orig` maps samples back.
+  function collapseSeparators({ edge, ramp, light, sep }, maxRun, compress) {
+    const N = edge.length;
+    // Noise puts steps anywhere on a share of lines; most samples are not
+    // borders, so a high quantile of the shares is that noise level.
+    const base = Float64Array.from(edge).sort()[Math.floor(0.75 * (N - 1))];
+    const b = [];
+    const orig = [];
+    const isSep = [];
+    const pale = [];
+    const runs = [];
+    let done = 0; // the last sample of the previous run, which stays put
+    const keep = (i) => {
+      b.push(Math.min(1, Math.max(0, edge[i] - base) / ((1 - base) * BORDER_SHARE)));
+      orig.push(i);
+      isSep.push(sep[i]);
+      pale.push(light[i]);
     };
-    // An edge counts in full from a tenth of the strong edges up (borders
-    // between near-equal replicates are faint, but a cell's inside is flat).
-    const sorted = Array.from(prof).sort((a, b) => a - b);
-    const strong = Math.max(MIN_EDGE, 0.1 * sorted[Math.floor(0.97 * (N - 1))]);
-    const edge = (v) => Math.min(1, v / strong);
-    const fits = [];
-    for (let k = 2; k <= N / MIN_CELL; k++) {
-      const P = N / k;
-      let borders = 0;
-      let middles = 0;
-      for (let i = 1; i < k; i++) borders += edge(peak(i * P, 1.5));
-      for (let i = 0; i < k; i++) middles += edge(peak((i + 0.5) * P, Math.max(1, 0.15 * P)));
-      fits.push({ count: k, score: borders / (k - 1) - middles / k });
+    for (let i = 0; i < N; i++) {
+      if (sep[i]) {
+        let j = i;
+        while (j + 1 < N && sep[j + 1]) j++;
+        if (i > 1 && j < N - 2 && j - i + 1 < maxRun) {
+          // The color ramps into and out of the gap go with it.
+          let a = i;
+          let c = j;
+          while (a > done + 1 && i - a < 4 && ramp[a - 1] >= 0.5 && orig[orig.length - 1] === a - 1) (a--, b.pop(), orig.pop(), isSep.pop(), pale.pop());
+          while (c < N - 2 && c - j < 4 && ramp[c + 1] >= 0.5) c++;
+          const mid = Math.round((i + j) / 2);
+          for (let k = compress ? mid : a; k <= (compress ? mid : c); k++) {
+            b.push(k === mid ? 1 : 0);
+            orig.push(compress ? (i + j) / 2 : k);
+            isSep.push(0);
+            pale.push(compress ? 0 : light[k]);
+          }
+          runs.push([i, j + 1]);
+          i = done = c;
+          continue;
+        }
+        // A run that stays is kept whole (not looked at again from inside).
+        for (let k = i; k <= j; k++) keep(k);
+        i = j;
+        continue;
+      }
+      keep(i);
     }
-    // With strong borders, k / 3 cells (or k / 5) fit as well as k: their
-    // borders are real ones and their middles fall inside cells. Counts above
-    // k score about half at most, so the largest count near the best wins.
-    const top = Math.max(0, ...fits.map((f) => f.score));
-    return fits.filter((f) => f.score >= top - 0.05 && top > 0).pop() || { count: 1, score: 0 };
+    return { b: Float64Array.from(b), orig, isSep, pale, runs };
+  }
+
+  // Best comb for cell size P (in samples), with the profile folded modulo
+  // P so all starts are scored at once. A comb is good when its teeth land on
+  // borders (the evidence within a few samples, nearer counts more), when it
+  // explains the borders (the share of all evidence on its teeth: a comb of
+  // 3 cells per tooth leaves 2 of 3 clear borders out) and when the middle
+  // 40% of its cells is flat.
+  function combAt(wins, b, P, total) {
+    const B = Math.ceil(P);
+    // Blurred borders wander a few samples from line to line; the teeth
+    // take what is within 6% of a cell (1 to 3 samples).
+    const r = Math.max(1, Math.min(3, Math.round(0.06 * P)));
+    const win = wins[r];
+    const teeth = new Float64Array(B);
+    const flat = new Float64Array(B);
+    const strong = new Float64Array(B);
+    const n = new Float64Array(B);
+    for (let i = 1; i < b.length - 1; i++) {
+      const k = Math.floor(i % P);
+      teeth[k] += win[i];
+      flat[k] += b[i];
+      strong[k] += b[i] >= 0.5;
+      n[k]++;
+    }
+    // Prefix sums over two turns for the circular middle windows.
+    const F = new Float64Array(2 * B + 1);
+    const C = new Float64Array(2 * B + 1);
+    for (let k = 0; k < 2 * B; k++) {
+      F[k + 1] = F[k] + flat[k % B];
+      C[k + 1] = C[k] + n[k % B];
+    }
+    const lo = Math.round(0.3 * P);
+    const hi = Math.round(0.7 * P);
+    let best = { P, phase: 0, score: -Infinity };
+    for (let k = 0; k < B; k++) {
+      if (!n[k]) continue;
+      const m = C[k + hi + 1] - C[k + lo];
+      const middle = m ? (F[k + hi + 1] - F[k + lo]) / m : 0;
+      let near = 0;
+      for (let d = -r; d <= r; d++) near += strong[(k + d + B) % B];
+      // Beyond what 2r + 1 samples in every B would hold by chance.
+      const chance = (2 * r + 1) / B;
+      const explained = Math.max(0, (near / total - chance) / (1 - chance));
+      const score = (teeth[k] / n[k]) * Math.min(1, explained) - middle;
+      if (score > best.score) best = { P, phase: k, r, score };
+    }
+    return best;
+  }
+
+  // How well the comb (P, phase) explains the profile, as reported: the
+  // share of its inner teeth on a clear border, times the share of clear
+  // borders on its teeth, less the edge evidence in its cell middles. Near 1
+  // means every border was seen where the count puts it; the search score
+  // (discounted and corrected for chance) only ranks sizes.
+  function combFit(fit, b) {
+    const { P, phase } = fit;
+    const M = b.length;
+    // A border's two color ramps (a blurred white line) lie within 10% of a
+    // cell of its middle.
+    const r = Math.max(fit.r, Math.round(0.1 * P));
+    const onTooth = new Uint8Array(M);
+    let teeth = 0;
+    let hits = 0;
+    let middle = 0;
+    let midN = 0;
+    for (let k = Math.ceil((r + 2 - phase) / P); phase + k * P < M - r - 2; k++) {
+      const t = Math.round(phase + k * P);
+      let hit = false;
+      for (let i = t - r; i <= t + r; i++) (onTooth[i] = 1), (hit ||= b[i] >= 0.5);
+      teeth++;
+      hits += hit;
+    }
+    let clear = 0;
+    let on = 0;
+    for (let i = 1; i < M - 1; i++) if (b[i] >= 0.5) (clear++, (on += onTooth[i]));
+    for (let k = Math.floor(-phase / P); phase + k * P < M; k++)
+      for (let i = Math.ceil(phase + (k + 0.3) * P); i <= phase + (k + 0.7) * P; i++) if (i >= 0 && i < M) (middle += b[i], midN++);
+    if (!teeth || !clear) return 0;
+    return Math.max(0, (hits / teeth) * (on / clear) - (midN ? middle / midN : 0));
+  }
+
+  // The comb through the borders it found, by least squares: the size
+  // search steps leave up to a sample of drift per cell size step, which
+  // over 30 rows misses the last border.
+  function refineComb(fit, b) {
+    const { P, phase, r } = fit;
+    const pts = [];
+    for (let k = Math.ceil(-phase / P); phase + k * P < b.length; k++) {
+      const t = Math.round(phase + k * P);
+      let best = -1;
+      for (let i = Math.max(0, t - r); i <= Math.min(b.length - 1, t + r); i++) if (b[i] >= 0.5 && (best < 0 || b[i] > b[best])) best = i;
+      if (best >= 0) pts.push([k, best]);
+    }
+    if (pts.length < 3) return fit;
+    const n = pts.length;
+    const mk = pts.reduce((s, [k]) => s + k, 0) / n;
+    const mt = pts.reduce((s, [, t]) => s + t, 0) / n;
+    let num = 0;
+    let den = 0;
+    for (const [k, t] of pts) (num += (k - mk) * (t - mt), den += (k - mk) ** 2);
+    const P2 = num / den;
+    if (!(Math.abs(P2 - P) < 0.05 * P)) return fit;
+    return { ...fit, P: P2, phase: mt - mk * P2 };
+  }
+
+  // Cells of the comb (P, phase) inside the profile: each pair of teeth
+  // mostly inside it, less end cells whose outer tooth shows no border or
+  // that are blank (a margin inside the box). Teeth at or past the ends
+  // cannot be checked; their cells are kept unless blank.
+  function combCells(fit, wins, isSep, pale) {
+    const { P, phase, r } = fit;
+    const win = wins[r];
+    const M = win.length;
+    // Teeth this close to an end cannot be checked (the border may be the
+    // box's own edge); they count when their cell is not blank.
+    const edgeZone = (t) => t < r + 2 || t > M - r - 3;
+    // End teeth may sit a few samples off the outer borders (sizes vary a
+    // little across a rendered heatmap): they look within 15% of a cell.
+    const reachOut = Math.max(r + 1, Math.round(0.15 * P));
+    const present = (t) => {
+      if (edgeZone(t)) return true;
+      for (let i = Math.max(0, Math.round(t) - reachOut); i <= Math.min(M - 1, Math.round(t) + reachOut); i++) if (wins[0][i] >= 0.5 || isSep[i] === 2) return true;
+      return false;
+    };
+    // An end cell that is mostly page white (a few tick marks or label
+    // strokes aside) is margin, unless a dark line or a border (the frame)
+    // closes it off on the outside: then it is a row of white cells (zeros
+    // on a diverging map). A margin has the frame on its inside.
+    const blank = (a, first) => {
+      const lo = Math.max(0, Math.ceil(a));
+      const hi = Math.min(M, a + P);
+      let s = 0;
+      // Most of a cell inside the box: blank only when one even color (a
+      // white cell has pale neighbours on some lines, tick marks below a
+      // frame do not make a cell).
+      const most = hi - lo >= 0.75 * P;
+      for (let i = lo; i < hi; i++) s += most ? isSep[i] === 1 : pale[i];
+      if (hi <= lo || s <= 0.6 * (hi - lo)) return hi <= lo;
+      const reach = 0.4 * P;
+      for (let i = lo; i < hi; i++) if ((isSep[i] === 2 || wins[0][i] >= 0.5) && (first ? i - lo : hi - 1 - i) < reach) return false;
+      return true;
+    };
+    const starts = [];
+    // Cells with 60% of their size inside the box: a cell cut by a box a
+    // few pixels small still counts; a band under half a cell past the
+    // frame (tick marks, a label row) does not.
+    for (let t = phase - Math.ceil(phase / P + 1) * P; t < M; t += P) if (t + 0.4 * P >= 0 && t + 0.6 * P <= M) starts.push(t);
+    // White end cells cut by the box can be margin or white cells (zeros);
+    // they are dropped and counted, for the caller to weigh.
+    let white = 0;
+    const keep = (t, outer) => {
+      if (!present(outer)) return false;
+      if (edgeZone(outer) && blank(t, outer === t)) return !++white;
+      return true;
+    };
+    while (starts.length > 1 && !keep(starts[0], starts[0])) starts.shift();
+    while (starts.length > 1 && !keep(starts[starts.length - 1], starts[starts.length - 1] + P)) starts.pop();
+    return { count: starts.length, start: starts[0], end: starts[starts.length - 1] + P, white };
+  }
+
+  // Fit one axis: {count, score, alt, altScore, size, span: [a, b] (0–1
+  // along the axis, where the counted cells start and end), reason}.
+  function fitAxis(img, corners, axis) {
+    const { width, height } = gridPixelSize(corners);
+    const len = axis === 'u' ? width : height;
+    const N = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(len)));
+    const lines = Math.min(FIT_LINES, Math.max(4, Math.round(axis === 'u' ? height : width)));
+    const ev = borderEvidence(axisColors(img, corners, axis, N, lines), N, lines);
+    const pxPerSample = len / N;
+    const fit = (compress) => {
+      const f = fitProfile(ev, Infinity, compress, pxPerSample);
+      // A run as wide as half a cell is a column of white cells, not a gap.
+      return f.wideRun ? fitProfile(ev, 0.5 * f.sizeSamples, compress, pxPerSample) : f;
+    };
+    let out = fit(false);
+    if (out.runs) {
+      const grouped = fit(true);
+      // Only when clearly better: shrinking gaps also eats into noisy cells.
+      if (grouped.rank > out.rank + 0.05) out = { ...grouped, reason: grouped.reason === 'clean' ? 'clean, groups' : grouped.reason };
+    }
+    const { wideRun, sizeSamples, runs, rank, ...rest } = out;
+    return { ...rest, span: rest.span.map((s) => s / N) };
+  }
+
+  function fitProfile(ev, maxRun, compress, pxPerSample) {
+    const N = ev.edge.length;
+    const { b, orig, isSep, pale, runs } = collapseSeparators(ev, maxRun, compress);
+    const M = b.length;
+    const none = { count: 1, score: 0, rank: 0, alt: null, altScore: 0, size: N * pxPerSample, sizeSamples: N, span: [0, N], reason: 'no borders' };
+    if (M < 2 * MIN_CELL_PX) return none;
+    // Evidence within r samples, discounted with distance so that among
+    // sizes whose teeth all stay in reach the one that lands on the borders
+    // wins (else the drift shows only as a missed border at the far end).
+    const wins = [0, 1, 2, 3].map((r) =>
+      b.map((v, i) => {
+        let m = v;
+        for (let d = 1; d <= r; d++) m = Math.max(m, (1 - (0.5 * d) / (r + 1)) * Math.max(b[i - d] || 0, b[i + d] || 0));
+        return m;
+      }),
+    );
+    const win = wins[1];
+    // Cell sizes in steps fine enough that the comb drifts under a sample
+    // across the whole axis.
+    const minP = Math.max(MIN_CELL_PX / pxPerSample, M / MAX_CELLS, 2);
+    const step = 1 + Math.min(0.004, 1.5 / M);
+    // Clear borders only: faint noise everywhere would outweigh them.
+    let total = 0;
+    for (let i = 1; i < M - 1; i++) total += b[i] >= 0.5;
+    if (total < 2) return none;
+    const fits = [];
+    for (let P = minP; P <= M / 1.5; P *= step) fits.push(combAt(wins, b, P, total));
+    if (!fits.length) return none;
+    // Local maxima over the cell size, best first.
+    const peaks = fits.filter((f, i) => f.score >= (fits[i - 1]?.score ?? -Infinity) && f.score >= (fits[i + 1]?.score ?? -Infinity));
+    const top = Math.max(...peaks.map((f) => f.score));
+    if (top < MIN_FIT) return { ...none, score: Math.max(0, top), reason: 'weak borders' };
+    const toOrig = (t) => {
+      const i = Math.max(0, Math.min(M - 1, t));
+      const k = Math.floor(i);
+      const a = orig[k];
+      const c = orig[Math.min(M - 1, k + 1)];
+      return a + (i - k) * (c - a);
+    };
+    const describe = (f) => {
+      f = refineComb(f, b);
+      const c = combCells(f, wins, isSep, pale);
+      const span = [toOrig(c.start), toOrig(c.end)];
+      return { ...f, count: c.count, span, white: c.white, fit: combFit(f, b) };
+    };
+    // The most cells among the near-best sizes (smallest P), at the size
+    // that fits best near it: a size 0.1% off drifts 3 px over 30 rows.
+    const P0 = Math.min(...peaks.filter((f) => f.score >= top - COUNT_TIE).map((f) => f.P));
+    const chosen = describe(peaks.filter((f) => f.P >= P0 && f.P <= 1.05 * P0).reduce((a, f) => (f.score > a.score ? f : a)));
+    // The best different count, for the caller to weigh.
+    let alt = null;
+    for (const f of peaks.slice().sort((a, b) => b.score - a.score).slice(0, 20)) {
+      const d = describe(f);
+      if (d.count !== chosen.count) {
+        alt = d;
+        break;
+      }
+    }
+    const sizeSamples = (chosen.span[1] - chosen.span[0]) / chosen.count;
+    const wideRun = runs.some(([a, c]) => c - a >= 0.5 * sizeSamples);
+    let reason = 'clean';
+    if (chosen.fit < 0.7) reason = 'weak fit';
+    if (chosen.white) {
+      reason = `${reason}; ${chosen.white} white end cell${chosen.white > 1 ? 's' : ''} left out`;
+      alt = { count: chosen.count + chosen.white, fit: chosen.fit };
+    }
+    // Every other border much weaker than the rest: half as many cells, with
+    // something (a dendrogram, tick marks) across their middles.
+    if (chosen.count >= 4 && chosen.count % 2 === 0) {
+      const tooth = (k) => wins[chosen.r][Math.round(chosen.phase + k * chosen.P)] ?? 0;
+      let even = 0;
+      let odd = 0;
+      for (let k = 0; chosen.phase + k * chosen.P < M - 1; k++) (k % 2 ? (odd += tooth(k)) : (even += tooth(k)));
+      if (Math.min(even, odd) < 0.5 * Math.max(even, odd)) {
+        reason = 'every other border weak';
+        alt = { count: chosen.count / 2, fit: alt?.count === chosen.count / 2 ? alt.fit : 0 };
+      }
+    }
+    return {
+      count: chosen.count,
+      score: chosen.fit,
+      rank: chosen.score,
+      alt: alt ? alt.count : null,
+      altScore: alt ? alt.fit : 0,
+      size: sizeSamples * pxPerSample,
+      sizeSamples,
+      span: chosen.span,
+      reason,
+      wideRun: wideRun && maxRun === Infinity,
+      runs: runs.length,
+    };
+  }
+
+  // Cell counts of a placed grid from where its cell borders are. Returns
+  // {rows, cols, rowScore, colScore} (a score near 1 is a clean fit; below
+  // ~0.5 the borders are not evenly spaced or not visible), plus per axis
+  // the best different count and its score (rowAlt, rowAltScore), the cell
+  // size in pixels (rowSize), where the counted cells start and end along
+  // the axis as 0–1 of the box (rowSpan: [a, b]; far from [0, 1] means the
+  // corners include something else), and a short reason (rowReason).
+  function fitCellCounts(img, corners) {
+    const cols = fitAxis(img, corners, 'u');
+    const rows = fitAxis(img, corners, 'v');
+    return {
+      rows: rows.count,
+      cols: cols.count,
+      rowScore: rows.score,
+      colScore: cols.score,
+      rowAlt: rows.alt,
+      colAlt: cols.alt,
+      rowAltScore: rows.altScore,
+      colAltScore: cols.altScore,
+      rowSize: rows.size,
+      colSize: cols.size,
+      rowSpan: rows.span,
+      colSpan: cols.span,
+      rowReason: rows.reason,
+      colReason: cols.reason,
+    };
   }
 
   Object.assign(CM, {

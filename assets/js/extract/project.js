@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { projectT, tickProblem } = CM;
+  const { projectT, tickProblem, SCALES } = CM;
 
   // Project model and its JSON (de)serialization. All coordinates are in the
   // pixel space of the rendered source image (source.width × source.height).
@@ -316,7 +316,7 @@
       p.colorbar.end = readPoint(cb.end, `panel ${i + 1} colorbar`);
       if (Number.isFinite(cb.halfWidth)) p.colorbar.halfWidth = Math.max(0, cb.halfWidth);
       if (Number.isInteger(cb.nSamples)) p.colorbar.nSamples = Math.min(4096, Math.max(2, cb.nSamples));
-      p.colorbar.scale = cb.scale === 'log10' ? 'log10' : 'linear';
+      p.colorbar.scale = SCALES.includes(cb.scale) ? cb.scale : 'linear';
       if (cb.colormap && typeof cb.colormap === 'object' && typeof cb.colormap.name === 'string') {
         p.colorbar.colormap = { name: cb.colormap.name, reversed: !!cb.colormap.reversed };
       }

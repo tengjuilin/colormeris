@@ -220,12 +220,12 @@ Remove a tick. _Changes the project; undoable._ _Available to the heatmap agent'
 
 ### `set_colorbar_scale`
 
-linear, or log10 when the tick labels are raw numbers on a logarithmic bar. _Changes the project; undoable._ _Available to the heatmap agent's LLM._
+linear; log10 when the tick labels are raw numbers on a logarithmic bar; piecewise (or piecewise-log10 for positive values over decades) when the tick values are uneven along the bar, e.g. a binned bar labelled 1e4, 2e4, 2e5 at its steps: values are interpolated between neighbouring ticks only. _Changes the project; undoable._ _Available to the heatmap agent's LLM._
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `panelId` | string |  | Panel to act on. Defaults to the active panel; another panel is selected first (switching tool and page if needed). |
-| `scale` | "linear" \\| "log10" | yes |  |
+| `scale` | "linear" \\| "log10" \\| "piecewise" \\| "piecewise-log10" | yes |  |
 
 ### `set_settings`
 
@@ -410,7 +410,7 @@ For each page:
 2. Work through that list one heatmap at a time, each in its own panel. A new page starts with one empty panel; use add_panel for each further heatmap. Name each panel after its figure label (e.g. "Fig 2b") with rename_panel. Finishing one heatmap is not the end: go on with the next one on the list, then the next page.
 3. Grid: zoom on the heatmap's top-left and bottom-right corners. set_grid with the outer corners of the cell area only (not labels, axes, dendrograms or the colorbar). Put each corner exactly on the outer edge of the first/last cell, not on a border line, axis or tick outside it. Rows and columns are counted and filled in automatically; do not give them. Read the row labels (top to bottom) and column labels (left to right) and set_labels. Axis labels do not always match the cell count: one label can cover several replicate rows or columns (or only some cells are labelled). Never resize the grid to match the label count; trust the cell structure you see and the detected size.
 4. Colorbar: zoom on it. set_colorbar with start and end at the two ends of the colored strip, along its middle. It snaps the line to the strip's centre line and each end to the first and last colored pixel (off the outline), and sets halfWidth from the strip width; read the note it returns. If it says no strip or no edge was found, place those points yourself on a zoomed view: on the centre line, just inside the colored strip, never on the black or grey outline and never short of the last color.
-   Ticks: add at least two with add_tick, "at" on the tick mark and the printed number as value (include any ×10^n multiplier). Use the outermost labelled ticks, and a middle one when there is one. add_tick snaps to the nearest tick mark; if its note says no mark was found (bars without marks), put "at" level with the middle of the label text. Read each label carefully (signs, decimals, exponents). If the labels grow by constant factors (1, 10, 100) use set_colorbar_scale log10.
+   Ticks: add at least two with add_tick, "at" on the tick mark and the printed number as value (include any ×10^n multiplier). Use the outermost labelled ticks, and a middle one when there is one. add_tick snaps to the nearest tick mark; if its note says no mark was found (bars without marks), put "at" level with the middle of the label text. Read each label carefully (signs, decimals, exponents). If the labels grow by constant factors (1, 10, 100) use set_colorbar_scale log10; if they are uneven along the bar (a binned bar labelled 1e4, 2e4, 2e5 at its steps) use piecewise, or piecewise-log10 over decades. A binned bar gives each cell its bin's middle value; cells whose colors are not on the colormap (gray ND cells) get no value.
 5. Check: view_page on the heatmap region with overlay "calibration" (grid lines must sit on cell borders, the colorbar line on the middle of the bar from end to end), then zoom on the colorbar alone with overlay "calibration": each orange tick dot must be level with its printed label and show the same number. Then overlay "reconstruction" (repainted cells must match the figure). Fix and re-check if needed.
 6. Accept: if the overlays do not match, fix and look again. Do not spend more than two rounds of fixes on one panel.
 
@@ -428,41 +428,52 @@ When every heatmap on every page is done, call finish with one line per panel an
 The toggle at the top right of the *Agent* card switches between *Agent only* (above) and *Agent decision*. In decision mode the LLM (default `anthropic/claude-sonnet-5.5`) reads the page and writes short descriptions of the heatmaps, and a decision model (default `typesafe/jev-1.14`, any OpenRouter model with image input and decisions output) answers typed questions about one heatmap at a time through OpenRouter's Decisions API (`POST /api/alpha/decisions`). The app turns the answers into pixels and counts:
 
 1. **Where** (box, on the whole page): the heatmap matching the LLM's description, and whether it is there (noul).
-2. **Cells** (box, on a crop around that): the block of colored cells. `snapBlock` (core/locate.js) moves the box onto the block of color: Jev's box edges have two decimals, about 20 px on a page and 5 px on a crop.
-3. **Rows and columns**: counted by the app, never by a model. `fitCellCounts` (core/grid.js) scores each count by edges on the borders it implies and flat cell middles, so groups of near-equal replicate cells are not taken for one wide cell; `detectGridSize` is the fallback when the fit is weak.
-4. **Colorbar side** (choice) and **colorbar** (box, on the strip beside the cells only). A strip far from the cells or not running along them is dropped and the next likeliest side tried, so a neighbouring panel's colorbar is not taken.
-5. **Tick labels**: found by code (`findTickLabels`), numbered in the image the LLM gets, and read by the LLM with `set_ticks`. Each tick snaps to its tick mark. The app then checks that the values lie on a straight line along the bar and how many cells are far from the colorbar's colors.
+2. **Cells** (box, on a crop around that): the block of colored cells. `snapBlock` (core/locate.js) moves the box onto the block of color: Jev's box edges have two decimals, about 20 px on a page and 5 px on a crop. When the LLM gives its own rough `box` (after Jev found the wrong heatmap), Jev is not asked and `snapEdges` moves each edge at most a few px onto the cells' edge.
+3. **Rows and columns**: counted by the app, never by a model. `fitCellCounts` (core/grid.js) scores each count by edges on the borders it implies and flat cell middles. A clean fit (score ≥ 0.7) is taken; a fair one (≥ 0.45) is taken and the LLM told; below that `detectGridSize` stays only when it is confident, else the LLM counts from the labels with `correct_grid_size` (strips without cell borders). When the counted cells start or end inside the box (a frame, a white end row), the corners move onto them.
+4. **Colorbar**: `findColorbars` finds every colorbar on the page (categorical group strips left out) and, unless one lies right beside the cells, Jev answers the colorbar's side (choice) and its box on the strip beside the cells (`snapStrip`). One strip beside the cells with its labels on the far side wins, else one near them (up to 60% of their longer side away), else the only one on the page. Otherwise the LLM gets the candidates lettered on a page image and picks one with `use_colorbar`, or copies a calibrated panel's colorbar (`fromPanel`, for blocks sharing one colorbar).
+5. **Tick labels**: found by code (`findTickLabels`, with the cells left out), numbered in the image the LLM gets, and read by the LLM with `set_ticks`; without usable boxes it gives each tick's place along the strip (`t`). Each tick snaps to its tick mark. On a binned colorbar the app sets a fitting scale (piecewise for uneven ticks) and gives each cell its bin's middle value. The check then tests the ticks against the scale's line and counts flagged cells, off-map cells (colors not on the colormap, left empty) and cells past the bar's ends (bounds).
 
 The LLM's image of each heatmap is cropped at the white gaps around its labels, so another panel's colorbar is never in view. On example.pdf page 5 (10 heatmaps) a run took 3 LLM steps and $0.19 with Claude Sonnet 5.5, of which 40 decision requests cost $0.005; all grids, colorbars, ticks and labels were right. On the synthetic jet figure it took 3 steps and $0.03, with values within 0.22 of the truth on a 0–100 scale.
 
 ### Decision tools
 
-Handled by the runner in this mode, with `view_page`, `view_pages_overview` and `finish` from above and these actions: `go_to_page`, `select_panel`, `rename_panel`, `remove_panel`, `set_labels`, `set_colorbar`, `add_tick`, `remove_tick`, `set_colorbar_scale`, `undo`. There is no tool for rows and columns.
+Handled by the runner in this mode, with `view_page`, `view_pages_overview` and `finish` from above and these actions: `go_to_page`, `select_panel`, `rename_panel`, `remove_panel`, `set_labels`, `set_colorbar`, `add_tick`, `remove_tick`, `set_colorbar_scale`, `undo`. Rows and columns only through `correct_grid_size`.
 
 ### `locate_heatmap`
 
-Find one heatmap with the decision model and calibrate a panel for it: the grid on its cells (rows and columns counted by the app) and the colorbar on its strip. Uses a new panel unless panelId is given or the active panel is still empty. Returns the placement and an image with numbered tick-label boxes.
+Find one heatmap with the decision model and calibrate a panel for it: the grid on its cells (rows and columns counted by the app) and its colorbar. Uses a new panel unless panelId is given or the active panel is still empty. Returns the placement and an image with numbered tick-label boxes, or lettered colorbar candidates when it cannot tell which colorbar is this heatmap's.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `name` | string | yes | Figure label, e.g. "Fig 2f". Becomes the panel name. |
 | `description` | string | yes | What singles this heatmap out on the page: panel letter, title, position, first row label. |
 | `panelId` | string |  | Re-locate this panel instead of using a new one. |
-| `box` | {x0, y0, x1, y1} |  | Only when a first locate missed: the cells' rough extent in page pixels, read from the page image's rulers. Replaces the decision model's page-wide guess; the app still snaps it. |
+| `box` | {x0, y0, x1, y1} |  | Only when a first locate found the wrong heatmap: the cells' rough extent in page pixels, read from the page image's rulers. The decision model is not asked; each edge moves at most a few px onto the cells' edge. |
 
 ### `set_ticks`
 
-Set the colorbar ticks from the numbered tick-label boxes of locate_heatmap (replaces the panel's ticks), then check the extraction. Each tick snaps to its tick mark.
+Set the colorbar ticks (replaces the panel's ticks), then check the extraction; returns the check and an image of the ticks. Give each tick by its numbered tick-label box (mark), or, when the boxes are missing or wrong, by its place along the colored strip (t). Ticks snap to tick marks. Unless you give a scale, the app picks one that fits: for a binned colorbar, and piecewise for evenly stepped labels at uneven places along a smooth bar.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `panelId` | string |  | Panel to act on. Defaults to the active panel. |
-| `ticks` | {mark, value}[] | yes |  |
-| `scale` | "linear" \\| "log10" |  |  |
+| `ticks` | {mark, t, value}[] | yes |  |
+| `scale` | "linear" \\| "log10" \\| "piecewise" \\| "piecewise-log10" |  | Leave out unless the labels grow by constant factors (log10). piecewise: uneven tick values interpolated between neighbours. |
+
+### `use_colorbar`
+
+Give a panel its colorbar: one of the lettered candidates from locate_heatmap (candidate), the colorbar of another panel with its ticks and scale (fromPanel: blocks sharing one colorbar), or a strip at a rough box in page pixels (box) when none was found. Returns numbered tick-label boxes for set_ticks (except with fromPanel, which checks the panel).
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `panelId` | string |  | Panel to act on. Defaults to the active panel. |
+| `candidate` | string |  | Letter of a colorbar candidate, e.g. "B". |
+| `fromPanel` | string |  | Id of a panel whose colorbar this heatmap shares. |
+| `box` | {x0, y0, x1, y1} |  | The colored strip's rough extent in page pixels, from the page rulers. |
 
 ### `correct_grid_size`
 
-Correct the app's row and column count of a panel when the image shows it is wrong: magenta lines that merge or split cells. Count cell edges in the image, not labels (one label can cover several replicate cells). Keeps the grid's corners, then checks the extraction.
+Correct the app's row and column count of a panel when the image shows it is wrong: magenta lines that merge or split cells, or a strip without cell borders. Count cell edges in the image; count labels only where there are no edges (one label can cover several replicate cells). With box (the cells' rough extent from the page rulers) the grid's outer edges also move onto the cells (at most a few px each); without it the corners stay. Then checks the extraction.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -470,10 +481,11 @@ Correct the app's row and column count of a panel when the image shows it is wro
 | `rows` | integer (≥ 1, ≤ 500) | yes |  |
 | `cols` | integer (≥ 1, ≤ 500) | yes |  |
 | `reason` | string | yes | What in the image shows the count, e.g. "3 replicate cells under each column label". |
+| `box` | {x0, y0, x1, y1} |  | Only when the outer grid lines miss the cells: the cells' rough extent in page pixels. |
 
 ### `check_panel`
 
-Check a panel again: whether it is ready, whether its tick values lie on a straight line along the bar, and how many cells are far from the colorbar's colors.
+Check a panel again: whether it is ready, whether its tick values fit the scale, and how many cells are far from the colorbar's colors, off it or past its ends.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -492,16 +504,18 @@ Ask the decision model your own questions about one region of the current page (
 ### Decision-mode prompt
 
 ```text
-You are the extraction agent of Colormeris, a tool that turns colors in scientific figures back into numbers. Your job: find every gridded heatmap on the pages you are given and get one calibrated panel per heatmap. You work with a decision model that locates things in page images; the app snaps its boxes to pixels and counts rows and columns by itself. You read text and describe targets. Do not place coordinates yourself unless a tool says it failed.
+You are the extraction agent of Colormeris, a tool that turns colors in scientific figures back into numbers. Your job: find every numerical heatmap on the pages you are given and get one calibrated panel per heatmap. You work with a decision model that locates things in page images; the app snaps boxes to pixels, finds colorbars and tick labels, and counts rows and columns. You read text, describe targets and choose. Give page coordinates only where a tool asks for a rough box.
+
+What counts as a heatmap: a block of colored cells whose colors stand for numbers on a colorbar (bordered or not). A strip of cells with its own colorbar (e.g. a -log10(p) row above a heatmap) is a heatmap of its own. Skip blocks without a colorbar, categorical group strips (a few flat colors with a legend of names), dendrograms, photos, plots and tables. Separately framed blocks that share one colorbar are one panel each.
 
 For each page:
-1. Look at the page image. List in your message EVERY heatmap (a grid of colored cells with a colorbar) with its figure label. Skip photos, line or scatter plots, and tables.
-2. Call locate_heatmap once per heatmap, all in the same turn. name: the panel's label as printed (e.g. "Fig 2f" when the figure number is visible, else "f"); never the page number. description: what singles it out on the page: panel letter, title, position (e.g. "upper left, right of panel e"), and its first row label.
-3. Each result has an image of that heatmap: magenta grid lines as placed, the orange colorbar line, and the colorbar's tick labels in blue boxes numbered 1, 2, 3… For every heatmap, in one turn:
-   - set_ticks: the printed value of each numbered box that is a colorbar tick label, as {mark, value}. Skip boxes on anything else (a title, a ×10^n note: apply that multiplier to the values instead). Use scale "log10" when the labels grow by constant factors (1, 10, 100).
+1. Look at the page image. List in your message EVERY heatmap with its figure label and which colorbar it uses.
+2. Call locate_heatmap once per heatmap, all in the same turn. name: the label as printed (e.g. "Fig 2f", else "f", or "f top strip"); never the page number. description: what singles it out: panel letter, title, position (e.g. "upper left, right of panel e"), first row label.
+3. Each result has an image: magenta grid lines as placed, the orange colorbar line, and the colorbar's tick labels in blue boxes numbered 1, 2, 3… Then, in one turn per heatmap:
+   - set_ticks: the printed value of each numbered box that is a tick label, as {mark, value}. Skip boxes on anything else (a title, a ×10^n note: apply that multiplier to the values instead). When the boxes are missing or wrong, give {t, value} instead: t is where the label sits along the colored strip, 0 at its top (vertical bar) or left (horizontal) end, 1 at the other. Scale: leave it out unless the labels grow by constant factors (1, 10, 100: "log10"); the app handles binned bars and uneven ticks by itself.
    - set_labels: row labels top to bottom and column labels left to right, exactly as printed. Labels may cover groups of cells; that is fine.
-4. set_ticks returns the app's check. If it fails, find the cause from the image (a misread or misassigned tick value, the wrong heatmap, a colorbar missing or cut) and fix it once: set_ticks again, or locate_heatmap again with panelId and a better description.
-   If the magenta grid covers only part of a heatmap, or something else, the decision model's guess was wrong: call locate_heatmap again with panelId and box, the cells' rough extent read from the page image's rulers (view_page if needed). A box a few % off is fine; the app snaps it. If the grid lines miss the cells, say so in finish.
-5. The app counts rows and columns. Check its count against the image: every cell should sit between magenta lines, one cell per gap. If lines merge cells (e.g. 3 replicate cells under one label) or split them, call correct_grid_size with the count you see and why. Do not correct a count you cannot see in the image.
-6. When every heatmap of every page is done, call finish with one line per panel and anything a human should check. Keep your messages short.
+4. When the result lists colorbar candidates (letters A, B… on a page image) instead of one colorbar, pick this heatmap's with use_colorbar {candidate}; when it shares the colorbar of a panel you already calibrated, use_colorbar {fromPanel} copies it with its ticks. If its colorbar is not found at all, use_colorbar {box} with the strip's rough extent from the page rulers.
+5. set_ticks returns the app's check and an image: each orange tick dot with its value should sit level with its printed label. If the check fails, find the cause (a misread or misassigned tick value, the wrong colorbar or heatmap; correctly read ticks at uneven places along a smooth bar need set_colorbar_scale piecewise, which checks again) and fix it once. Cells whose colors are not on the colorbar (gray "ND" cells, a black diagonal) are left empty, and a binned colorbar gives each cell its bin's middle value: both are expected, not failures. Cells paler or darker than the bar's end are only bounds; mention it in finish.
+6. Check the grid against the image: every cell between magenta lines, one cell per gap, outer lines on the cells' edges. If the count is wrong (lines merge replicate cells or split them, or a strip without borders), call correct_grid_size with the count you see (cell edges, or labels when there are no edges) and why. If the outer lines miss the cells' edges, add box: the cells' rough extent read from the page rulers (view_page if needed); the app moves each edge at most a few px. Only when the grid sits on the wrong heatmap, call locate_heatmap again with panelId and box.
+7. When every heatmap of every page is done, call finish with one line per panel and anything a human should check. Keep your messages short.
 ```
