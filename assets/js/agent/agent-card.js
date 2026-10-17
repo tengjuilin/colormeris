@@ -1,9 +1,10 @@
 (function (CM) {
   'use strict';
-  const { createAgentRunner, parsePages, cellSamplePolygon, DEFAULT_LLM, loadOpenRouterSdk, makeOpenRouterClient, DEFAULT_LABELS_MODEL } = CM;
+  const { createAgentRunner, parsePages, cellSamplePolygon, DEFAULT_LLM, loadOpenRouterSdk, makeOpenRouterClient, makeDecisionClient, DEFAULT_LABELS_MODEL, DEFAULT_DECISION_MODEL } = CM;
 
-  // Agent card of the heatmap tool: model choice, running and stopping the
-  // agent, its log, and the checks left for a human (typed questions answered
+  // Agent card of the heatmap tool: the mode (Agent only, or Agent decision
+  // with a decision model, see agent/decide.js), model choice, running and
+  // stopping the agent, its log, and the checks left for a human (typed questions answered
   // below the policy confidence through the API, and rejected panels). The key, base URL and
   // limits are in the Settings dialog (settings-dialog.js).
   // The OpenRouter SDK is loaded on first use (agent/openrouter-client.js).
@@ -18,13 +19,30 @@
     const agent = () => settingsUi.get().agent;
     $('agent-llm').value = agent().llm || DEFAULT_LLM;
     $('agent-labels').value = agent().labels || DEFAULT_LABELS_MODEL;
-    for (const [id, key] of [['agent-llm', 'llm'], ['agent-labels', 'labels']]) {
+    $('agent-decision').value = agent().decision || DEFAULT_DECISION_MODEL;
+    for (const [id, key] of [['agent-llm', 'llm'], ['agent-labels', 'labels'], ['agent-decision', 'decision']]) {
       $(id).addEventListener('change', () => {
         agent()[key] = $(id).value.trim();
         settingsUi.save();
       });
     }
     settingsUi.onChange(() => updateButtons());
+
+    // Mode toggle at the top right of the card.
+    const mode = () => (agent().mode === 'decision' ? 'decision' : 'agent');
+    function showMode() {
+      for (const b of document.querySelectorAll('#sec-agent [data-mode]')) ws.setPressed(b, b.dataset.mode === mode());
+      $('agent-decision-field').hidden = mode() !== 'decision';
+    }
+    for (const b of document.querySelectorAll('#sec-agent [data-mode]')) {
+      b.addEventListener('click', () => {
+        if (abort) return;
+        agent().mode = b.dataset.mode;
+        settingsUi.save();
+        showMode();
+      });
+    }
+    showMode();
     $('agent-open-settings').addEventListener('click', () => settingsUi.open('agent'));
     $('agent-pages').addEventListener('change', () => ($('agent-range-field').hidden = $('agent-pages').value !== 'range'));
 
@@ -45,9 +63,13 @@
           for await (const page of await client.models.list(req)) out.push(...page.result.data);
           return out;
         };
-        // The agent needs images and tools.
-        const llms = await collect({ inputModalities: 'image', supportedParameters: 'tools' });
+        // The agent needs images and tools; decision models need images.
+        const [llms, deciders] = await Promise.all([
+          collect({ inputModalities: 'image', supportedParameters: 'tools' }),
+          collect({ inputModalities: 'image', outputModalities: 'decisions' }).catch(() => []),
+        ]);
         fill('agent-llm-list', llms.filter((m) => !m.id.endsWith(':batch')));
+        fill('agent-decision-list', deciders);
       } catch (err) {
         modelsLoaded = false;
         console.warn('Could not list OpenRouter models', err);
@@ -60,11 +82,13 @@
     }
     $('agent-llm').addEventListener('focus', loadModels);
     $('agent-labels').addEventListener('focus', loadModels);
+    $('agent-decision').addEventListener('focus', loadModels);
 
     // ------------------------------------------------------------ run
 
     function updateButtons() {
       const running = !!abort;
+      for (const b of document.querySelectorAll('#sec-agent [data-mode]')) b.disabled = running;
       $('agent-run').disabled = running || !app.sourceCanvas || !hasKeyOrProxy();
       $('agent-run').hidden = running;
       $('agent-stop').hidden = !running;
@@ -108,11 +132,15 @@
       return typeof a === 'string' ? a : a && typeof a === 'object' ? Object.entries(a).map(([k, v]) => `${k} ${v}`).join(', ') : String(a);
     }
 
+    // LLM cost plus the decision model's, with its number of requests.
+    const costNote = (u) => `${money(u.llmCost + u.decisionCost)}${u.decisions ? ` (${u.decisions} decisions, ${money(u.decisionCost)})` : ''}${cacheNote(u)}`;
+
     function onEvent(type, data) {
       const u = data.usage;
-      $('agent-status').textContent = `Step ${u.steps} · ${money(u.llmCost)}${cacheNote(u)}`;
+      $('agent-status').textContent = `Step ${u.steps} · ${costNote(u)}`;
       if (type === 'assistant') log('assistant', data.text);
       else if (type === 'tool') log('tool', `${data.name}(${data.args && Object.keys(data.args).length ? JSON.stringify(data.args) : ''})`);
+      else if (type === 'result') log('result', data.text);
       else if (type === 'tool-error') log('error', `${data.name}: ${data.error}`);
       else if (type === 'done') log('done', data.summary);
     }
@@ -135,7 +163,9 @@
       $('agent-log').replaceChildren();
       $('agent-status').dataset.idle = '';
       updateButtons();
-      log('tool', `${focus ? `Redoing ${panelName(focus.panelId)}` : 'Running'} with ${$('agent-llm').value.trim()} on page${pages.length === 1 ? '' : 's'} ${pages.join(', ')}.`);
+      const decision = mode() === 'decision';
+      const decisionModel = $('agent-decision').value.trim() || DEFAULT_DECISION_MODEL;
+      log('tool', `${focus ? `Redoing ${panelName(focus.panelId)}` : 'Running'} with ${$('agent-llm').value.trim()}${decision ? ` and ${decisionModel}` : ''} on page${pages.length === 1 ? '' : 's'} ${pages.join(', ')}.`);
       try {
         const sdk = await loadSdk();
         const out = await runner.run({
@@ -143,12 +173,14 @@
           llmModel: $('agent-llm').value.trim() || DEFAULT_LLM,
           pages,
           maxSteps,
-          systemPrompt: agent().prompt,
+          systemPrompt: decision ? agent().decisionPrompt : agent().prompt,
           signal: abort.signal,
           onEvent,
           focus,
+          mode: decision ? 'decision' : 'agent',
+          ...(decision ? { decide: makeDecisionClient({ key, base: agent().base }), decisionModel } : {}),
         });
-        $('agent-status').textContent = `Done: ${out.usage.steps} steps, ${money(out.usage.llmCost)}${cacheNote(out.usage)}.`;
+        $('agent-status').textContent = `Done: ${out.usage.steps} steps, ${costNote(out.usage)}.`;
       } catch (err) {
         if (err.name === 'AbortError' || abort?.signal.aborted) {
           log('error', 'Stopped.');

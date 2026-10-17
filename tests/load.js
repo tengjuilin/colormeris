@@ -5,6 +5,7 @@ import '../assets/js/core/color.js';
 import '../assets/js/core/cvd.js';
 import '../assets/js/core/grid.js';
 import '../assets/js/core/colorbar.js';
+import '../assets/js/core/locate.js';
 import '../assets/js/core/colormap-library.js';
 import '../assets/js/core/colormap-match.js';
 import '../assets/js/colormaps/metrics.js';
@@ -20,6 +21,7 @@ import '../assets/js/extract/roi/quantify.js';
 import '../assets/js/extract/map/field.js';
 import '../assets/js/agent/schema.js';
 import '../assets/js/agent/llm.js';
+import '../assets/js/agent/decide.js';
 import '../assets/js/agent/labels.js';
 
 export default globalThis.Colormeris;

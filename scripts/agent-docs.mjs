@@ -6,7 +6,7 @@
 import { writeFileSync } from 'node:fs';
 import CM from '../tests/load.js';
 
-const { AGENT_ACTIONS, RUNNER_TOOLS, LLM_ACTIONS, AGENT_LIMITS, AGENT_SYSTEM_PROMPT, DEFAULT_LLM } = CM;
+const { AGENT_ACTIONS, RUNNER_TOOLS, LLM_ACTIONS, AGENT_LIMITS, AGENT_SYSTEM_PROMPT, DEFAULT_LLM, DECISION_TOOLS, DECISION_LLM_ACTIONS, DECISION_SYSTEM_PROMPT, DEFAULT_DECISION_MODEL } = CM;
 
 // One line per argument: name, type, required, description.
 function typeOf(s) {
@@ -133,12 +133,35 @@ Every step resends the system prompt, the tool list and the whole conversation. 
 
 The agent uses your own OpenRouter key and sends page images and extracted values to OpenRouter and the model providers you pick. The key stays in memory unless you tick *Remember the key* (then it is kept in this browser's local storage).
 
-To keep the key out of the browser entirely, put \`OPENROUTER_API_KEY=…\` in \`.env\` (ignored by git), run \`npm run proxy\`, and set *API base URL* to \`http://localhost:8787/api/v1\` with the key field empty. The proxy (\`scripts/openrouter-proxy.mjs\`) forwards only OpenRouter API paths, only for pages served from localhost, and adds the key itself. Serve the app with \`npm run serve\`: pages opened from disk are refused by the proxy.
+To keep the key out of the browser entirely, put \`OPENROUTER_API_KEY=…\` in \`.env\` (ignored by git), run \`npm run proxy\`, and set *API base URL* to \`http://localhost:8787/api/v1\` with the key field empty. The proxy (\`scripts/openrouter-proxy.mjs\`) forwards only OpenRouter API paths (\`/api/v1/\` and \`/api/alpha/decisions\`), only for pages served from localhost, and adds the key itself. Serve the app with \`npm run serve\`: pages opened from disk are refused by the proxy.
 
 ### System prompt
 
 \`\`\`text
 ${AGENT_SYSTEM_PROMPT}
+\`\`\`
+
+## Agent decision mode
+
+The toggle at the top right of the *Agent* card switches between *Agent only* (above) and *Agent decision*. In decision mode the LLM (default \`${DEFAULT_LLM}\`) reads the page and writes short descriptions of the heatmaps, and a decision model (default \`${DEFAULT_DECISION_MODEL}\`, any OpenRouter model with image input and decisions output) answers typed questions about one heatmap at a time through OpenRouter's Decisions API (\`POST /api/alpha/decisions\`). The app turns the answers into pixels and counts:
+
+1. **Where** (box, on the whole page): the heatmap matching the LLM's description, and whether it is there (noul).
+2. **Cells** (box, on a crop around that): the block of colored cells. \`snapBlock\` (core/locate.js) moves the box onto the block of color: Jev's box edges have two decimals, about 20 px on a page and 5 px on a crop.
+3. **Rows and columns**: counted by the app, never by a model. \`fitCellCounts\` (core/grid.js) scores each count by edges on the borders it implies and flat cell middles, so groups of near-equal replicate cells are not taken for one wide cell; \`detectGridSize\` is the fallback when the fit is weak.
+4. **Colorbar side** (choice) and **colorbar** (box, on the strip beside the cells only). A strip far from the cells or not running along them is dropped and the next likeliest side tried, so a neighbouring panel's colorbar is not taken.
+5. **Tick labels**: found by code (\`findTickLabels\`), numbered in the image the LLM gets, and read by the LLM with \`set_ticks\`. Each tick snaps to its tick mark. The app then checks that the values lie on a straight line along the bar and how many cells are far from the colorbar's colors.
+
+The LLM's image of each heatmap is cropped at the white gaps around its labels, so another panel's colorbar is never in view. On example.pdf page 5 (10 heatmaps) a run took 3 LLM steps and $0.19 with Claude Sonnet 5.5, of which 40 decision requests cost $0.005; all grids, colorbars, ticks and labels were right. On the synthetic jet figure it took 3 steps and $0.03, with values within 0.22 of the truth on a 0–100 scale.
+
+### Decision tools
+
+Handled by the runner in this mode, with \`view_page\`, \`view_pages_overview\` and \`finish\` from above and these actions: ${DECISION_LLM_ACTIONS.map((n) => `\`${n}\``).join(', ')}. There is no tool for rows and columns.
+
+${Object.entries(DECISION_TOOLS).map(([n, t]) => section(n, t)).join('\n')}
+### Decision-mode prompt
+
+\`\`\`text
+${DECISION_SYSTEM_PROMPT}
 \`\`\`
 `;
 

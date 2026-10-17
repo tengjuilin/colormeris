@@ -242,6 +242,13 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .card-actions.split > .btn { width: 100%; min-width: 0; }
 /* Icon-only buttons (with title and aria-label), e.g. in a card head. */
 .head-actions { display: flex; gap: 6px; }
+/* Segmented toggle (one choice of a few, e.g. the Agent card's mode): joined
+   buttons, the chosen one pressed. */
+.segmented { gap: 0; }
+.segmented > .btn { font-size: var(--fs-xs); padding: 0 var(--space-2); border-radius: 0; }
+.segmented > .btn:first-child { border-radius: 6px 0 0 6px; }
+.segmented > .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.segmented > .btn[aria-pressed="true"] { position: relative; z-index: 1; }
 .extract .sidebar .btn.icon-only { width: var(--control-h-sm); padding: 0; gap: 0; }
 
 /* Button icons: data-icon names one of the masks below; the icon takes the text color. */

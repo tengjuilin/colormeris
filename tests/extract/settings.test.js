@@ -138,3 +138,12 @@ test('custom agent prompts are kept, bad ones fall back to the built-in (empty)'
   assert.equal(s.agent.labelsPrompt, '');
   assert.equal(defaultSettings().agent.prompt, '');
 });
+
+test('agent mode is "agent" or "decision", with an optional decision model', () => {
+  assert.equal(defaultSettings().agent.mode, 'agent');
+  const s = normalizeSettings({ agent: { mode: 'decision', decision: ' typesafe/jev-1.14 ', decisionPrompt: 7 } });
+  assert.equal(s.agent.mode, 'decision');
+  assert.equal(s.agent.decision, 'typesafe/jev-1.14');
+  assert.equal(s.agent.decisionPrompt, '');
+  assert.equal(normalizeSettings({ agent: { mode: 'reviewer' } }).agent.mode, 'agent');
+});

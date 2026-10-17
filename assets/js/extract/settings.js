@@ -90,7 +90,9 @@
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
 
-  const AGENT_DEFAULTS = { key: '', rememberKey: false, minConfidence: 0.9, maxSteps: 80, base: '', llm: '', labels: '', prompt: '', labelsPrompt: '' };
+  // mode: "agent" (the LLM does everything) or "decision" (the LLM asks a
+  // decision model, agent/decide.js); `decision` is that model's id.
+  const AGENT_DEFAULTS = { key: '', rememberKey: false, minConfidence: 0.9, maxSteps: 80, base: '', llm: '', labels: '', prompt: '', labelsPrompt: '', mode: 'agent', decision: '', decisionPrompt: '' };
 
   function defaultSettings() {
     return {
@@ -121,6 +123,9 @@
       // Custom prompts; empty means the built-in one.
       prompt: str(a.prompt),
       labelsPrompt: str(a.labelsPrompt),
+      mode: a.mode === 'decision' ? 'decision' : 'agent',
+      decision: str(a.decision),
+      decisionPrompt: str(a.decisionPrompt),
     };
     for (const [kind, defs] of Object.entries(MATCHING_DEFAULTS)) {
       const m = raw.matching?.[kind] || {};

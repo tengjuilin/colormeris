@@ -3,6 +3,7 @@
   const {
     AGENT_SYSTEM_PROMPT, LLM_ACTIONS, RUNNER_TOOLS, validateRunnerTool, llmTools,
     createRetryGuard, progressNote, finishCheck, pruneImages, toolResultText,
+    DECISION_SYSTEM_PROMPT, DECISION_LLM_ACTIONS, decisionLlmTools, createDecisionTools,
     bilinear, outerCorners, cellSamplePolygon, colorAtT, rgbToHex, ticksWithT, renderPdfPage,
   } = CM;
 
@@ -39,7 +40,10 @@
     }
 
     // Page (or region) image with rulers in page pixels and optional overlay.
-    function renderView({ region, overlay = 'none', maxSide = MAX_VIEW } = {}) {
+    // `marks` are numbered boxes ({box, label}) drawn on top. Without rulers
+    // (images for the decision model) the picture is padded with white to at
+    // least `minSide` on each side and `frame` maps it back to the page.
+    function renderView({ region, overlay = 'none', maxSide = MAX_VIEW, rulers = true, marks = [], minSide = 0, zoom = true } = {}) {
       const page = app.pages.get(ws.currentPage());
       if (!page) throw new Error('No page is shown.');
       const src = page.canvas;
@@ -53,8 +57,8 @@
       const W = Math.round(w * scale);
       const H = Math.round(h * scale);
       const out = document.createElement('canvas');
-      out.width = W + RULER.right;
-      out.height = H + RULER.bottom;
+      out.width = rulers ? W + RULER.right : Math.max(W, minSide);
+      out.height = rulers ? H + RULER.bottom : Math.max(H, minSide);
       const ctx = out.getContext('2d');
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, out.width, out.height);
@@ -63,6 +67,9 @@
       const toView = (p) => ({ x: (p.x - x0) * scale, y: (p.y - y0) * scale });
 
       if (overlay !== 'none') drawPanels(ctx, toView, scale, overlay);
+      drawMarks(ctx, toView, marks);
+      const frame = { x0, y0, scale, width: out.width, height: out.height };
+      if (!rulers) return { dataUrl: out.toDataURL('image/png'), frame };
 
       // Rulers (bottom and right) with faint guide lines across the picture.
       const step = niceStep(scale);
@@ -90,13 +97,33 @@
         ctx.stroke();
         ctx.fillText(String(Math.round(y)), W + 8, Math.min(Math.max(vy, 7), H - 7));
       }
-      ws.zoomToPoints([{ x: x0, y: y0 }, { x: x1, y: y1 }]);
+      if (zoom) ws.zoomToPoints([{ x: x0, y: y0 }, { x: x1, y: y1 }]);
       const r = (v) => Math.round(v * 100) / 100;
       return {
         dataUrl: out.toDataURL('image/jpeg', 0.9),
         note: `Page ${ws.currentPage()}, region x ${r(x0)}–${r(x1)}, y ${r(y0)}–${r(y1)}, drawn at ${r(scale)}× (${W} × ${H} image pixels plus rulers). Image pixel (0, 0) is page point (${r(x0)}, ${r(y0)}): page x = ${r(x0)} + image x / ${r(scale)}, page y = ${r(y0)} + image y / ${r(scale)}. The rulers on the bottom and right edges show the same page pixels.`,
         region: { x0, y0, scale },
+        frame,
       };
+    }
+
+    // Numbered boxes (tick-label candidates), numbers outside the box.
+    function drawMarks(ctx, toView, marks) {
+      ctx.font = 'bold 16px sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      for (const m of marks) {
+        const p = toView({ x: m.box.x0, y: m.box.y0 });
+        const q = toView({ x: m.box.x1, y: m.box.y1 });
+        ctx.strokeStyle = '#1565ff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(p.x - 3, p.y - 3, q.x - p.x + 6, q.y - p.y + 6);
+        const tw = ctx.measureText(m.label).width + 8;
+        ctx.fillStyle = '#1565ff';
+        ctx.fillRect(q.x + 5, (p.y + q.y) / 2 - 10, tw, 20);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(m.label, q.x + 9, (p.y + q.y) / 2 + 1);
+      }
     }
 
     function drawPanels(ctx, toView, scale, overlay) {
@@ -196,19 +223,26 @@
     // ------------------------------------------------------------ run
 
     // settings: {client, llmModel, pages: [n], maxSteps, signal,
-    // onEvent(type, data), focus}. `focus` ({panelId, note}) asks the agent to
-    // fix one rejected panel.
+    // onEvent(type, data), focus, mode, decide, decisionModel}. `focus`
+    // ({panelId, note}) asks the agent to fix one rejected panel. mode
+    // "decision" gives the LLM the tools of agent/decide.js, answered with
+    // `decide` (agent/openrouter-client.js) by `decisionModel`.
     async function run(settings) {
-      const { client, llmModel, pages, maxSteps = 60, signal, onEvent = () => {}, focus, systemPrompt } = settings;
+      const { client, llmModel, pages, maxSteps = 60, signal, onEvent = () => {}, focus, systemPrompt, mode = 'agent', decide, decisionModel } = settings;
+      const decisionMode = mode === 'decision';
       // One id for the whole run keeps the requests on the provider that
       // holds the cache (sticky routing).
       const sessionId = `colormeris-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      const usage = { llmCost: 0, promptTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, completionTokens: 0, steps: 0 };
+      const usage = { llmCost: 0, promptTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, completionTokens: 0, steps: 0, decisions: 0, decisionCost: 0 };
       const emit = (type, data) => onEvent(type, { ...data, usage: { ...usage } });
+      const decision = decisionMode ? createDecisionTools(ws, api, { renderView, decide, model: decisionModel, usage, signal }) : null;
+      const llmActions = decisionMode ? DECISION_LLM_ACTIONS : LLM_ACTIONS;
       // What the model has looked at and built, so it cannot stop after the
       // first heatmap (see finishCheck).
       const viewedPages = new Set();
-      const finishState = { checked: false, refusals: 0 };
+      // Decision mode skips the final look at every page: the LLM lists the
+      // heatmaps of a page before locating them, and the look costs an image.
+      const finishState = { checked: decisionMode, refusals: 0 };
       const runPanels = () =>
         app.project.panels
           .filter((p) => p.tool === 'heatmap' && pages.includes(p.page))
@@ -216,9 +250,15 @@
       const progress = () => progressNote({ pages, viewedPages, panels: runPanels(), currentPage: ws.currentPage() });
 
       async function callTool(name, args) {
-        if (LLM_ACTIONS.includes(name)) {
+        if (decision?.handles(name)) return decision.call(name, args);
+        if (llmActions.includes(name)) {
           if (name === 'go_to_page' && !pages.includes(args.page)) return { ok: false, error: `Page ${args.page} is not part of this run (pages ${pages.join(', ')}).` };
           const r = await api.run(name, args);
+          // In decision mode a new page comes with its image (one step less).
+          if (decisionMode && name === 'go_to_page' && r.ok) {
+            viewedPages.add(ws.currentPage());
+            return { ok: true, result: `Page ${args.page} shown.`, image: renderView() };
+          }
           // Keep results small: the active panel instead of the full state.
           if (r.state) {
             const { state, ...rest } = r;
@@ -251,14 +291,17 @@
       const first = await api.run('go_to_page', { page: pages[0] });
       const panelsNow = (await api.run('get_state')).result.panels;
       const target = focus && panelsNow.find((p) => p.id === focus.panelId);
-      const focusText = target
-        ? `\n\nThis is a redo. Panel "${target.name}" (id ${target.id}) was rejected${focus.note ? ` with the note: "${focus.note}"` : ''}. Its current calibration: ${JSON.stringify({ grid: target.grid, colorbar: target.colorbar })}. Do not add panels. select_panel it, find what is wrong (grid corners, grid size, colorbar ends, ticks or scale), fix it, check with overlays, then finish.`
-        : '';
+      const rejected = target && `\n\nThis is a redo. Panel "${target.name}" (id ${target.id}) was rejected${focus.note ? ` with the note: "${focus.note}"` : ''}.`;
+      const focusText = !target
+        ? ''
+        : decisionMode
+          ? `${rejected} Do not add panels. locate_heatmap with panelId "${target.id}" and a description that singles it out, then set_ticks and set_labels, then finish.`
+          : `${rejected} Its current calibration: ${JSON.stringify({ grid: target.grid, colorbar: target.colorbar })}. Do not add panels. select_panel it, find what is wrong (grid corners, grid size, colorbar ends, ticks or scale), fix it, check with overlays, then finish.`;
       if (!first.ok) throw new Error(first.error);
       const opening = pages.length > 1 && app.pdfDoc ? await renderOverview(pages[0], pages[Math.min(pages.length, 12) - 1]) : renderView();
       if (!(pages.length > 1 && app.pdfDoc)) viewedPages.add(ws.currentPage());
       const messages = [
-        { role: 'system', content: systemPrompt || AGENT_SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt || (decisionMode ? DECISION_SYSTEM_PROMPT : AGENT_SYSTEM_PROMPT) },
         {
           role: 'user',
           content: [
@@ -270,7 +313,7 @@
           ],
         },
       ];
-      const tools = llmTools();
+      const tools = decisionMode ? decisionLlmTools() : llmTools();
       let nudges = 0;
       const guard = createRetryGuard();
       let summary = null;
@@ -322,9 +365,12 @@
           }
           result = guard.after(name, panelKey, result);
           if (call.function.name === 'finish' && result.ok && result.finished !== false) summary = args.summary;
+          // Decision tools report what the decision model and the app found.
+          if (result.ok && decision?.handles(name) && typeof result.result === 'string') emit('result', { name, text: result.result });
           if (result.image) {
             images.push(result.image);
-            result = { ok: true, result: `${result.image.note} The image follows.` };
+            // Keep a tool's own text (locate_heatmap) next to the image note.
+            result = { ok: true, result: [result.result, `${result.image.note} The image follows.`].filter(Boolean).join(' ') };
           }
           if (!result.ok) emit('tool-error', { name: call.function.name, error: result.error });
           messages.push({ role: 'tool', toolCallId: call.id, content: toolResultText(result) });

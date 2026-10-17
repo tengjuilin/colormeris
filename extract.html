@@ -6,13 +6,14 @@
   <title>Colormeris</title>
   <meta name="description" content="Turn colors in scientific figures back into numbers: heatmap grids and signal inside regions of interest (ROI).">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%23dfe3ff'/%3E%3Crect x='8' width='8' height='8' fill='%235560f0'/%3E%3Crect y='8' width='8' height='8' fill='%232530e0'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23a3a9ff'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="assets/css/base.css?v=8">
-  <link rel="stylesheet" href="assets/css/extract.css?v=12">
+  <link rel="stylesheet" href="assets/css/base.css?v=9">
+  <link rel="stylesheet" href="assets/css/extract.css?v=13">
   <script src="assets/vendor/jszip/jszip.min.js" defer></script>
   <!-- Classic (non-module) scripts so the page also works when opened from disk. Order matters. -->
   <script src="assets/js/core/color.js?v=2" defer></script>
-  <script src="assets/js/core/grid.js?v=4" defer></script>
+  <script src="assets/js/core/grid.js?v=6" defer></script>
   <script src="assets/js/core/colorbar.js?v=4" defer></script>
+  <script src="assets/js/core/locate.js?v=2" defer></script>
   <script src="assets/js/core/colormap-library.js?v=8" defer></script>
   <script src="assets/js/core/colormap-match.js?v=3" defer></script>
   <script src="assets/js/extract/project.js?v=6" defer></script>
@@ -23,7 +24,7 @@
   <script src="assets/js/extract/roi/geometry.js?v=2" defer></script>
   <script src="assets/js/extract/roi/quantify.js?v=4" defer></script>
   <script src="assets/js/extract/map/field.js?v=13" defer></script>
-  <script src="assets/js/extract/settings.js?v=9" defer></script>
+  <script src="assets/js/extract/settings.js?v=10" defer></script>
   <script src="assets/js/extract/workspace/history.js?v=1" defer></script>
   <script src="assets/js/extract/workspace/overlay.js?v=5" defer></script>
   <script src="assets/js/extract/workspace/interact.js?v=7" defer></script>
@@ -45,12 +46,14 @@
   <script src="assets/js/agent/schema.js?v=5" defer></script>
   <script src="assets/js/agent/api.js?v=4" defer></script>
   <script src="assets/js/agent/llm.js?v=2" defer></script>
-  <script src="assets/js/agent/runner.js?v=5" defer></script>
+  <script src="assets/js/agent/decide.js?v=2" defer></script>
+  <script src="assets/js/agent/decision-tools.js?v=2" defer></script>
+  <script src="assets/js/agent/runner.js?v=7" defer></script>
   <script src="assets/js/agent/labels.js?v=3" defer></script>
-  <script src="assets/js/agent/openrouter-client.js?v=1" defer></script>
+  <script src="assets/js/agent/openrouter-client.js?v=2" defer></script>
   <script src="assets/js/agent/labels-reader.js?v=3" defer></script>
-  <script src="assets/js/agent/agent-card.js?v=7" defer></script>
-  <script src="assets/js/extract/settings-dialog.js?v=8" defer></script>
+  <script src="assets/js/agent/agent-card.js?v=8" defer></script>
+  <script src="assets/js/extract/settings-dialog.js?v=9" defer></script>
   <script src="assets/js/extract/main.js?v=4" defer></script>
 </head>
 <body class="extract">
@@ -111,12 +114,20 @@
         <div class="card-head">
           <h2>Agent</h2>
           <span id="agent-badge" class="badge">off</span>
+          <div class="head-actions segmented" role="group" aria-label="Agent mode">
+            <button type="button" class="btn" id="agent-mode-agent" data-mode="agent" aria-pressed="true" title="Agent only: the LLM finds, places and checks everything itself">Agent only</button>
+            <button type="button" class="btn" id="agent-mode-decision" data-mode="decision" aria-pressed="false" title="Agent decision: the LLM describes each heatmap and reads its labels; a decision model locates the cells and colorbar and checks the result, and the app counts rows and columns. Fewer LLM steps and images.">Agent decision</button>
+          </div>
         </div>
         <button type="button" class="btn block" id="agent-open-settings" data-icon="settings" title="API key, base URL, confidence and step limits (Settings → Agent)">API key and limits</button>
         <div class="fields">
           <label class="field" title="OpenRouter model id; needs vision and tool calls">Model
             <input id="agent-llm" type="text" list="agent-llm-list" spellcheck="false">
             <datalist id="agent-llm-list"></datalist>
+          </label>
+          <label class="field" id="agent-decision-field" hidden title="OpenRouter decision model that takes images (output: decisions); answers one heatmap at a time">Decision model
+            <input id="agent-decision" type="text" list="agent-decision-list" spellcheck="false">
+            <datalist id="agent-decision-list"></datalist>
           </label>
           <label class="field">Pages
             <select id="agent-pages">
@@ -544,6 +555,8 @@
         <p class="muted small">The instructions sent to the models. Edits are saved with the settings; <i>Reset</i> goes back to the built-in text.</p>
         <label class="field" title="System prompt of the extraction agent (Run agent)">Agent prompt <textarea id="agent-prompt" rows="10" spellcheck="false"></textarea></label>
         <div class="row"><button id="agent-prompt-reset" class="btn" type="button">Reset agent prompt</button></div>
+        <label class="field" title="System prompt of the LLM in Agent decision mode">Agent decision prompt <textarea id="agent-decision-prompt" rows="10" spellcheck="false"></textarea></label>
+        <div class="row"><button id="agent-decision-prompt-reset" class="btn" type="button">Reset agent decision prompt</button></div>
         <label class="field" title="System prompt of Read labels with AI (Grid card)">Label reader prompt <textarea id="agent-labels-prompt" rows="6" spellcheck="false"></textarea></label>
         <div class="row"><button id="agent-labels-prompt-reset" class="btn" type="button">Reset label reader prompt</button></div>
       </section>

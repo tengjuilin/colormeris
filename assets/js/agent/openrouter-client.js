@@ -32,5 +32,34 @@
     });
   }
 
-  Object.assign(CM, { loadOpenRouterSdk, makeOpenRouterClient });
+  // Decision models (Jev and others) through OpenRouter's Decisions API,
+  // POST /api/alpha/decisions. Plain fetch: the vendored SDK has no "box"
+  // question type and sends decisions to openrouter.ai whatever the base URL.
+  // With a base URL (a local proxy) the request goes to that origin instead.
+  // decide({model, state, questions}, {signal}) → {answers, usage: {cost}}.
+  function makeDecisionClient({ key, base } = {}) {
+    const origin = base ? new URL(base).origin : 'https://openrouter.ai';
+    return async function decide(body, { signal } = {}) {
+      const res = await fetch(`${origin}/api/alpha/decisions`, {
+        method: 'POST',
+        signal,
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${key || 'proxy'}`,
+          'x-title': 'Colormeris',
+          ...(location.protocol.startsWith('http') ? { 'http-referer': location.origin } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.answers) {
+        const err = new Error(`Decision model: ${json.error?.message || res.statusText || 'no answers'} (${res.status})`);
+        err.status = res.status;
+        throw err;
+      }
+      return json;
+    };
+  }
+
+  Object.assign(CM, { loadOpenRouterSdk, makeOpenRouterClient, makeDecisionClient });
 })((globalThis.Colormeris ??= {}));

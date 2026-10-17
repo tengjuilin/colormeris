@@ -120,3 +120,24 @@ test('dotRadius finds each dot size and no dot in an empty cell', () => {
   for (let c = 0; c < 3; c++) close(dotRadius(img, grid, 0, c), radii[0][c], 1.01);
   assert.equal(dotRadius(img, grid, 0, 3), null);
 });
+
+test('fitCellCounts counts groups of similar cells cell by cell', () => {
+  // 5 rows × 12 columns in 3 groups of 4 nearly equal replicates.
+  const matrix = Array.from({ length: 5 }, (_, r) => Array.from({ length: 12 }, (_, c) => 0.1 + 0.35 * Math.floor(c / 4) + 0.02 * (c % 4) + 0.03 * r));
+  const img = makeImage(300, 160);
+  const corners = [{ x: 12, y: 20 }, { x: 288, y: 20 }, { x: 288, y: 140 }, { x: 12, y: 140 }];
+  paintHeatmap(img, corners, matrix, VIRIDISH, { lines: false });
+  const fit = CM.fitCellCounts(img, corners);
+  assert.deepEqual([fit.rows, fit.cols], [5, 12]);
+  assert.ok(fit.colScore > 0.8 && fit.rowScore > 0.8);
+});
+
+test('fitCellCounts takes the full count when coarser counts fit as well', () => {
+  // Every border strong: 4 columns (every third border) also fit perfectly.
+  const matrix = Array.from({ length: 9 }, (_, r) => Array.from({ length: 12 }, (_, c) => ((r * 5 + c * 7) % 11) / 10));
+  const img = makeImage(300, 260);
+  const corners = [{ x: 10, y: 10 }, { x: 250, y: 10 }, { x: 250, y: 190 }, { x: 10, y: 190 }];
+  paintHeatmap(img, corners, matrix, VIRIDISH, { lines: false });
+  const fit = CM.fitCellCounts(img, corners);
+  assert.deepEqual([fit.rows, fit.cols], [9, 12]);
+});

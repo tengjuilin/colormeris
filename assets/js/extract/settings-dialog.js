@@ -121,6 +121,7 @@
     const PROMPTS = [
       { id: 'agent-prompt', key: 'prompt', fallback: () => CM.AGENT_SYSTEM_PROMPT || '' },
       { id: 'agent-labels-prompt', key: 'labelsPrompt', fallback: () => CM.LABELS_PROMPT || '' },
+      { id: 'agent-decision-prompt', key: 'decisionPrompt', fallback: () => CM.DECISION_SYSTEM_PROMPT || '' },
     ];
     for (const p of PROMPTS) {
       $(p.id).addEventListener('change', () => {

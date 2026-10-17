@@ -89,8 +89,10 @@ Large maps take a moment: a 600 × 400 px map at bin 1 takes about 1–2 s with 
 The *Agent* card in the heatmap tool calibrates every heatmap on the chosen pages by itself:
 
 1. **Connect.** Open *Settings → Agent* and enter your [OpenRouter](https://openrouter.ai/keys) key. Or keep it out of the browser: put `OPENROUTER_API_KEY=…` in `.env` (ignored by git), run `npm run proxy`, and set *API base URL* to `http://localhost:8787/api/v1` with the key field empty.
-2. **Pick models.** The LLM needs image input and tool calling; the default is `anthropic/claude-sonnet-5.5`. Requests use prompt caching, and the card shows the share of prompt tokens read from the cache.
-3. **Run.** Choose the pages and press *Run agent*. The LLM looks at page images with pixel rulers, zooms in, places the grid, labels, colorbar and ticks, and checks them with overlays.
+2. **Pick a mode** with the toggle at the top right of the card:
+   - **Agent only**: the LLM does everything. It looks at page images with pixel rulers, zooms in, places the grid, labels, colorbar and ticks, and checks them with overlays.
+   - **Agent decision**: the LLM reads the page and describes each heatmap. A decision model (*Decision model*, default `typesafe/jev-1.14`) locates its cells and colorbar, one heatmap per request. Colormeris snaps those boxes to the pixels and counts the rows and columns itself. The LLM then reads the numbered tick labels and the row and column labels from one image per heatmap. This takes fewer LLM steps and images: on the example PDF's page 5 (10 heatmaps), 3 steps and about $0.19, of which the decision model cost half a cent.
+3. **Pick models.** The LLM needs image input and tool calling; the default is `anthropic/claude-sonnet-5.5`. Requests use prompt caching, and the card shows the share of prompt tokens read from the cache. Then choose the pages and press *Run agent*.
 4. **Review.** Checks that an external agent answered below *Min. confidence* (through the API) appear under *Needs review*. A rejected panel gets a red dot and stays there until you accept it or it changes. Add a note on what is wrong and press *Redo with agent* to have the agent fix it. *Delete panel* removes a wrong extraction outright (undo brings it back).
 
 The agent retries a failing tool at most 3 times per panel, then skips that step and reports it. It stops after 8 failed calls in a row or after *Max. steps*. The log shows every step and the cost so far.
@@ -101,7 +103,7 @@ Page images and extracted values are sent to OpenRouter and the model providers 
 
 *Settings* (top right) holds what belongs to you rather than to a figure. It is saved in the browser as you change it.
 
-- **Agent**: OpenRouter key (stored only if *Remember* is ticked), *Min. confidence*, *Max. steps* and *API base URL*.
+- **Agent**: OpenRouter key (stored only if *Remember* is ticked), *Min. confidence*, *Max. steps*, *API base URL*, and the prompts of both agent modes and the label reader.
 - **Matching**: color difference, ΔE flag limit and, for ROI, the gray threshold. New panels start with these values; changing one applies it to every panel of that tool in the open project (Undo reverts it). Each panel keeps its own copy in the project zip, so a project reopens with the values it was made with.
 - **Hotkeys**, in sections (General, View and pages, Calibration, ROI, Map): press *Change* and then the new key. A key taken from another action of the same tool moves to the new one; ROI and Map actions can share keys, since only one tool is active. Esc, Space, Enter, Backspace and Delete are fixed. Keys are shown for your computer: Ctrl on Windows and Linux is ⌘ on a Mac, so the same settings work on both. Control (⌃) on a Mac and the Windows key are left to the system.
 - **Colors**: the colors of marks drawn over figures (grid and plot area, colorbar, flags, highlight, scale bar, ROI regions and masks, map axis ticks, profiles, trace and flags). Change them when they blend into a figure's colormap; *Reset* restores a default.
@@ -188,11 +190,11 @@ The code is grouped by page. Files that need no DOM are loaded by the tests thro
 | Folder | Purpose |
 | --- | --- |
 | `assets/css/` | `base.css` for every page, plus `landing.css`, `extract.css` and `colormaps.css` |
-| `assets/js/core/` | shared by both apps: color spaces and ΔE (`color.js`), CVD simulation (`cvd.js`), grid geometry and cell sampling (`grid.js`), colorbar calibration (`colorbar.js`), the colormap data (`colormap-library.js`, generated) and matching a bar to a known colormap (`colormap-match.js`) |
+| `assets/js/core/` | shared by both apps: color spaces and ΔE (`color.js`), CVD simulation (`cvd.js`), grid geometry and cell sampling (`grid.js`), colorbar calibration (`colorbar.js`), snapping rough boxes to cells, colorbars and tick labels (`locate.js`), the colormap data (`colormap-library.js`, generated) and matching a bar to a known colormap (`colormap-match.js`) |
 | `assets/js/extract/` | `extract.html`: project model (`project.js`), CSV and zip (`project-files.js`), settings, PDF loading, the canvas viewer and `main.js`, which starts the page |
 | `assets/js/extract/workspace/` | the shell both tools share: `workspace.js` (state, modes, tool switching) and one file each for undo, overlay drawing, pointer input, the Grid, Colorbar and Panels cards, opening files and pages, export and hotkeys |
 | `assets/js/extract/heatmap/` | heatmap tool: extraction (`sampling.js`) and the tool (`heatmap-tool.js`) |
 | `assets/js/extract/roi/` | ROI tool: region geometry (`geometry.js`), signal statistics (`quantify.js`), the tool, its overlay and its sidebar |
-| `assets/js/agent/` | agent API and heatmap agent: action schema (`schema.js`), `window.colormeris` (`api.js`), prompt, tools and retry guard (`llm.js`), the loop (`runner.js`) and the Agent card (`agent-card.js`) |
+| `assets/js/agent/` | agent API and heatmap agent: action schema (`schema.js`), `window.colormeris` (`api.js`), prompt, tools and retry guard (`llm.js`), decision mode (`decide.js`, `decision-tools.js`), the loop (`runner.js`) and the Agent card (`agent-card.js`) |
 | `assets/js/colormaps/` | `colormaps.html`: `viewer.js` (state, tabs, page) with one file per tab, plus strips, plots, footer, URL routing (`route.js`), ratings (`metrics.js`), references and recoloring |
 | `scripts/` | generators and tools: `agent-docs.mjs` (docs/agent.md), `export-mpl-colormaps.py` (colormap data), `make-calibration.mjs` (synthetic test heatmaps, `npm run fixtures`), `bundle-openrouter.mjs`, `embed-pdfjs.mjs`, `openrouter-proxy.mjs` |

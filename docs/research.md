@@ -32,6 +32,11 @@ Colormeris first used Jev for its typed checks. It was replaced by a smaller vis
 
 
 - **Jev** (TypeSafe AI, released 2026-09-15): a non-autoregressive "System 1" model that returns typed, calibrated decisions (choice with probabilities, noul = probability a statement is true, score) instead of text. On OpenRouter it is served at `POST /api/alpha/decisions` with `{model, state, questions}` → `{answers, usage}`; the SDK call is `client.alpha.decisions.create({ decisionsRequest })`. Models: `typesafe/jev-1.13`, `~typesafe/jev-latest`. [OpenRouter tutorial](https://openrouter.ai/blog/tutorials/how-to-use-jev/), [TypeSafe docs](https://docs.typesafe.ai/introduction)
+- **Jev 1.14** (2026-10-14) reads images and answers **box** questions (edges as fractions of the image). Colormeris uses it in *Agent decision* mode, one heatmap per request. Measured on `example.pdf` page 5 (10 heatmaps), 2026-10-16:
+  - Good: the heatmap's box on the whole page (edges two decimals, ~20 px off on a 1785 × 2372 page), the cell box on a crop around it (~5 px), the colorbar side as a choice, the colorbar box on the strip beside the cells (all 10 after snapping), and how many heatmaps a page has (9–12, conf 0.74). About $0.0002 and 0.4 s per request.
+  - Bad: boxes around small tick-label text (conf 0.02–0.5, boxes on the bar), counting rows or columns (choice of counts, or of overlay images with candidate grid lines: columns often right, rows not), judging a whole-grid overlay (0.67 right vs 0.56 wrong), and comparing a reconstruction with the figure (0.27–0.45 for correct ones).
+  - Jev picked the wrong colorbar side for page 3 panel i (towards panel h's bar); the app now checks the strip and the side its labels face.
+  - So code does the pixel work (snapping, tick-label boxes, `fitCellCounts`), and the LLM reads the text. A full page cost $0.19 in 3 LLM steps with Claude Sonnet 5.5, of which Jev $0.005.
 - Other OpenRouter decision models (`output_modalities=decisions`): `upstage/solar-decide`, `respan/span-01(-lite)`, `jaredpalmer/kev-4b`.
 
 ## What is novel in Colormeris

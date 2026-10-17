@@ -458,7 +458,57 @@
     return { rows: rowFit.count, cols: colFit.count, rowConfidence: rowFit.confidence, colConfidence: colFit.confidence };
   }
 
+  // Cell counts of a grid whose outer corners sit exactly on the cell block
+  // (snapped by core/locate.js). For each count k: the share of the k − 1
+  // borders it implies that show a color edge, minus the share of cell
+  // middles that do. detectGridSize looks only at the spacing of edges, so a
+  // heatmap of groups of similar cells (4 replicates per condition) can come
+  // out as one wide cell per group; here the borders must be where k says.
+  // Returns {rows, cols, rowScore, colScore}; a score near 1 is a clean fit,
+  // below ~0.7 the corners are probably not exact.
+  // Lines averaged per profile. One per pixel row (200 here) let the
+  // anti-aliased borders across the lines blur the flat middles; 64 fitted
+  // all 10 heatmaps of example.pdf page 5, 200 only 5.
+  const FIT_LINES = 64;
+  function fitCellCounts(img, corners) {
+    const { width, height } = gridPixelSize(corners);
+    const W = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(width)));
+    const H = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(height)));
+    const cols = fitCount(edgeProfile(img, corners, 'u', W, Math.min(FIT_LINES, H)));
+    const rows = fitCount(edgeProfile(img, corners, 'v', H, Math.min(FIT_LINES, W)));
+    return { rows: rows.count, cols: cols.count, rowScore: rows.score, colScore: cols.score };
+  }
+
+  function fitCount(prof) {
+    const N = prof.length;
+    const peak = (pos, r) => {
+      let m = 0;
+      for (let i = Math.max(1, Math.round(pos - r)); i <= Math.min(N - 1, Math.round(pos + r)); i++) m = Math.max(m, prof[i]);
+      return m;
+    };
+    // An edge counts in full from a tenth of the strong edges up (borders
+    // between near-equal replicates are faint, but a cell's inside is flat).
+    const sorted = Array.from(prof).sort((a, b) => a - b);
+    const strong = Math.max(MIN_EDGE, 0.1 * sorted[Math.floor(0.97 * (N - 1))]);
+    const edge = (v) => Math.min(1, v / strong);
+    const fits = [];
+    for (let k = 2; k <= N / MIN_CELL; k++) {
+      const P = N / k;
+      let borders = 0;
+      let middles = 0;
+      for (let i = 1; i < k; i++) borders += edge(peak(i * P, 1.5));
+      for (let i = 0; i < k; i++) middles += edge(peak((i + 0.5) * P, Math.max(1, 0.15 * P)));
+      fits.push({ count: k, score: borders / (k - 1) - middles / k });
+    }
+    // With strong borders, k / 3 cells (or k / 5) fit as well as k: their
+    // borders are real ones and their middles fall inside cells. Counts above
+    // k score about half at most, so the largest count near the best wins.
+    const top = Math.max(0, ...fits.map((f) => f.score));
+    return fits.filter((f) => f.score >= top - 0.05 && top > 0).pop() || { count: 1, score: 0 };
+  }
+
   Object.assign(CM, {
+    fitCellCounts,
     detectGridSize,
     gridPixelSize,
     edgeProfile,

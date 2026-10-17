@@ -396,7 +396,7 @@ Every step resends the system prompt, the tool list and the whole conversation. 
 
 The agent uses your own OpenRouter key and sends page images and extracted values to OpenRouter and the model providers you pick. The key stays in memory unless you tick *Remember the key* (then it is kept in this browser's local storage).
 
-To keep the key out of the browser entirely, put `OPENROUTER_API_KEY=…` in `.env` (ignored by git), run `npm run proxy`, and set *API base URL* to `http://localhost:8787/api/v1` with the key field empty. The proxy (`scripts/openrouter-proxy.mjs`) forwards only OpenRouter API paths, only for pages served from localhost, and adds the key itself. Serve the app with `npm run serve`: pages opened from disk are refused by the proxy.
+To keep the key out of the browser entirely, put `OPENROUTER_API_KEY=…` in `.env` (ignored by git), run `npm run proxy`, and set *API base URL* to `http://localhost:8787/api/v1` with the key field empty. The proxy (`scripts/openrouter-proxy.mjs`) forwards only OpenRouter API paths (`/api/v1/` and `/api/alpha/decisions`), only for pages served from localhost, and adds the key itself. Serve the app with `npm run serve`: pages opened from disk are refused by the proxy.
 
 ### System prompt
 
@@ -421,4 +421,73 @@ Errors and retries:
 - Give each argument once, in the form its description asks for (e.g. add_tick takes either "at" or "t", never both).
 
 When every heatmap on every page is done, call finish with one line per panel and anything a human should check. The first finish is answered with a checklist: look at each page once more, calibrate any heatmap still missing, then call finish again. Keep your messages short.
+```
+
+## Agent decision mode
+
+The toggle at the top right of the *Agent* card switches between *Agent only* (above) and *Agent decision*. In decision mode the LLM (default `anthropic/claude-sonnet-5.5`) reads the page and writes short descriptions of the heatmaps, and a decision model (default `typesafe/jev-1.14`, any OpenRouter model with image input and decisions output) answers typed questions about one heatmap at a time through OpenRouter's Decisions API (`POST /api/alpha/decisions`). The app turns the answers into pixels and counts:
+
+1. **Where** (box, on the whole page): the heatmap matching the LLM's description, and whether it is there (noul).
+2. **Cells** (box, on a crop around that): the block of colored cells. `snapBlock` (core/locate.js) moves the box onto the block of color: Jev's box edges have two decimals, about 20 px on a page and 5 px on a crop.
+3. **Rows and columns**: counted by the app, never by a model. `fitCellCounts` (core/grid.js) scores each count by edges on the borders it implies and flat cell middles, so groups of near-equal replicate cells are not taken for one wide cell; `detectGridSize` is the fallback when the fit is weak.
+4. **Colorbar side** (choice) and **colorbar** (box, on the strip beside the cells only). A strip far from the cells or not running along them is dropped and the next likeliest side tried, so a neighbouring panel's colorbar is not taken.
+5. **Tick labels**: found by code (`findTickLabels`), numbered in the image the LLM gets, and read by the LLM with `set_ticks`. Each tick snaps to its tick mark. The app then checks that the values lie on a straight line along the bar and how many cells are far from the colorbar's colors.
+
+The LLM's image of each heatmap is cropped at the white gaps around its labels, so another panel's colorbar is never in view. On example.pdf page 5 (10 heatmaps) a run took 3 LLM steps and $0.19 with Claude Sonnet 5.5, of which 40 decision requests cost $0.005; all grids, colorbars, ticks and labels were right. On the synthetic jet figure it took 3 steps and $0.03, with values within 0.22 of the truth on a 0–100 scale.
+
+### Decision tools
+
+Handled by the runner in this mode, with `view_page`, `view_pages_overview` and `finish` from above and these actions: `go_to_page`, `select_panel`, `rename_panel`, `remove_panel`, `set_labels`, `set_colorbar`, `add_tick`, `remove_tick`, `set_colorbar_scale`, `undo`. There is no tool for rows and columns.
+
+### `locate_heatmap`
+
+Find one heatmap with the decision model and calibrate a panel for it: the grid on its cells (rows and columns counted by the app) and the colorbar on its strip. Uses a new panel unless panelId is given or the active panel is still empty. Returns the placement and an image with numbered tick-label boxes.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string | yes | Figure label, e.g. "Fig 2f". Becomes the panel name. |
+| `description` | string | yes | What singles this heatmap out on the page: panel letter, title, position, first row label. |
+| `panelId` | string |  | Re-locate this panel instead of using a new one. |
+
+### `set_ticks`
+
+Set the colorbar ticks from the numbered tick-label boxes of locate_heatmap (replaces the panel's ticks), then check the extraction. Each tick snaps to its tick mark.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `panelId` | string |  | Panel to act on. Defaults to the active panel. |
+| `ticks` | {mark, value}[] | yes |  |
+| `scale` | "linear" \\| "log10" |  |  |
+
+### `check_panel`
+
+Check a panel again: whether it is ready, whether its tick values lie on a straight line along the bar, and how many cells are far from the colorbar's colors.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `panelId` | string |  | Panel to act on. Defaults to the active panel. |
+
+### `ask`
+
+Ask the decision model your own questions about one region of the current page (no rulers in its image). Box answers come back in page pixels. Use it rarely, for one heatmap at a time.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `region` | {x0, y0, x1, y1} |  | Area in page pixels. Omit for the whole page. |
+| `overlay` | "none" \\| "calibration" \\| "reconstruction" |  |  |
+| `questions` | object | yes | Up to 6 questions by id: {id: {type, instructions, criteria}}. |
+
+### Decision-mode prompt
+
+```text
+You are the extraction agent of Colormeris, a tool that turns colors in scientific figures back into numbers. Your job: find every gridded heatmap on the pages you are given and get one calibrated panel per heatmap. You work with a decision model that locates things in page images; the app snaps its boxes to pixels and counts rows and columns by itself. You read text and describe targets. Do not place coordinates yourself unless a tool says it failed.
+
+For each page:
+1. Look at the page image. List in your message EVERY heatmap (a grid of colored cells with a colorbar) with its figure label. Skip photos, line or scatter plots, and tables.
+2. Call locate_heatmap once per heatmap, all in the same turn. name: the panel's label as printed (e.g. "Fig 2f" when the figure number is visible, else "f"); never the page number. description: what singles it out on the page: panel letter, title, position (e.g. "upper left, right of panel e"), and its first row label.
+3. Each result has an image of that heatmap: magenta grid lines as placed, the orange colorbar line, and the colorbar's tick labels in blue boxes numbered 1, 2, 3… For every heatmap, in one turn:
+   - set_ticks: the printed value of each numbered box that is a colorbar tick label, as {mark, value}. Skip boxes on anything else (a title, a ×10^n note: apply that multiplier to the values instead). Use scale "log10" when the labels grow by constant factors (1, 10, 100).
+   - set_labels: row labels top to bottom and column labels left to right, exactly as printed. Labels may cover groups of cells; that is fine.
+4. set_ticks returns the app's check. If it fails, find the cause from the image (a misread or misassigned tick value, the wrong heatmap, a colorbar missing or cut) and fix it once: set_ticks again, or locate_heatmap again with panelId and a better description. If the grid lines miss the cells, say so in finish; do not change the grid size.
+5. When every heatmap of every page is done, call finish with one line per panel and anything a human should check. Keep your messages short.
 ```
