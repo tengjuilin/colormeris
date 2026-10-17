@@ -281,6 +281,9 @@ table.ticks[hidden] { display: none; }
 .agent-log .result { color: var(--muted); }
 .hint.error { color: var(--warn-text); }
 .agent-log .done { font-weight: 600; }
+.agent-log .who { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 3px; font-family: var(--sans, inherit); font-size: 10px; font-weight: 600; text-transform: uppercase; background: var(--border); color: var(--muted); }
+.agent-log .who.agent { background: var(--accent-soft, #dbe8fb); color: var(--accent, #1f5fbf); }
+.agent-log .who.decision { background: #efe3fa; color: #6b3aa0; }
 
 /* Settings dialog */
 .settings-dialog {

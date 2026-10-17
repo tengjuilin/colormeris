@@ -119,10 +119,12 @@
     const cacheNote = (u) => (u.promptTokens ? ` · ${Math.round((u.cachedTokens / u.promptTokens) * 100)}% cached` : '');
     const pct = (v) => (v === null || v === undefined ? '?' : `${Math.round(v * 100)}%`);
 
-    function log(cls, text) {
+    // Who took a step: the Agent (the LLM), the Decision model, or the App (code).
+    function log(cls, text, who = 'App') {
       const li = document.createElement('li');
       li.className = cls;
-      li.textContent = text;
+      const tag = Object.assign(document.createElement('span'), { className: `who ${who.toLowerCase()}`, textContent: who });
+      li.append(tag, text);
       $('agent-log').hidden = false;
       $('agent-log').append(li);
       $('agent-log').scrollTop = $('agent-log').scrollHeight;
@@ -135,14 +137,29 @@
     // LLM cost plus the decision model's, with its number of requests.
     const costNote = (u) => `${money(u.llmCost + u.decisionCost)}${u.decisions ? ` (${u.decisions} decisions, ${money(u.decisionCost)})` : ''}${cacheNote(u)}`;
 
+    const elapsed = (ms) => {
+      const t = Math.round(ms / 100) / 10;
+      return t < 60 ? `${t.toFixed(1)}s` : `${Math.floor(t / 60)}m ${(t % 60).toFixed(1).padStart(4, '0')}s`;
+    };
+    // Step, cost and time of the current (or last) run; stays after Stop.
+    let runStart = 0;
+    let lastUsage = null;
+    let timer = null;
+    const statusLine = (prefix = '') => `${prefix}Step ${lastUsage?.steps ?? 0} · ${lastUsage ? costNote(lastUsage) : money(0)} · ${elapsed(Date.now() - runStart)}`;
+    let seenDecisions = 0;
+
     function onEvent(type, data) {
       const u = data.usage;
-      $('agent-status').textContent = `Step ${u.steps} · ${costNote(u)}`;
-      if (type === 'assistant') log('assistant', data.text);
-      else if (type === 'tool') log('tool', `${data.name}(${data.args && Object.keys(data.args).length ? JSON.stringify(data.args) : ''})`);
-      else if (type === 'result') log('result', data.text);
-      else if (type === 'tool-error') log('error', `${data.name}: ${data.error}`);
-      else if (type === 'done') log('done', data.summary);
+      lastUsage = u;
+      $('agent-status').textContent = statusLine();
+      // A result is the decision model's when it answered a request since the last event.
+      const decided = u.decisions > seenDecisions;
+      seenDecisions = u.decisions;
+      if (type === 'assistant') log('assistant', data.text, 'Agent');
+      else if (type === 'tool') log('tool', `${data.name}(${data.args && Object.keys(data.args).length ? JSON.stringify(data.args) : ''})`, 'Agent');
+      else if (type === 'result') log('result', data.text, decided ? 'Decision' : 'App');
+      else if (type === 'tool-error') log('error', `${data.name}: ${data.error}`, 'App');
+      else if (type === 'done') log('done', data.summary, 'Agent');
     }
 
     const panelName = (id) => app.project.panels.find((p) => p.id === id)?.name || id;
@@ -160,12 +177,17 @@
       }
       api.policy.minConfidence = minConfidence;
       abort = new AbortController();
+      runStart = Date.now();
+      lastUsage = null;
+      seenDecisions = 0;
+      $('agent-status').textContent = statusLine();
+      timer = setInterval(() => { if (abort) $('agent-status').textContent = statusLine(); }, 100);
       $('agent-log').replaceChildren();
       $('agent-status').dataset.idle = '';
       updateButtons();
       const decision = mode() === 'decision';
       const decisionModel = $('agent-decision').value.trim() || DEFAULT_DECISION_MODEL;
-      log('tool', `${focus ? `Redoing ${panelName(focus.panelId)}` : 'Running'} with ${$('agent-llm').value.trim()}${decision ? ` and ${decisionModel}` : ''} on page${pages.length === 1 ? '' : 's'} ${pages.join(', ')}.`);
+      log('tool', `${focus ? `Redoing ${panelName(focus.panelId)}` : 'Running'} with ${$('agent-llm').value.trim()}${decision ? ` and ${decisionModel}` : ''} on page${pages.length === 1 ? '' : 's'} ${pages.join(', ')}.`, 'App');
       try {
         const sdk = await loadSdk();
         const out = await runner.run({
@@ -180,18 +202,20 @@
           mode: decision ? 'decision' : 'agent',
           ...(decision ? { decide: makeDecisionClient({ key, base: agent().base }), decisionModel } : {}),
         });
-        $('agent-status').textContent = `Done: ${out.usage.steps} steps, ${costNote(out.usage)}.`;
+        lastUsage = out.usage;
+        $('agent-status').textContent = statusLine('Done · ');
       } catch (err) {
         if (err.name === 'AbortError' || abort?.signal.aborted) {
-          log('error', 'Stopped.');
-          $('agent-status').textContent = 'Stopped.';
+          log('error', 'Stopped.', 'App');
+          $('agent-status').textContent = statusLine('Stopped · ');
         } else {
           console.error(err);
-          log('error', errorText(err));
-          $('agent-status').textContent = `Failed: ${errorText(err)}`;
+          log('error', errorText(err), 'App');
+          $('agent-status').textContent = statusLine(`Failed: ${errorText(err)} · `);
           ws.toast(`Agent stopped: ${errorText(err)}`, true);
         }
       } finally {
+        clearInterval(timer);
         abort = null;
         $('agent-status').dataset.idle = 'done';
         updateButtons();
