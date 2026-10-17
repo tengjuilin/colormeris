@@ -293,3 +293,37 @@ test('fitCellCounts gives a low score where no borders can be seen', () => {
   const f = CM.fitCellCounts(img, box(20, 30, 580, 80));
   assert.ok(f.colScore < 0.5, `colScore ${f.colScore}`);
 });
+
+test('fitCellCounts and detectGridSize see through numbers printed in framed cells', () => {
+  // Test-18: the strokes of one-decimal values in 5 rows of framed cells gave
+  // 10 rows (fit) and 10 (detectGridSize). Cells at x 20–616, y 20–316.
+  const img = makeImage(700, 380);
+  for (let r = 0; r < 5; r++)
+    for (let c = 0; c < 10; c++) {
+      const [x, y] = [20 + c * 60, 20 + r * 60];
+      const k = (r * 3 + c * 7) % 5;
+      fill(img, x, y, x + 56, y + 56, [40, 40, 40]);
+      fill(img, x + 2, y + 2, x + 54, y + 54, c < 2 ? [253, 249 - 3 * k, 242 - 6 * k] : [236 - 5 * k, 180 - 12 * k, 110 - 12 * k]);
+      for (let g = 0; g < 3; g++) {
+        const [gx, gy] = [x + 13 + g * 11, y + 22];
+        for (const [a, b, e, d] of [[0, 0, 8, 2], [0, 6, 8, 8], [0, 12, 8, 14], [0, 0, 2, 14], [6, 0, 8, 14]]) fill(img, gx + a, gy + b, gx + e, gy + d, [30, 30, 30]);
+      }
+    }
+  for (const b of [box(20, 20, 616, 316), box(16, 14, 622, 320), box(24, 26, 610, 312)]) assert.deepEqual(counts(img, b), [5, 10]);
+  const d = detectGridSize(img, box(20, 20, 616, 316));
+  assert.deepEqual([d.rows, d.cols], [5, 10]);
+});
+
+test('suppressText paints over short dark dips and keeps lines dark on every line', () => {
+  // 4 lines × 30 samples: a 3-sample dark stroke on line 1, a dark column at
+  // sample 20 on every line (a grid line).
+  const N = 30;
+  const rgb = new Float32Array(4 * N * 3).fill(200);
+  const set = (j, i, v) => rgb.fill(v, (j * N + i) * 3, (j * N + i) * 3 + 3);
+  for (const i of [8, 9, 10]) set(1, i, 20);
+  for (let j = 0; j < 4; j++) set(j, 20, 20);
+  const share = CM.suppressText(rgb, N, 4);
+  assert.ok(share > 0);
+  assert.equal(rgb[(1 * N + 9) * 3], 200);
+  for (let j = 0; j < 4; j++) assert.equal(rgb[(j * N + 20) * 3], 20);
+});

@@ -320,3 +320,50 @@ test('tickBoxesText says how many boxes there are and which look odd', () => {
   assert.match(text, /extended/);
   assert.match(CM.tickBoxesText([]), /No tick labels/);
 });
+
+test('planCounts settles a white end cell left out by a neighbour or detectGridSize', () => {
+  // Test-17 panel i: the pale first row was left out (4 rows, alt 5 at the
+  // same score); the panels beside it and detectGridSize have 5.
+  const fit = { rows: 4, cols: 15, rowScore: 0.8, colScore: 0.82, rowAlt: 5, rowAltScore: 0.8, rowReason: 'clean; 1 white end cell left out', rowSpan: [0.19, 0.98], colSpan: [0, 1], rowSize: 46, colSize: 45 };
+  const size = { width: 678, height: 230 };
+  const lent = CM.planCounts(fit, { rows: 5, cols: 15 }, size, { row: { count: 5, id: 'p3', name: 'e' } });
+  assert.deepEqual([lent.rows, lent.span.row], [5, undefined]);
+  const detected = CM.planCounts(fit, { rows: 5, cols: 15 }, size);
+  assert.deepEqual([detected.rows, detected.span.row], [5, undefined]);
+  // Neither counts the white row: it stays out, and the LLM is told.
+  const cut = CM.planCounts(fit, { rows: 4, cols: 15 }, size);
+  assert.deepEqual([cut.rows, cut.span.row], [4, [0.19, 0.98]]);
+  assert.ok(cut.notes.some((n) => /looks white/.test(n)));
+});
+
+test('chooseColorbar leaves out a strip labelled with the cells\' own column labels', () => {
+  // Test-16: a dashed outline under the cells, its "tick labels" the 13
+  // rotated column labels; the real bar is on the right.
+  const cells = { x0: 119, y0: 116, x1: 1144, y1: 502 };
+  const pitch = (1144 - 119) / 13;
+  const outline = { bar: { x0: 104, y0: 508, x1: 1155, y1: 514 }, labelSide: 'below', labels: 13, labelsAt: Array.from({ length: 13 }, (_, i) => ({ x: 119 + (i + 0.5) * pitch + 3, y: 511 })) };
+  const bar = { bar: { x0: 1174, y0: 116, x1: 1216, y1: 501 }, labelSide: 'right', labels: 3, labelsAt: [{ x: 1195, y: 116 }, { x: 1195, y: 302 }, { x: 1195, y: 500 }] };
+  assert.equal(CM.chooseColorbar(cells, [outline, bar]).bar, undefined);
+  assert.deepEqual(CM.chooseColorbar(cells, [outline, bar], { rows: 5, cols: 13 }), { bar: bar.bar, how: 'beside' });
+});
+
+test('printedCheck agrees within 3% and names a systematic disagreement', () => {
+  const range = { min: 60, max: 100 };
+  const near = CM.printedCheck([{ row: 1, col: 1, printed: 62.2, value: 61.4 }, { row: 1, col: 3, printed: 90.6, value: 90.9 }, { row: 3, col: 4, printed: 91.4, value: 91.6 }], range);
+  assert.ok(near.ok && /agree/.test(near.text), near.text);
+  // Ticks read as 60–100 for a bar of 50–100: the values grow too slowly.
+  const slope = CM.printedCheck([62, 75, 88, 99].map((v, i) => ({ row: 1, col: i + 1, printed: v, value: 60 + ((v - 50) / 50) * 40 })), range);
+  assert.ok(!slope.ok && /slope/.test(slope.text), slope.text);
+  const shifted = CM.printedCheck([62, 75, 88].map((v, i) => ({ row: 2, col: i + 1, printed: v, value: v + 4 })), range);
+  assert.ok(!shifted.ok && /all higher/.test(shifted.text), shifted.text);
+  const one = CM.printedCheck([{ row: 1, col: 1, printed: 70, value: 70.2 }, { row: 1, col: 2, printed: 80, value: 86 }, { row: 1, col: 3, printed: 90, value: 90.1 }], range);
+  assert.ok(!one.ok && /1 of 3 differ/.test(one.text), one.text);
+  const bound = CM.printedCheck([{ row: 1, col: 1, printed: 55, value: 60, open: 'below' }, { row: 1, col: 2, printed: 80, value: 80 }], range);
+  assert.ok(bound.ok && /a bound/.test(bound.text), bound.text);
+});
+
+test('validateDecisionTool checks check_printed cells', () => {
+  assert.deepEqual(validateDecisionTool('check_printed', { cells: [{ row: 1, col: 2, value: 3.5 }] }), []);
+  assert.ok(validateDecisionTool('check_printed', { cells: [] }).length);
+  assert.ok(validateDecisionTool('check_printed', { cells: [{ row: 0, col: 2, value: 3 }] }).length);
+});

@@ -483,6 +483,15 @@ Correct the app's row and column count of a panel when the image shows it is wro
 | `reason` | string | yes | What in the image shows the count, e.g. "3 replicate cells under each column label". |
 | `box` | {x0, y0, x1, y1} |  | Only when the outer grid lines miss the cells: the cells' rough extent in page pixels. |
 
+### `check_printed`
+
+Cross-check a calibrated panel against numbers printed in its cells: give 3–5 cells spread over the heatmap (with the lowest and highest printed numbers) and the numbers as printed. The app compares them with the values it extracted from the colors and says whether they agree; a disagreement that grows with the value or shifts all of them points at wrong tick values or colorbar ends. The colors stay the values.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `panelId` | string |  | Panel to act on. Defaults to the active panel. |
+| `cells` | {row, col, value}[] | yes |  |
+
 ### `check_panel`
 
 Check a panel again: whether it is ready, whether its tick values fit the scale, and how many cells are far from the colorbar's colors, off it or past its ends.
@@ -515,7 +524,7 @@ For each page:
    - set_ticks: the printed value of each numbered box that is a tick label, as {mark, value}. Skip boxes on anything else (a title, a ×10^n note: apply that multiplier to the values instead). When the boxes are missing or wrong, give {t, value} instead: t is where the label sits along the colored strip, 0 at its top (vertical bar) or left (horizontal) end, 1 at the other. Scale: leave it out unless the labels grow by constant factors (1, 10, 100: "log10"); the app handles binned bars and uneven ticks by itself.
    - set_labels: row labels top to bottom and column labels left to right, exactly as printed. Labels may cover groups of cells; that is fine.
 4. When the result lists colorbar candidates (letters A, B… on a page image) instead of one colorbar, pick this heatmap's with use_colorbar {candidate}; when it shares the colorbar of a panel you already calibrated, use_colorbar {fromPanel} copies it with its ticks. If its colorbar is not found at all, use_colorbar {box} with the strip's rough extent from the page rulers.
-5. set_ticks returns the app's check and an image: each orange tick dot with its value should sit level with its printed label. If the check fails, find the cause (a misread or misassigned tick value, the wrong colorbar or heatmap; correctly read ticks at uneven places along a smooth bar need set_colorbar_scale piecewise, which checks again) and fix it once. Cells whose colors are not on the colorbar (gray "ND" cells, a black diagonal) are left empty, and a binned colorbar gives each cell its bin's middle value: both are expected, not failures. Cells paler or darker than the bar's end are only bounds; mention it in finish.
+5. set_ticks returns the app's check and an image: each orange tick dot with its value should sit level with its printed label. When the cells show printed numbers, read 3–5 spread over the heatmap (the lowest and highest among them) and call check_printed after set_ticks; the colors stay the values, the numbers only check them. If the check fails, find the cause (a misread or misassigned tick value, the wrong colorbar or heatmap; correctly read ticks at uneven places along a smooth bar need set_colorbar_scale piecewise, which checks again) and fix it once. Cells whose colors are not on the colorbar (gray "ND" cells, a black diagonal) are left empty, and a binned colorbar gives each cell its bin's middle value: both are expected, not failures. Cells paler or darker than the bar's end are only bounds; mention it in finish.
 6. Check the grid against the image: every cell between magenta lines, one cell per gap, outer lines on the cells' edges. If the count is wrong (lines merge replicate cells or split them, or a strip without borders), call correct_grid_size with the count you see (cell edges, or labels when there are no edges) and why. If the outer lines miss the cells' edges, add box: the cells' rough extent read from the page rulers (view_page if needed); the app moves each edge at most a few px. Only when the grid sits on the wrong heatmap, call locate_heatmap again with panelId and box.
 7. When every heatmap of every page is done, call finish with one line per panel and anything a human should check. Keep your messages short.
 ```

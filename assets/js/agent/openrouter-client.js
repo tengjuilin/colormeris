@@ -5,6 +5,7 @@
   // clients for it. Shared by the Agent card and the label reader.
 
   const SDK_SRC = 'assets/vendor/openrouter/openrouter.min.js';
+  const RETRY_MS = 1500;
 
   let sdkPromise = null;
   function loadOpenRouterSdk() {
@@ -39,8 +40,36 @@
   // decide({model, state, questions}, {signal}) → {answers, usage: {cost}}.
   function makeDecisionClient({ key, base } = {}) {
     const origin = base ? new URL(base).origin : 'https://openrouter.ai';
+    // One quick retry on a network error or a 5xx: Jev once answered 502
+    // "Upstream request failed", which cost a minute and an LLM step.
     return async function decide(body, { signal } = {}) {
-      const res = await fetch(`${origin}/api/alpha/decisions`, {
+      try {
+        return await decideOnce(body, signal);
+      } catch (err) {
+        if (signal?.aborted || !(err.status >= 500 || err.network)) throw err;
+        await new Promise((resolve) => setTimeout(resolve, RETRY_MS));
+        if (signal?.aborted) throw err;
+        return decideOnce(body, signal);
+      }
+    };
+    async function decideOnce(body, signal) {
+      let res;
+      try {
+        res = await fetchDecision(body, signal);
+      } catch (err) {
+        if (err.name === 'AbortError') throw err;
+        throw Object.assign(new Error(`Decision model: ${err.message}`), { network: true });
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.answers) {
+        const err = new Error(`Decision model: ${json.error?.message || res.statusText || 'no answers'} (${res.status})`);
+        err.status = res.status;
+        throw err;
+      }
+      return json;
+    }
+    function fetchDecision(body, signal) {
+      return fetch(`${origin}/api/alpha/decisions`, {
         method: 'POST',
         signal,
         headers: {
@@ -51,14 +80,7 @@
         },
         body: JSON.stringify(body),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.answers) {
-        const err = new Error(`Decision model: ${json.error?.message || res.statusText || 'no answers'} (${res.status})`);
-        err.status = res.status;
-        throw err;
-      }
-      return json;
-    };
+    }
   }
 
   Object.assign(CM, { loadOpenRouterSdk, makeOpenRouterClient, makeDecisionClient });

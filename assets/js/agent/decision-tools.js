@@ -2,7 +2,7 @@
   'use strict';
   const {
     ticksWithT, projectT, DECISION_TOOLS, cleanDecisionArgs, validateDecisionTool, decisionQuestions, boxToPage, growBox, besideBox, barLine, chooseColorbar, tFromTopLeft, scaleForBins, scaleForTicks,
-    planGrid, regridOthers, tickMisfit, tickBoxesText, checkSummary, snapCells, pageColorbars, stripCandidate, snapEdges, snapStrip, findTickLabels, labelReach,
+    planGrid, regridOthers, tickMisfit, tickBoxesText, checkSummary, snapCells, pageColorbars, stripCandidate, snapEdges, snapStrip, snapStripBox, findTickLabels, labelReach, printedCheck,
   } = CM;
 
   // Tools of "agent decision" mode (prompt, schemas and the pure choices in
@@ -12,7 +12,7 @@
   // rulers and are 300–1568 px a side, as Jev requires.
   //
   //   createDecisionTools(ws, api, {renderView, decide, model, usage, signal})
-  //     → {handles(name), call(name, args)}
+  //     → {handles(name), call(name, args), prefetch(calls)}
   // `decide` posts a Decisions API body (agent/openrouter-client.js).
 
   const JEV = { pageSide: 1568, cropSide: 1024, minSide: 300 };
@@ -94,17 +94,46 @@
       return panel;
     }
 
-    // The cells from the decision model: roughly where on the whole page,
-    // then the cells on a crop around that, each snapped to pixels.
+    // The decision model's two boxes for a heatmap: roughly where on the
+    // whole page, then the cells on a crop around that. They read only the
+    // page image, so the locate_heatmap calls of one turn ask them all at
+    // once (prefetch); the rest of each call (panels, grid, colorbar)
+    // changes the workspace and runs in order.
+    const pendingBoxes = new Map();
+    const boxesKey = (description) => `${ws.currentPage()}\u0000${description}`;
+    function jevBoxes(description) {
+      const { W, H } = size();
+      return (async () => {
+        const found = await askRegion(null, decisionQuestions.find(description), JEV.pageSide);
+        const rough = boxToPage(found.answers.cells.box, found.frame);
+        const crop = await askRegion(growBox(rough, 0.25, 20, W, H), decisionQuestions.cells());
+        return { present: found.answers.present?.noul, rough, boxed: boxToPage(crop.answers.cells.box, crop.frame) };
+      })();
+    }
+    // `calls`: [{name, args}] of one LLM turn. Only locates on the page shown
+    // (no page change in the turn, no panelId or box), two or more.
+    function prefetch(calls) {
+      if (calls.some((c) => c.name === 'go_to_page' || c.name === 'select_panel')) return;
+      const locates = calls.filter((c) => c.name === 'locate_heatmap' && c.args && !c.args.box && !c.args.panelId && typeof c.args.description === 'string' && c.args.description.length >= 3);
+      if (locates.length < 2) return;
+      for (const c of locates) {
+        const key = boxesKey(c.args.description);
+        if (pendingBoxes.has(key)) continue;
+        const p = jevBoxes(c.args.description);
+        p.catch(() => {}); // reported when its locate awaits it
+        pendingBoxes.set(key, p);
+      }
+    }
+
+    // The cells from the decision model's boxes, snapped to pixels.
     async function cellsFromJev(description, notes) {
       const img = page().imageData;
-      const { W, H } = size();
-      const found = await askRegion(null, decisionQuestions.find(description), JEV.pageSide);
-      const present = found.answers.present?.noul;
-      const rough = boxToPage(found.answers.cells.box, found.frame);
-      const crop = await askRegion(growBox(rough, 0.25, 20, W, H), decisionQuestions.cells());
-      const boxed = boxToPage(crop.answers.cells.box, crop.frame);
-      let { cells, partial } = snapCells(img, rough, boxed);
+      const key = boxesKey(description);
+      const pending = pendingBoxes.get(key);
+      pendingBoxes.delete(key);
+      const { present, rough, boxed } = await (pending || jevBoxes(description));
+      let { cells, partial, edges } = snapCells(img, rough, boxed);
+      if (edges) notes.push('The block snap stopped short of the decision model\'s box (pale cells?), so the grid is that box with its edges moved onto the cells: check the outer lines.');
       if (partial) notes.push(`The snapped cells cover only ${Math.round((100 * area(cells)) / area(rough))}% of where the decision model put the heatmap: if the grid holds only part of it, use correct_grid_size with box (its rough extent from the page rulers).`);
       if (!cells) {
         cells = boxed;
@@ -159,13 +188,13 @@
     // beside them (on its two likeliest sides) and every colorbar found on
     // the page (findColorbars; categorical group strips left out), each with
     // its tick labels.
-    async function colorbarCandidates(cells) {
+    async function colorbarCandidates(cells, grid) {
       const img = page().imageData;
       const { W, H } = size();
       const exclude = cellBoxes([cells]);
       const { candidates: out, groups } = pageColorbars(img, exclude);
       // One strip right beside the cells needs no question.
-      if (chooseColorbar(cells, out).how === 'beside') return { candidates: out, none: null };
+      if (chooseColorbar(cells, out, grid).how === 'beside') return { candidates: out, none: null };
       const side = (await askRegion(growBox(cells, 0.35, 20, W, H), decisionQuestions.side())).answers.side;
       const sides = Object.entries(side.probabilities || { [side.choice]: 1 })
         .filter(([k, pr]) => k !== 'none' && pr >= 0.05)
@@ -235,8 +264,9 @@
       const twin = pageGrids().find((g) => g.id !== panel.id && iou(g.cells, cells) > 0.8);
       if (twin) notes.push(`These cells are the same as panel ${twin.id} "${twin.name}"'s: one of the two found the wrong heatmap; locate it again with panelId and box.`);
 
-      const { candidates, none } = await colorbarCandidates(cells);
-      const choice = chooseColorbar(cells, candidates);
+      const grid = { rows: placed.rows, cols: placed.cols };
+      const { candidates, none } = await colorbarCandidates(cells, grid);
+      const choice = chooseColorbar(cells, candidates, grid);
       let bar = null;
       let marks = [];
       let boxesText = '';
@@ -310,12 +340,16 @@
         const list = candidatesByPanel.get(panel.id) || [];
         bar = list.find((c) => c.letter === candidate.trim().toUpperCase())?.bar;
         if (!bar) throw new Error(list.length ? `No candidate "${candidate}": they are ${list.map((c) => c.letter).join(', ')}.` : 'This panel has no colorbar candidates; use fromPanel or box.');
-      } else {
-        bar = snapStrip(page().imageData, clip(box));
-        if (!bar) throw new Error('No colored strip was found in that box. Check it on view_page, or place the ends with set_colorbar.');
+      }
+      let note = '';
+      if (!candidate) {
+        const found = snapStripBox(page().imageData, clip(box));
+        if (!found) throw new Error('No colored strip was found in that box. Check it on view_page, or place the ends with set_colorbar.');
+        bar = found.bar;
+        if (found.extended) note = ` The colored strip found covers only ${Math.round(found.share * 100)}% of your box's length, so the colorbar was extended to your box: check its ends in the image (a pale end?).`;
       }
       const applied = await applyBar(panel, bar);
-      const text = `Colorbar of ${panel.name}: ${orientation(applied.bar)}, ${boxText(applied.bar)}. ${applied.text} Next: set_ticks.`;
+      const text = `Colorbar of ${panel.name}: ${orientation(applied.bar)}, ${boxText(applied.bar)}.${note} ${applied.text} Next: set_ticks.`;
       return { ok: true, result: text, image: barView(panel, applied.bar, applied.marks) };
     }
 
@@ -411,6 +445,22 @@
       return { ok: true, result: `Grid of ${panel.name} is now ${rows} rows × ${cols} columns. ${notes.join(' ')} ${(await check(panel)).text}`, image: { dataUrl: view.dataUrl, note: `${panel.name} (panel ${panel.id}) with the corrected grid.` } };
     }
 
+    // Printed numbers in cells against the extracted values (printedCheck).
+    async function checkPrinted({ panelId, cells }) {
+      const panel = await usePanel(panelId);
+      const res = ws.resultFor(panel);
+      if (res.error) throw new Error(`Not ready: ${res.error}`);
+      const outside = cells.filter((c) => c.row > res.rows || c.col > res.cols);
+      if (outside.length) throw new Error(`No cell at ${outside.map((c) => `row ${c.row}, column ${c.col}`).join('; ')}: the grid has ${res.rows} rows and ${res.cols} columns.`);
+      const values = ticksWithT(panel.colorbar).map((k) => k.value).filter(Number.isFinite);
+      if (values.length < 2) throw new Error('This panel has no tick values yet. Use set_ticks first.');
+      const pairs = cells.map((c) => {
+        const x = res.cells[c.row - 1][c.col - 1];
+        return { row: c.row, col: c.col, printed: c.value, value: Number.isFinite(x.value) ? x.value : null, open: x.open || null };
+      });
+      return { ok: true, result: printedCheck(pairs, { min: Math.min(...values), max: Math.max(...values) }, panel.colorbar.scale).text };
+    }
+
     async function askTool({ region, overlay = 'none', questions }) {
       const view = renderView({ region, overlay, rulers: false, maxSide: region ? JEV.cropSide : JEV.pageSide, minSide: JEV.minSide, zoom: false });
       const answers = await ask([imagePart(view.dataUrl)], questions);
@@ -428,6 +478,7 @@
       use_colorbar: useColorbar,
       correct_grid_size: correctGridSize,
       check_panel: async ({ panelId }) => ({ ok: true, result: (await check(await usePanel(panelId))).text }),
+      check_printed: checkPrinted,
       // The agent action, with the check after it (a scale change can make
       // or break the tick fit).
       set_colorbar_scale: async (args) => {
@@ -440,6 +491,7 @@
     };
 
     return {
+      prefetch,
       handles: (name) => name in DECISION_TOOLS || name === 'set_colorbar_scale',
       async call(name, rawArgs) {
         if (!(name in DECISION_TOOLS)) return handlers[name](rawArgs || {});

@@ -134,6 +134,25 @@
         for (let b = s0; b < s1; b += step, t++) if (test(px(a, b))) k++;
         return k / t;
       };
+      // The share without the samples in `parts` (separators: the white
+      // gaps between cells across the span, which are no cells).
+      const masks = new Map();
+      const shareOff = (a, test, parts = []) => {
+        let skip = masks.get(parts);
+        if (!skip) {
+          skip = new Uint8Array(Math.ceil((s1 - s0) / step) + 1);
+          for (const p of parts) skip.fill(1, p.i, p.j);
+          masks.set(parts, skip);
+        }
+        let k = 0;
+        let t = 0;
+        for (let b = s0, i = 0; b < s1; b += step, i++) {
+          if (skip[i]) continue;
+          t++;
+          if (test(px(a, b))) k++;
+        }
+        return t ? k / t : 0;
+      };
       // Share of the span covered by runs of cell color at least MIN_RUN
       // pixels long. Pale cells give long runs; tick marks, dendrogram
       // leaves and text give short runs or gray strokes.
@@ -199,7 +218,7 @@
         }).length;
         return same >= 0.5 * sep.length;
       };
-      return { px, share, cellRuns, separators, keepsGrid, step, s0, s1 };
+      return { px, share, shareOff, cellRuns, separators, keepsGrid, step, s0, s1 };
     };
     return { bg, ink, faint, pale, strong, tinted, line };
   }
@@ -257,7 +276,7 @@
     // Extent along one axis, from the share of ink in a band of the other.
     // `edges` is the block's extent on the other axis once known: grown
     // lines are then read over all of it, not only the band.
-    const extent = (horizontal, lo, hi, bandLo, bandHi, inLo, inHi, core = ink, edges = null, inner = []) => {
+    const extent = (horizontal, lo, hi, bandLo, bandHi, inLo, inHi, core = ink, edges = null, inner = [], boxLen = 0) => {
       const B = T.line(horizontal, bandLo, bandHi);
       const S = edges ? T.line(horizontal, edges[0], edges[1], 400) : T.line(horizontal, bandLo, bandHi, 400);
       const fill = B.share;
@@ -270,12 +289,18 @@
       // line on both sides splits the runs, and the part holding the box's middle (else the
       // one overlapping it most) is the block.
       const frameEnd = (a, dir) => [0, 1, 2, 3].some((k) => fill(a + dir * k, strong) >= FILL);
+      const splits = keep.slice(1).map((run, i) => {
+        let blank = 0;
+        for (let a = keep[i][1] + 1; a < run[0]; a++) if (fill(a, pale) < FAINT_FILL) blank++;
+        return run[0] - keep[i][1] > 2 && blank >= 0.8 * (run[0] - keep[i][1] - 1) && frameEnd(keep[i][1], -1) && frameEnd(run[0], 1);
+      });
+      // Every cell in its own frame (t18) splits everywhere, by gaps of one
+      // width: one block.
+      const widths = keep.slice(1).map((run, i) => run[0] - keep[i][1]);
+      const eachFramed = splits.length >= 2 && splits.every(Boolean) && Math.max(...widths) - Math.min(...widths) <= 2;
       const parts = [[keep[0]]];
       for (let i = 1; i < keep.length; i++) {
-        let blank = 0;
-        for (let a = keep[i - 1][1] + 1; a < keep[i][0]; a++) if (fill(a, pale) < FAINT_FILL) blank++;
-        const split = keep[i][0] - keep[i - 1][1] > 2 && blank >= 0.8 * (keep[i][0] - keep[i - 1][1] - 1) && frameEnd(keep[i - 1][1], -1) && frameEnd(keep[i][0], 1);
-        if (split) parts.push([keep[i]]);
+        if (splits[i - 1] && !eachFramed) parts.push([keep[i]]);
         else parts[parts.length - 1].push(keep[i]);
       }
       if (parts.length > 1) {
@@ -361,8 +386,11 @@
         if (a < to && blankLine(a)) n++;
         else if (n) [inner.push(n), (n = 0)];
       }
-      const widest = Math.min(gap, Math.max(0, ...inner));
-      const likeInner = (k) => inner.some((n) => n <= gap && Math.abs(n - k) <= Math.max(1, 0.15 * n));
+      // Gaps as wide as 6% of the box count too: a core of the two darkest
+      // of 5 rows (t16, 16 px gaps) is too short to allow its own gaps.
+      const blankGap = Math.max(gap, Math.round(boxLen * FRAME_GAP));
+      const widest = Math.min(blankGap, Math.max(0, ...inner));
+      const likeInner = (k) => inner.some((n) => n <= blankGap && Math.abs(n - k) <= Math.max(1, 0.15 * n));
       const blankRun = (a, dir) => {
         let k = 0;
         while (k <= widest && inside(a + dir * k) && blankLine(a + dir * k)) k++;
@@ -373,11 +401,43 @@
       // so an underline of the column labels is not taken for cells. They
       // cover the block's whole span (a colorbar beside the cells is
       // shorter) and keep its grid lines (a solid strip has none).
-      const cellLine = (a) => full(a) && (!edges || S.share(a, faint) >= SPAN_FILL) && S.keepsGrid(a, sep);
+      // (The span's own white gaps between cells do not count against it.)
+      const cellLine = (a) => full(a) && (!edges || S.shareOff(a, faint, sep) >= SPAN_FILL) && S.keepsGrid(a, sep);
       const cellsAt = (a, dir, blank) => [0, 1, 2].some((i) => {
         for (let j = 0; j < Math.max(4, blank); j++) if (!cellLine(a + dir * (i + j))) return false;
         return true;
       });
+      // Cells set apart by white gaps, each with its own frame (t18) or
+      // none (t16): the block's cells are runs of cell lines between gaps,
+      // at an even pitch. A pale cell one pitch further on is taken in when
+      // its lines past a gap as wide as the block's own are cell lines; a
+      // wider gap (a separately framed block, t1) is not crossed. Only with
+      // two or more cells of equal size in the block.
+      const pitchOf = (lo, hi) => {
+        const cells = [];
+        for (let a = lo; a < hi; a++) {
+          if (!cellLine(a)) continue;
+          let b = a;
+          while (b + 1 < hi && cellLine(b + 1)) b++;
+          if (b - a + 1 >= 4) cells.push([a, b + 1]);
+          a = b;
+        }
+        if (cells.length < 2) return null;
+        const sizes = cells.map(([a, b]) => b - a);
+        const size = median(sizes);
+        if (sizes.some((v) => Math.abs(v - size) > Math.max(2, 0.15 * size))) return null;
+        const gaps = cells.slice(1).map(([a], i) => a - cells[i][1]);
+        if (Math.min(...gaps) < 1) return null;
+        return { pitch: median(cells.slice(1).map(([a], i) => a - cells[i][0])), gap: Math.max(...gaps), size };
+      };
+      // A pale cell beyond the edge `e` (the block's first line, or one past
+      // its last) in direction `dir`: its lines past the gap are cell lines.
+      const paleCell = (e, dir, P) => {
+        const near = P.gap + 2;
+        const far = Math.round(near + 0.8 * P.size);
+        for (let d = near; d <= far; d++) if (!inside(e + dir * d) || !cellLine(e + dir * d)) return false;
+        return true;
+      };
       if (!closed(from, 1)) {
         for (;;) {
           for (let k; from > 0 && (k = grows(from - 1) ? 1 : bridge(from - 1, -1)); ) from -= k;
@@ -388,6 +448,11 @@
           const blank = f > 0 ? blankRun(f - 1, -1) : 0;
           if (blank && f - blank < from && likeInner(blank) && cellsAt(f - 1 - blank, -1, blank) && !framedEdge(f, 1)) {
             from = f - blank;
+            continue;
+          }
+          const P = pitchOf(from, to);
+          if (P && paleCell(from - 1, -1, P)) {
+            from -= Math.round(P.pitch);
             continue;
           }
           let k = 1;
@@ -408,6 +473,11 @@
             to = t + blank;
             continue;
           }
+          const P = pitchOf(from, to);
+          if (P && paleCell(to, 1, P)) {
+            to += Math.round(P.pitch);
+            continue;
+          }
           let k = 0;
           while (k < gap && !frameLine(to + k) && to + k < end) k++;
           const n = k < gap && !framedEdge(to - 1, -1) ? frame(to + k, 1) : 0;
@@ -423,15 +493,15 @@
       const xsIn = [box.x0 + w * 0.2, box.x1 - w * 0.2];
       const ysIn = [box.y0 + h * 0.2, box.y1 - h * 0.2];
       const mid = (s) => [s[0] + (s[1] - s[0]) * 0.2, s[1] - (s[1] - s[0]) * 0.2];
-      let xs = extent(true, wx0, wx1, box.y0 + h * 0.3, box.y1 - h * 0.3, ...xsIn, core, null, inner);
+      let xs = extent(true, wx0, wx1, box.y0 + h * 0.3, box.y1 - h * 0.3, ...xsIn, core, null, inner, w);
       if (!xs) return null;
-      let ys = extent(false, wy0, wy1, ...mid(xs), ...ysIn, core, xs, inner);
+      let ys = extent(false, wy0, wy1, ...mid(xs), ...ysIn, core, xs, inner, h);
       if (!ys) return null;
       // Once more across the rows actually found, so the band avoids labels;
       // and the rows again if the columns changed (the first pass read only
       // a band and may have run into a colorbar).
-      const xs2 = extent(true, wx0, wx1, ...mid(ys), ...xsIn, core, ys, inner) || xs;
-      if (xs2[0] !== xs[0] || xs2[1] !== xs[1]) ys = extent(false, wy0, wy1, ...mid(xs2), ...ysIn, core, xs2, inner) || ys;
+      const xs2 = extent(true, wx0, wx1, ...mid(ys), ...xsIn, core, ys, inner, w) || xs;
+      if (xs2[0] !== xs[0] || xs2[1] !== xs[1]) ys = extent(false, wy0, wy1, ...mid(xs2), ...ysIn, core, xs2, inner, h) || ys;
       xs = xs2;
       // Edges on the middle of a frame around the cells.
       const x0 = fitFrame(T, true, xs[0], 1, ys[0], ys[1], xs[1] - xs[0], img.width);
@@ -783,12 +853,69 @@
       if (Math.min(w, h) < BAR_THICK || Math.max(w, h) < 1.5 * Math.min(w, h) || c.n < 0.5 * w * h) continue;
       if (out.some((b) => overlaps(b, c))) continue;
       const bar = followStrip(img, B, c, h >= w);
-      if (!bar || out.some((b) => overlaps(b, bar)) || grown.some((b) => overlaps(b, bar))) continue;
+      if (!bar || out.some((b) => overlaps(b, bar)) || grown.some((b) => overlaps(b, bar)) || dashed(img, B, bar)) continue;
       const kind = stripKind(img, bar);
       if (kind) out.push({ ...bar, kind });
     }
     const len = (b) => (b.vertical ? b.y1 - b.y0 : b.x1 - b.x0);
-    return out.sort((a, b) => len(b) - len(a));
+    return mergeFragments(img, B, out).sort((a, b) => len(b) - len(a));
+  }
+
+  // A dashed or dotted line (t16's outline around a group of cells, 6 px
+  // thick, 65 dashes) followed as a strip over its short gaps: along its
+  // middle less than 90% is off the page, in 3 or more gaps. A diverging
+  // bar's white middle is one gap.
+  function dashed(img, B, bar) {
+    const v = bar.vertical;
+    const [a, b] = v ? [bar.y0, bar.y1] : [bar.x0, bar.x1];
+    const c = Math.floor(v ? (bar.x0 + bar.x1) / 2 : (bar.y0 + bar.y1) / 2);
+    const offPage = [];
+    for (let u = a; u < b; u++) offPage.push(B.pale(v ? readPixel(img, c, u) : readPixel(img, u, c)));
+    const on = offPage.filter(Boolean).length;
+    // Gaps of 2 px or more between dashes of 3 px or more (noise in a white
+    // middle flickers pixel by pixel).
+    let gaps = 0;
+    for (let i = 0; i < offPage.length; ) {
+      let j = i;
+      while (j < offPage.length && offPage[j] === offPage[i]) j++;
+      if (!offPage[i] && j - i >= 2 && i >= 3 && offPage.slice(i - 3, i).every(Boolean) && offPage.slice(j, j + 3).length === 3 && offPage.slice(j, j + 3).every(Boolean)) gaps++;
+      i = j;
+    }
+    return on < 0.9 * (b - a) && gaps >= 3;
+  }
+
+  // Pieces of one strip: a diverging bar whose white middle is only a few
+  // levels off the page (t16: 242 on 255) is followed as two strips. Two
+  // strips end to end on the same line, the gap between them shorter than
+  // the strip is thick and 8% of their length, with no dark line across it
+  // (two framed bars stacked), are one.
+  function mergeFragments(img, B, bars) {
+    const out = [...bars];
+    for (let i = 0; i < out.length; i++)
+      for (let j = i + 1; j < out.length; j++) {
+        const [p, q] = [out[i], out[j]];
+        if (p.vertical !== q.vertical) continue;
+        const v = p.vertical;
+        const [pa, pb, qa, qb] = v ? [p.y0, p.y1, q.y0, q.y1] : [p.x0, p.x1, q.x0, q.x1];
+        const [pc0, pc1, qc0, qc1] = v ? [p.x0, p.x1, q.x0, q.x1] : [p.y0, p.y1, q.y0, q.y1];
+        const thick = Math.min(pc1 - pc0, qc1 - qc0);
+        if (Math.abs(pc0 - qc0) > 3 || Math.abs(pc1 - qc1) > 3) continue;
+        const [g0, g1] = pb <= qa ? [pb, qa] : [qb, pa];
+        const gap = g1 - g0;
+        const len = Math.max(pb, qb) - Math.min(pa, qa);
+        if (gap < 0 || gap > thick || gap > 0.08 * len) continue;
+        const c = Math.floor((pc0 + pc1) / 2);
+        let dark = false;
+        for (let u = g0; u < g1; u++) if (B.strong(v ? readPixel(img, c, u) : readPixel(img, u, c))) dark = true;
+        if (dark) continue;
+        const box = { x0: Math.min(p.x0, q.x0), y0: Math.min(p.y0, q.y0), x1: Math.max(p.x1, q.x1), y1: Math.max(p.y1, q.y1), vertical: v };
+        const kind = stripKind(img, box);
+        if (!kind) continue;
+        out.splice(j, 1);
+        out[i] = { ...box, kind };
+        j = i;
+      }
+    return out;
   }
 
   // The colored strip of a colorbar from a rough box around it (a decision
@@ -802,6 +929,33 @@
     const B = barTools(img, { x0: box.x0 - w * 0.25 - 10, y0: box.y0 - h * 0.25 - 10, x1: box.x1 + w * 0.25 + 10, y1: box.y1 + h * 0.25 + 10 });
     const bar = followStrip(img, B, box, h >= w) || followStrip(img, B, box, h < w);
     return bar && { x0: bar.x0, y0: bar.y0, x1: bar.x1, y1: bar.y1 };
+  }
+
+  // The colored strip of a colorbar in a rough box an LLM read off the page
+  // rulers (use_colorbar box). A diverging bar can stop at its pale middle
+  // (t16: half the bar), so the rest of the box is snapped too and pieces on
+  // the same line joined; a strip still under 70% of the box's length is
+  // extended to the box (`extended`, with `share`, the strip's share of the
+  // box before that). Returns {bar, share, extended} or null.
+  function snapStripBox(img, box) {
+    let bar = snapStrip(img, box);
+    if (!bar) return null;
+    const v = bar.y1 - bar.y0 >= bar.x1 - bar.x0;
+    const along = (b) => (v ? [b.y0, b.y1] : [b.x0, b.x1]);
+    const across = (b) => (v ? [b.x0, b.x1] : [b.y0, b.y1]);
+    const [b0, b1] = along(box);
+    const thick = across(bar)[1] - across(bar)[0];
+    const len = (b) => along(b)[1] - along(b)[0];
+    for (const [a0, a1] of [[b0, along(bar)[0]], [along(bar)[1], b1]]) {
+      if (a1 - a0 < 2 * thick) continue;
+      const piece = snapStrip(img, v ? { ...box, y0: a0, y1: a1 } : { ...box, x0: a0, x1: a1 });
+      if (!piece || Math.abs(across(piece)[0] - across(bar)[0]) > 3 || Math.abs(across(piece)[1] - across(bar)[1]) > 3) continue;
+      bar = { x0: Math.min(bar.x0, piece.x0), y0: Math.min(bar.y0, piece.y0), x1: Math.max(bar.x1, piece.x1), y1: Math.max(bar.y1, piece.y1) };
+    }
+    const share = len(bar) / Math.max(1, b1 - b0);
+    if (share >= 0.7) return { bar, share, extended: false };
+    const out = v ? { ...bar, y0: Math.min(bar.y0, Math.round(b0)), y1: Math.max(bar.y1, Math.round(b1)) } : { ...bar, x0: Math.min(bar.x0, Math.round(b0)), x1: Math.max(bar.x1, Math.round(b1)) };
+    return { bar: out, share, extended: true };
   }
 
   // A colorbar strip inside `region`, found without a decision model's box:
@@ -993,7 +1147,7 @@
       // title beside it (t14's "(RLU 1×10^5)") bunch up in its middle.
       const spread = on.length >= 3 ? (mid(on[on.length - 1]) - mid(on[0])) / len : 1;
       const score = (on.length >= 2 ? on.length : 0.5) * even * close * (on.length / (on.length + beyond)) * (spread < 0.5 ? 0.5 : 1) + onTicks;
-      if (score > best.score) best = { side, score, on, row, charH };
+      if (score > best.score) best = { side, score, on, row, charH, ticks };
     }
     if (!best.on) return { side: best.side, marks: [], score: 0 };
     return tickMarks(img, bar, best, { vertical, len, b0, b1 });
@@ -1084,9 +1238,22 @@
     const typical = median(sizes);
     const glyphs = median(on.map((l) => l.n));
     const m = vertical ? (bar.x0 + bar.x1) / 2 : (bar.y0 + bar.y1) / 2;
+    // Labels without tick marks (user decision 2026-10-17): the first and
+    // last label label the strip's ends when they sit at them, within half
+    // their size and a tenth of the label spacing (t16: "0" and "100" 4 and 8
+    // px inside the ends of a 385 px bar, 186 px apart); the others mark the
+    // strip at their text's middle. Evenly spaced labels 10–13 px inside the
+    // ends, a quarter of their spacing (t10, t11), stay: the bar runs on.
+    const [e0, e1] = [extended?.b0 ?? b0, (extended?.b1 ?? b1) - 1];
+    const place = (l, i) => {
+      if (best.ticks?.length || on.length < 2 || (i > 0 && i < on.length - 1)) return mid(l);
+      const end = i === 0 ? e0 : e1;
+      return Math.abs(mid(l) - end) <= Math.min(Math.max(3, 0.6 * (l.u1 - l.u0)), 0.1 * avg) ? end : mid(l);
+    };
     const marks = on.map((l, i) => {
       const odd = on.length >= 3 && (sizes[i] > 3 * typical || l.n > 2 * glyphs + 2);
-      return { at: vertical ? { x: m, y: mid(l) } : { x: mid(l), y: m }, box: l.box, ...(odd ? { note: 'larger than the other labels (a title, or two labels joined?)' } : {}) };
+      const u = place(l, i);
+      return { at: vertical ? { x: m, y: u } : { x: u, y: m }, box: l.box, ...(odd ? { note: 'larger than the other labels (a title, or two labels joined?)' } : {}) };
     });
     const out = { side: best.side, marks, score: best.score };
     if (extended) out.bar = vertical ? { ...bar, y0: extended.b0 ?? bar.y0, y1: extended.b1 ?? bar.y1 } : { ...bar, x0: extended.b0 ?? bar.x0, x1: extended.b1 ?? bar.x1 };
@@ -1132,5 +1299,5 @@
     return last;
   }
 
-  Object.assign(CM, { snapBlock, snapEdges, snapStrip, findStrip, findColorbars, findTickLabels, labelReach, binEdges });
+  Object.assign(CM, { snapBlock, snapEdges, snapStrip, snapStripBox, findStrip, findColorbars, findTickLabels, labelReach, binEdges });
 })((globalThis.Colormeris ??= {}));

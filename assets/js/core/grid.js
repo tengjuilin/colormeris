@@ -225,6 +225,59 @@
     return r >= DOT_MIN_RADIUS ? r : null;
   }
 
+  // ---- Text printed in cells ------------------------------------------------
+  //
+  // Values printed in the cells (one-decimal numbers on framed cells, t18)
+  // put more color steps across a row than its borders do: their strokes
+  // gave 10 rows for 5 and 21 rows for 7. Strokes of dark text are short
+  // dark dips on a line, darker than the cell on both sides; grid lines and
+  // frames are dark on most lines at the same place and stay. Each dip is
+  // painted over with the colors on its two sides, so a border under a
+  // label stays at its place. `rgb`: lines × N samples (entry (j * N + i) *
+  // 3), changed in place; `pxPerSample` sets the longest dip (a glyph).
+  // Returns the share of samples painted.
+  const TEXT_DARK = 110; // mean channel level of a text stroke, at most
+  const TEXT_CHROMA = 60; // and its chroma (black text, anti-aliased on color)
+  const TEXT_DIP = 60; // darker than the cell on both sides by this much
+  const TEXT_RUN_PX = 16; // longest stroke along a line (a digit's height)
+  function suppressText(rgb, N, lines, pxPerSample = 1) {
+    const maxRun = Math.max(2, Math.round(TEXT_RUN_PX / pxPerSample));
+    const at = (j, i) => (j * N + i) * 3;
+    const level = (k) => (rgb[k] + rgb[k + 1] + rgb[k + 2]) / 3;
+    const dark = (k) => level(k) <= TEXT_DARK && Math.max(rgb[k], rgb[k + 1], rgb[k + 2]) - Math.min(rgb[k], rgb[k + 1], rgb[k + 2]) <= TEXT_CHROMA;
+    // Samples dark on most lines are a grid line or frame (dark on all
+    // lines but the gaps between cells; text covers half of a line at most).
+    const ruled = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      let n = 0;
+      for (let j = 0; j < lines; j++) n += dark(at(j, i));
+      ruled[i] = n >= 0.75 * lines ? 1 : 0;
+    }
+    let painted = 0;
+    for (let j = 0; j < lines; j++) {
+      for (let i = 1; i < N - 1; i++) {
+        if (ruled[i] || !dark(at(j, i))) continue;
+        let e = i;
+        while (e + 1 < N - 1 && !ruled[e + 1] && dark(at(j, e + 1))) e++;
+        // The anti-aliased rim of the stroke goes with it.
+        const a = Math.max(1, i - 1);
+        const b = Math.min(N - 2, e + 1);
+        const next = e;
+        i = next;
+        if (b - a + 1 > maxRun || ruled[a - 1] || ruled[b + 1]) continue;
+        let low = Infinity;
+        for (let k = a; k <= b; k++) low = Math.min(low, level(at(j, k)));
+        const L = at(j, a - 1);
+        const R = at(j, b + 1);
+        if (level(L) - low < TEXT_DIP || level(R) - low < TEXT_DIP) continue;
+        const half = (a + b) / 2;
+        for (let k = a; k <= b; k++) rgb.copyWithin(at(j, k), k <= half ? L : R, (k <= half ? L : R) + 3);
+        painted += b - a + 1;
+      }
+    }
+    return painted / (N * lines);
+  }
+
   // ---- Grid size detection -------------------------------------------------
 
   const MAX_PROFILE_SAMPLES = 1500;
@@ -248,19 +301,26 @@
   // lines across the other axis. `axis` is 'u' (profile across columns) or 'v'
   // (profile across rows). Entry i is the mean change (|ΔR|+|ΔG|+|ΔB| per line)
   // between samples i-1 and i.
-  function edgeProfile(img, corners, axis, samples, lines) {
-    const prof = new Float64Array(samples);
+  // `pxPerSample` (optional): text printed in the cells is painted over
+  // first (suppressText).
+  function edgeProfile(img, corners, axis, samples, lines, pxPerSample = null) {
+    const rgb = new Float32Array(lines * samples * 3);
     for (let j = 0; j < lines; j++) {
       const w = (j + 0.5) / lines;
-      let prev = null;
       for (let i = 0; i < samples; i++) {
         const s = (i + 0.5) / samples;
         const p = axis === 'u' ? bilinear(corners, s, w) : bilinear(corners, w, s);
-        const rgb = readPixel(img, p.x, p.y);
-        if (prev) prof[i] += Math.abs(rgb[0] - prev[0]) + Math.abs(rgb[1] - prev[1]) + Math.abs(rgb[2] - prev[2]);
-        prev = rgb;
+        rgb.set(readPixel(img, p.x, p.y), (j * samples + i) * 3);
       }
     }
+    if (pxPerSample) suppressText(rgb, samples, lines, pxPerSample);
+    const prof = new Float64Array(samples);
+    for (let j = 0; j < lines; j++)
+      for (let i = 1; i < samples; i++) {
+        const a = (j * samples + i - 1) * 3;
+        const b = a + 3;
+        prof[i] += Math.abs(rgb[b] - rgb[a]) + Math.abs(rgb[b + 1] - rgb[a + 1]) + Math.abs(rgb[b + 2] - rgb[a + 2]);
+      }
     for (let i = 0; i < samples; i++) prof[i] /= lines;
     return prof;
   }
@@ -453,8 +513,8 @@
     const { width, height } = gridPixelSize(corners);
     const W = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(width)));
     const H = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(height)));
-    const colFit = bestCount(edgeProfile(img, corners, 'u', W, Math.min(MAX_PROFILE_LINES, H)));
-    const rowFit = bestCount(edgeProfile(img, corners, 'v', H, Math.min(MAX_PROFILE_LINES, W)));
+    const colFit = bestCount(edgeProfile(img, corners, 'u', W, Math.min(MAX_PROFILE_LINES, H), width / W));
+    const rowFit = bestCount(edgeProfile(img, corners, 'v', H, Math.min(MAX_PROFILE_LINES, W), height / H));
     return { rows: rowFit.count, cols: colFit.count, rowConfidence: rowFit.confidence, colConfidence: colFit.confidence };
   }
 
@@ -781,8 +841,10 @@
     const len = axis === 'u' ? width : height;
     const N = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(len)));
     const lines = Math.min(FIT_LINES, Math.max(4, Math.round(axis === 'u' ? height : width)));
-    const ev = borderEvidence(axisColors(img, corners, axis, N, lines), N, lines);
     const pxPerSample = len / N;
+    const rgb = axisColors(img, corners, axis, N, lines);
+    suppressText(rgb, N, lines, pxPerSample);
+    const ev = borderEvidence(rgb, N, lines);
     const fit = (compress) => {
       const f = fitProfile(ev, Infinity, compress, pxPerSample);
       // A run as wide as half a cell is a column of white cells, not a gap.
@@ -922,6 +984,7 @@
   Object.assign(CM, {
     fitCellCounts,
     detectGridSize,
+    suppressText,
     gridPixelSize,
     edgeProfile,
     autocorrelation,

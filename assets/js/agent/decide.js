@@ -29,7 +29,7 @@ For each page:
    - set_ticks: the printed value of each numbered box that is a tick label, as {mark, value}. Skip boxes on anything else (a title, a ×10^n note: apply that multiplier to the values instead). When the boxes are missing or wrong, give {t, value} instead: t is where the label sits along the colored strip, 0 at its top (vertical bar) or left (horizontal) end, 1 at the other. Scale: leave it out unless the labels grow by constant factors (1, 10, 100: "log10"); the app handles binned bars and uneven ticks by itself.
    - set_labels: row labels top to bottom and column labels left to right, exactly as printed. Labels may cover groups of cells; that is fine.
 4. When the result lists colorbar candidates (letters A, B… on a page image) instead of one colorbar, pick this heatmap's with use_colorbar {candidate}; when it shares the colorbar of a panel you already calibrated, use_colorbar {fromPanel} copies it with its ticks. If its colorbar is not found at all, use_colorbar {box} with the strip's rough extent from the page rulers.
-5. set_ticks returns the app's check and an image: each orange tick dot with its value should sit level with its printed label. If the check fails, find the cause (a misread or misassigned tick value, the wrong colorbar or heatmap; correctly read ticks at uneven places along a smooth bar need set_colorbar_scale piecewise, which checks again) and fix it once. Cells whose colors are not on the colorbar (gray "ND" cells, a black diagonal) are left empty, and a binned colorbar gives each cell its bin's middle value: both are expected, not failures. Cells paler or darker than the bar's end are only bounds; mention it in finish.
+5. set_ticks returns the app's check and an image: each orange tick dot with its value should sit level with its printed label. When the cells show printed numbers, read 3–5 spread over the heatmap (the lowest and highest among them) and call check_printed after set_ticks; the colors stay the values, the numbers only check them. If the check fails, find the cause (a misread or misassigned tick value, the wrong colorbar or heatmap; correctly read ticks at uneven places along a smooth bar need set_colorbar_scale piecewise, which checks again) and fix it once. Cells whose colors are not on the colorbar (gray "ND" cells, a black diagonal) are left empty, and a binned colorbar gives each cell its bin's middle value: both are expected, not failures. Cells paler or darker than the bar's end are only bounds; mention it in finish.
 6. Check the grid against the image: every cell between magenta lines, one cell per gap, outer lines on the cells' edges. If the count is wrong (lines merge replicate cells or split them, or a strip without borders), call correct_grid_size with the count you see (cell edges, or labels when there are no edges) and why. If the outer lines miss the cells' edges, add box: the cells' rough extent read from the page rulers (view_page if needed); the app moves each edge at most a few px. Only when the grid sits on the wrong heatmap, call locate_heatmap again with panelId and box.
 7. When every heatmap of every page is done, call finish with one line per panel and anything a human should check. Keep your messages short.`;
 
@@ -113,6 +113,30 @@ For each page:
           box: roughBox('Only when the outer grid lines miss the cells: the cells\' rough extent in page pixels.'),
         },
         required: ['rows', 'cols', 'reason'],
+      },
+    },
+    check_printed: {
+      description: 'Cross-check a calibrated panel against numbers printed in its cells: give 3–5 cells spread over the heatmap (with the lowest and highest printed numbers) and the numbers as printed. The app compares them with the values it extracted from the colors and says whether they agree; a disagreement that grows with the value or shifts all of them points at wrong tick values or colorbar ends. The colors stay the values.',
+      args: {
+        type: 'object',
+        properties: {
+          panelId,
+          cells: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 8,
+            items: {
+              type: 'object',
+              properties: {
+                row: { type: 'integer', minimum: 1, description: 'Row number, 1 at the top.' },
+                col: { type: 'integer', minimum: 1, description: 'Column number, 1 at the left.' },
+                value: { type: 'number', description: 'The number printed in that cell.' },
+              },
+              required: ['row', 'col', 'value'],
+            },
+          },
+        },
+        required: ['cells'],
       },
     },
     check_panel: {
@@ -294,15 +318,52 @@ For each page:
   // larger than Jev's page box took in a block next to it (a strip and the
   // block 20 px below it). A snap far smaller than Jev's page box caught one
   // corner of the heatmap (once on a 12 × 32 heatmap: 2 × 2 cells):
-  // `partial`, and the LLM re-locates. Returns {cells (null when nothing
-  // snapped), partial}.
+  // `partial`, and the LLM re-locates. A snap that lost more than 15% of
+  // the crop box, or moved an edge more than 8% of it inward, may have
+  // stopped at pale cells (t16, t18: 22% and 65% of the box): the crop box
+  // with only its edges refined (snapEdges) is tried too and wins when its
+  // cells fit an even grid clearly better (fitQuality) and its edges were
+  // found on the pixels. Returns {cells (null
+  // when nothing snapped), partial, edges (true when the refined box won)}.
   function snapCells(img, rough, boxed) {
     const near = CM.snapBlock(img, boxed);
     const wide = CM.snapBlock(img, rough);
     let cells = near || wide;
     if (near && wide && holds(wide, near) && area(near) < 0.6 * area(wide) && area(wide) < 1.5 * area(rough)) cells = wide;
     if (near && wide && holds(near, wide) && area(near) > 1.5 * area(rough) && area(wide) <= 1.5 * area(rough)) cells = wide;
-    return { cells, partial: !!cells && area(cells) < 0.3 * area(rough) };
+    let edges = false;
+    if (cells && shrunk(cells, boxed)) {
+      // (Only a box whose edges found the cells' edges: at least 3 of them
+      // moved. One that stayed put is the crop box with its white margin.)
+      let alt = CM.snapEdges(img, boxed);
+      if (alt && ['x0', 'y0', 'x1', 'y1'].filter((k) => Math.abs(alt[k] - boxed[k]) >= 1).length < 3) alt = null;
+      const [q, qa] = [fitQuality(img, cells), alt && fitQuality(img, alt)];
+      // It must add whole cells: each side it moves out by more than 3 px
+      // gains half a cell or more (t10: 12 px of row labels past 42 px cells
+      // fit as well and are no cells).
+      const cellsOnly = (b) => ['x0', 'x1', 'y0', 'y1'].every((k) => {
+        const out = k.endsWith('0') ? cells[k] - b[k] : b[k] - cells[k];
+        return out <= 3 || out >= 0.5 * (k[0] === 'x' ? q.colSize : q.rowSize);
+      });
+      if (qa && qa.min >= FAIR_FIT && qa.mean >= q.mean + 0.1 && cellsOnly(alt)) [cells, edges] = [alt, true];
+    }
+    return { cells, partial: !!cells && area(cells) < 0.3 * area(rough), edges };
+  }
+
+  // Whether a snap lost much of a box: under 85% of its area, or an edge
+  // more than 8% of the box inside it.
+  function shrunk(cells, box) {
+    const w = box.x1 - box.x0;
+    const h = box.y1 - box.y0;
+    const inward = Math.max((cells.x0 - box.x0) / w, (box.x1 - cells.x1) / w, (cells.y0 - box.y0) / h, (box.y1 - cells.y1) / h);
+    return area(cells) < 0.85 * area(box) || inward > 0.08;
+  }
+
+  // How well a box of cells fits an even grid (fitCellCounts' scores on
+  // both axes): {min, mean, rowSize, colSize}.
+  function fitQuality(img, b) {
+    const f = CM.fitCellCounts(img, CM.rectCorners({ x: b.x0, y: b.y0 }, { x: b.x1, y: b.y1 }));
+    return { min: Math.min(f.rowScore, f.colScore), mean: (f.rowScore + f.colScore) / 2, rowSize: f.rowSize, colSize: f.colSize };
   }
 
   // A colorbar candidate {bar, labelSide, labels} for a strip, or null.
@@ -316,7 +377,7 @@ For each page:
     if (!bar || exclude.some((c) => overlaps(c, bar)) || groups.some((g) => overlaps(g, bar))) return null;
     const labels = CM.findTickLabels(img, bar, { exclude });
     if (labels.marks.length < minLabels || flankInk(img, bar, exclude, true) > 0.5 || flankInk(img, bar, exclude) > 0.85) return null;
-    return { bar: { x0: bar.x0, y0: bar.y0, x1: bar.x1, y1: bar.y1 }, labelSide: labels.side, labels: labels.marks.length };
+    return { bar: { x0: bar.x0, y0: bar.y0, x1: bar.x1, y1: bar.y1 }, labelSide: labels.side, labels: labels.marks.length, labelsAt: labels.marks.map((m) => m.at) };
   }
 
   // Colorbar candidates on the page from the pixels alone (findColorbars,
@@ -360,10 +421,13 @@ For each page:
   // none near, the LLM chooses: `list` holds them lettered, strips with
   // tick labels first, then nearest first.
   // A lone strip on the page is taken even far away (one colorbar shared by
-  // several blocks). Returns {bar, how: 'beside' | 'near' | 'only'} or
-  // {list: [{letter, bar, side, gap, labels}]}.
-  function chooseColorbar(cells, candidates) {
-    const placed = candidates.map((c) => ({ ...c, at: sideOf(cells, c.bar) })).filter((c) => c.at);
+  // several blocks). `grid` ({rows, cols}, optional): a strip whose "tick
+  // labels" are the heatmap's own column or row labels (one per column, each
+  // on a column's middle: t16's dashed outline under the cells and its 13
+  // rotated column labels) is left out. Returns {bar, how: 'beside' |
+  // 'near' | 'only'} or {list: [{letter, bar, side, gap, labels}]}.
+  function chooseColorbar(cells, candidates, grid = null) {
+    const placed = candidates.map((c) => ({ ...c, at: sideOf(cells, c.bar) })).filter((c) => c.at && !(grid && cellLabels(cells, c, grid)));
     // A strip as long as the cells, end to end, without two tick labels is
     // a group or label strip drawn along them (t9's "Group" strip above the
     // cells); it is never taken without the LLM. (A colorbar may be exactly
@@ -396,6 +460,20 @@ For each page:
       .slice(0, MAX_CANDIDATES)
       .map((c, i) => ({ letter: LETTERS[i], bar: c.bar, side: c.at.side, gap: Math.round(c.at.gap), labels: c.labels || 0 }));
     return { list };
+  }
+
+  // Whether a strip's labels (`labelsAt`, from stripCandidate) are the
+  // cells' column labels (strip above or below) or row labels (left or
+  // right): as many as columns (rows), at least 3, each within a quarter
+  // cell of a column's (row's) middle.
+  function cellLabels(cells, c, grid) {
+    const v = c.at.side === 'left' || c.at.side === 'right';
+    const n = v ? grid.rows : grid.cols;
+    const at = c.labelsAt || [];
+    if (n < 3 || at.length !== n) return false;
+    const [a0, a1] = v ? [cells.y0, cells.y1] : [cells.x0, cells.x1];
+    const pitch = (a1 - a0) / n;
+    return at.every((p, i) => Math.abs((v ? p.y : p.x) - (a0 + (i + 0.5) * pitch)) <= 0.25 * pitch);
   }
 
   // A box answer (fractions of the image) → page pixels. `frame` describes
@@ -553,6 +631,59 @@ For each page:
     return { ok, text: `${ok ? 'Check passed.' : 'Check failed.'} ${parts.join(' ')}` };
   }
 
+  // Numbers printed in cells, read by the LLM, against the values the app
+  // extracted from the colors (user decision 2026-10-17: the colors stay
+  // the values; printed numbers are a cross-check). `pairs`: [{row, col
+  // (1-based), printed, value (null when the cell has none), open?}];
+  // `range`: {min, max} of the tick values; `scale` as on the colorbar
+  // (log scales compare in log10). Within 3% of the range is agreement
+  // (8-bit colors on a 40-unit bar and JPEG noise gave up to 1.2 units, 3%,
+  // on test-18). Differences that grow with the value (slope of extracted
+  // on printed off by more than 10%) or one offset for all point at the
+  // colorbar's ticks or ends, not at single cells. Returns {ok, text}.
+  const PRINTED_TOL = 0.03;
+  function printedCheck(pairs, range, scale = 'linear') {
+    const log = isLogScale(scale);
+    const f = (v) => (log ? Math.log10(v) : v);
+    const span = Math.abs(f(range.max) - f(range.min)) || 1;
+    const fmt = (v) => String(Math.round(v * 1000) / 1000);
+    const lines = [];
+    const used = [];
+    for (const p of pairs) {
+      const where = `row ${p.row}, column ${p.col}`;
+      if (p.value === null || !Number.isFinite(p.value)) {
+        lines.push(`${where}: printed ${fmt(p.printed)}, no value extracted`);
+        continue;
+      }
+      const d = f(p.value) - f(p.printed);
+      const bound = p.open ? ` (a bound: the cell is ${p.open === 'below' ? 'below' : 'above'} the bar's end)` : '';
+      lines.push(`${where}: printed ${fmt(p.printed)}, extracted ${fmt(p.value)}${bound}, ${Math.round((100 * Math.abs(d)) / span)}% of the range off`);
+      if (!p.open && Number.isFinite(f(p.printed))) used.push({ x: f(p.printed), d });
+    }
+    if (!used.length) return { ok: false, text: `No printed value could be compared. ${lines.join('; ')}.` };
+    const off = used.filter((u) => Math.abs(u.d) > PRINTED_TOL * span);
+    const parts = [`Printed vs extracted: ${lines.join('; ')}.`];
+    // Systematic: one offset for all, or a slope.
+    let systematic = null;
+    // (Most of them off: one misread cell is not the colorbar's fault.)
+    if (used.length >= 3 && off.length >= Math.max(2, 0.6 * used.length)) {
+      const n = used.length;
+      const mx = used.reduce((a, u) => a + u.x, 0) / n;
+      const my = used.reduce((a, u) => a + u.x + u.d, 0) / n;
+      let sxx = 0;
+      let sxy = 0;
+      for (const u of used) [(sxx += (u.x - mx) ** 2), (sxy += (u.x - mx) * (u.x + u.d - my))];
+      const slope = sxx ? sxy / sxx : 1;
+      const bias = used.reduce((a, u) => a + u.d, 0) / n;
+      if (sxx && Math.abs(slope - 1) > 0.1) systematic = `the extracted values grow ${slope > 1 ? 'faster' : 'slower'} than the printed ones (slope ${Math.round(slope * 100) / 100})`;
+      else if (Math.abs(bias) > PRINTED_TOL * span && used.every((u) => Math.sign(u.d) === Math.sign(bias))) systematic = `the extracted values are all ${bias > 0 ? 'higher' : 'lower'} by about ${fmt(Math.abs(log ? 10 ** bias : bias))}${log ? '×' : ''}`;
+    }
+    if (systematic) parts.push(`They disagree: ${systematic}. The colorbar's tick values, its ends or its scale are likely wrong: check set_ticks against the printed labels and the bar's ends in the image, fix them, and check again.`);
+    else if (off.length) parts.push(`${off.length} of ${used.length} differ by more than ${Math.round(PRINTED_TOL * 100)}% of the range: check those cells' numbers and the grid there (a misread number, or a grid line off its cell).`);
+    else parts.push(`They agree within ${Math.round(PRINTED_TOL * 100)}% of the range: the extraction matches the printed numbers.`);
+    return { ok: !systematic && !off.length, text: parts.join(' ') };
+  }
+
   // Rows and columns from fitCellCounts (`fit`, from where the cell borders
   // are) and detectGridSize (`det`, from the spacing of color edges; often
   // wrong, so a fallback). Per axis: a clean fit (score ≥ 0.7) is taken
@@ -594,6 +725,17 @@ For each page:
       const span = fit[`${axis}Span`];
       const detected = det[key];
       const lender = page[axis];
+      // A white end cell left out is a tie: the fit with it scores the same
+      // (t17 panel i: a first row 6–10 levels from the second). A panel
+      // lined up with this one, else detectGridSize, settles it when it
+      // counts that cell; the box then stays whole.
+      const whiteTie = /white end cell/.test(reason) && alt > count && (fit[`${axis}AltScore`] ?? 0) >= 0.9 * score && score >= FAIR_FIT;
+      const settled = whiteTie && (lender ? lender.count === alt : detected === alt);
+      if (settled) {
+        out[key] = alt;
+        if (lender) out.notes.push(`The ${word} count ${alt} comes from panel ${lender.id}${lender.name ? ` "${lender.name}"` : ''}, whose ${axis === 'col' ? 'x' : 'y'} extent matches (an end ${word} is pale).`);
+        continue;
+      }
       if (score >= CLEAN_FIT) out[key] = count;
       else if (lender && !(lender.count === 1 && single(axis))) {
         out[key] = lender.count;
@@ -728,6 +870,8 @@ For each page:
     scaleForBins,
     scaleForTicks,
     planCounts,
+    printedCheck,
+    cellLabels,
     gridNeighbours,
     planGrid,
     regridOthers,

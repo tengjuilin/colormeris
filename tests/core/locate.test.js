@@ -426,3 +426,95 @@ test('snapEdges moves an edge that cuts into the cells out to their edge', () =>
   const b = CM.snapEdges(img, { x0: 41, y0: 51, x1: 243, y1: 121 });
   assert.ok(near(b, { x0: 41, y0: 51, x1: 243, y1: 133 }), JSON.stringify(b));
 });
+
+// ---- Pale cells, split and dashed strips (test-16, test-18) ----------------
+
+// Test-18: 5 × 10 cells of 56 px, each in its own 2 px dark frame, 4 px white
+// gaps, a number printed in every cell, the first two columns and part of
+// the top row nearly white. Cells at x 20–616, y 20–316.
+const digits = (img, cx, cy) => {
+  for (let g = 0; g < 3; g++) {
+    const [x, y] = [cx - 15 + g * 11, cy - 6];
+    for (const [a, b, c, d] of [[0, 0, 8, 2], [0, 6, 8, 8], [0, 12, 8, 14], [0, 0, 2, 14], [6, 0, 8, 14]]) fill(img, x + a, y + b, x + c, y + d, [30, 30, 30]);
+  }
+};
+function framedPrinted() {
+  const img = makeImage(700, 380);
+  for (let r = 0; r < 5; r++)
+    for (let c = 0; c < 10; c++) {
+      const [x, y] = [20 + c * 60, 20 + r * 60];
+      const k = (r * 3 + c * 7) % 5;
+      const pale = c < 2 || (r === 0 && c < 5);
+      fill(img, x, y, x + 56, y + 56, [40, 40, 40]);
+      fill(img, x + 2, y + 2, x + 54, y + 54, pale ? [253, 249 - 3 * k, 242 - 6 * k] : [236 - 5 * k, 180 - 12 * k, 110 - 12 * k]);
+      digits(img, x + 28, y + 28);
+    }
+  return img;
+}
+
+test('snapBlock grows over pale cells that each have their own frame', () => {
+  // The dark cells alone were the block (x252–800 of x119–800 on test-18):
+  // a frame, a white gap and a frame stopped the growth.
+  const img = framedPrinted();
+  for (const box of [{ x0: 150, y0: 90, x1: 600, y1: 300 }, { x0: 10, y0: 12, x1: 628, y1: 326 }]) assert.deepEqual(snapBlock(img, box), { x0: 20, y0: 20, x1: 616, y1: 316 });
+});
+
+test('snapBlock grows over pale cells across white gaps wider than its core allows', () => {
+  // Test-16: 16 px gaps, no frames, the top two rows and first two columns
+  // within 20 levels of white. Cells at x 20–992, y 20–384.
+  const img = makeImage(1060, 420);
+  for (let r = 0; r < 5; r++)
+    for (let c = 0; c < 13; c++) {
+      const [x, y] = [20 + c * 76, 20 + r * 76];
+      const k = (r * 5 + c * 3) % 7;
+      fill(img, x, y, x + 60, y + 60, r < 2 || c < 2 ? (k % 2 ? [247 - k, 236 - 2 * k, 238 - 2 * k] : [236 - k, 240 - k, 245]) : [170 - 5 * k, 205 - 4 * k, 235]);
+    }
+  for (const box of [{ x0: 180, y0: 180, x1: 1000, y1: 390 }, { x0: 12, y0: 10, x1: 1010, y1: 400 }]) assert.deepEqual(snapBlock(img, box), { x0: 20, y0: 20, x1: 992, y1: 384 });
+});
+
+// Test-16's colorbar: red at the top, a 15 px middle of 242 ± 3 (flickering
+// around the page-color threshold), pale blue at the bottom; labels "0",
+// "50" and "100" on its right without tick marks, the end ones 4–5 px
+// inside the ends. Beside cells framed by a dashed outline 6 px thick.
+function divergingFigure() {
+  const img = makeImage(400, 460);
+  const mix = (a, b, f) => a.map((v, i) => Math.round(v + (b[i] - v) * f));
+  for (let y = 40; y <= 425; y++) {
+    const s = (y - 40) / 385;
+    const middle = Math.abs(s - 0.5) < 0.02;
+    const rgb = middle ? [242, 242, 242] : s < 0.5 ? mix([220, 60, 70], [242, 242, 242], s / 0.48) : mix([242, 242, 242], [160, 200, 235], (s - 0.52) / 0.48);
+    for (let x = 300; x <= 341; x++) setPixel(img, x, y, middle ? rgb.map((v, i) => v + (((y * 7 + x * 5 + i) % 7) - 3)) : rgb);
+  }
+  label(img, 350, 39, 1);
+  label(img, 350, 223, 2);
+  label(img, 350, 415, 3);
+  const dash = [160, 200, 230];
+  for (let x = 34; x < 266; x += 16) [fill(img, x, 54, Math.min(x + 10, 266), 60, dash), fill(img, x, 400, Math.min(x + 10, 266), 406, dash)];
+  for (let y = 54; y < 406; y += 16) [fill(img, 34, y, 40, Math.min(y + 10, 406), dash), fill(img, 260, y, 266, Math.min(y + 10, 406), dash)];
+  fill(img, 44, 64, 256, 396, [150, 190, 225]);
+  return { img, cells: { x0: 44, y0: 64, x1: 256, y1: 396 } };
+}
+
+test('findColorbars joins a diverging bar split at its near-white middle and leaves out a dashed outline', () => {
+  const { img, cells } = divergingFigure();
+  const bars = CM.findColorbars(img, { exclude: [cells] });
+  assert.equal(bars.length, 1, JSON.stringify(bars));
+  assert.ok(near(bars[0], { x0: 300, y0: 40, x1: 342, y1: 426 }), JSON.stringify(bars[0]));
+});
+
+test('snapStripBox joins the halves of a bar in a box and extends a short strip to it', () => {
+  const { img } = divergingFigure();
+  assert.ok(near(CM.snapStrip(img, { x0: 296, y0: 36, x1: 345, y1: 430 }), { x0: 300, y0: 40, x1: 342, y1: 224 }, 3));
+  const whole = CM.snapStripBox(img, { x0: 296, y0: 36, x1: 345, y1: 430 });
+  assert.ok(near(whole.bar, { x0: 300, y0: 40, x1: 342, y1: 426 }) && !whole.extended, JSON.stringify(whole));
+  const short = makeImage(200, 300);
+  paintColorbar(short, 80, 100, 100, 199, VIRIDISH);
+  const out = CM.snapStripBox(short, { x0: 76, y0: 98, x1: 104, y1: 260 });
+  assert.ok(out.extended && out.share < 0.7 && out.bar.y1 === 260 && Math.abs(out.bar.y0 - 100) <= 2, JSON.stringify(out));
+});
+
+test('findTickLabels puts end labels without tick marks on the strip ends', () => {
+  const { img } = divergingFigure();
+  const marks = findTickLabels(img, { x0: 300, y0: 40, x1: 342, y1: 426 }).marks.map((m) => m.at.y);
+  assert.deepEqual(marks, [40, 228, 425]);
+});

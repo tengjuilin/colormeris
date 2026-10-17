@@ -366,6 +366,17 @@
         }
         nudges = 0;
         const images = [];
+        // The decision model's boxes for this turn's locate_heatmap calls
+        // are asked all at once; the calls themselves run in order below.
+        decision?.prefetch(
+          msg.toolCalls.map((c) => {
+            try {
+              return { name: c.function.name, args: c.function.arguments ? JSON.parse(c.function.arguments) : {} };
+            } catch {
+              return { name: c.function.name, args: null };
+            }
+          }),
+        );
         for (const call of msg.toolCalls) {
           let args;
           let result;
