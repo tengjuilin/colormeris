@@ -79,3 +79,79 @@ export function paintDots(img, tl, br, matrix, radii, stops) {
     }
   }
 }
+
+const fillRect = (img, x0, y0, x1, y1, rgb) => {
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) setPixel(img, x, y, rgb);
+};
+const outline = (img, x0, y0, x1, y1, rgb = [0, 0, 0]) => {
+  fillRect(img, x0, y0, x1, y0 + 1, rgb);
+  fillRect(img, x0, y1 - 1, x1, y1, rgb);
+  fillRect(img, x0, y0, x0 + 1, y1, rgb);
+  fillRect(img, x1 - 1, y0, x1, y1, rgb);
+};
+// Text-like dark blocks: `n` characters 6 × 10 px, 2 px apart.
+const text = (img, x, y, n) => {
+  for (let i = 0; i < n; i++) fillRect(img, x + i * 8, y, x + i * 8 + 6, y + 10, [20, 20, 20]);
+};
+
+// A screenshot-like figure modelled on a 12 × 32 replicate heatmap (RLU fold
+// change, Tail 1-8 … 1-1): 8 groups of 4 columns 8 px apart, pure-white 2 px
+// lines between cells, a 2 px black frame, most cells pale pink (not 40
+// levels off white) and the dark ones only in rows 4–8 of groups 3–6. Row
+// brackets 8 px right of the frame, column labels underlined 8 px above it,
+// empty legend boxes on the left and bottom right, and a horizontal colorbar
+// below on the right (mid pink to dark red, framed, tick marks on its top
+// edge, labels below, a title on its left). Truth in `figure`.
+export function groupedFigure() {
+  const img = makeImage(1000, 420);
+  const X0 = 100;
+  const Y0 = 50;
+  const cellsX = (g, c) => X0 + 2 + g * 94 + c * 22; // 20 px of color, then a 2 px line
+  const cellsY = (r) => Y0 + 2 + r * 20; // 18 px of color, then a 2 px line
+  const pale = [[244, 222, 222], [246, 230, 230], [242, 219, 219], [236, 203, 204]];
+  for (let g = 0; g < 8; g++)
+    for (let c = 0; c < 4; c++)
+      for (let r = 0; r < 12; r++) {
+        const dark = r >= 4 && r <= 8 && g >= 2 && g <= 5;
+        const rgb = dark ? [200 - 8 * c, 90 - 10 * (r - 4), 95 - 10 * (r - 4)] : pale[(r * 3 + c + g) % 4];
+        const w = c === 3 ? 20 : 22;
+        const h = r === 11 ? 18 : 20;
+        fillRect(img, cellsX(g, c), cellsY(r), cellsX(g, c) + w, cellsY(r) + h, rgb);
+        // Pure-white lines between cells.
+        if (c < 3) fillRect(img, cellsX(g, c) + 20, cellsY(r), cellsX(g, c) + 22, cellsY(r) + h, [255, 255, 255]);
+        if (r < 11) fillRect(img, cellsX(g, c), cellsY(r) + 18, cellsX(g, c) + w, cellsY(r) + 20, [255, 255, 255]);
+      }
+  const X1 = cellsX(7, 3) + 20 + 2;
+  const Y1 = cellsY(11) + 18 + 2;
+  outline(img, X0, Y0, X1, Y1);
+  outline(img, X0 + 1, Y0 + 1, X1 - 1, Y1 - 1);
+  // Column labels with underlines, row brackets, legend boxes.
+  for (let g = 0; g < 8; g++) {
+    text(img, cellsX(g, 0) + 8, Y0 - 24, 8);
+    fillRect(img, cellsX(g, 0) + 2, Y0 - 10, cellsX(g, 3) + 18, Y0 - 8, [0, 0, 0]);
+  }
+  for (let k = 0; k < 3; k++) {
+    fillRect(img, X1 + 8, cellsY(4 * k) + 4, X1 + 10, cellsY(4 * k + 3) + 14, [0, 0, 0]);
+    for (let i = 0; i < 3; i++) fillRect(img, X1 + 16, cellsY(4 * k) + 20 + i * 14, X1 + 26, cellsY(4 * k) + 30 + i * 14, [20, 20, 20]);
+  }
+  for (let i = 0; i < 4; i++) {
+    outline(img, X0 - 26, Y0 + 2 + i * 14, X0 - 10, Y0 + 15 + i * 14);
+    text(img, X0 - 90, Y0 + 3 + i * 14, 7);
+    outline(img, X1 - 64 + i * 16, Y1 + 10, X1 - 48 + i * 16, Y1 + 26);
+    for (let j = 0; j < 4; j++) fillRect(img, X1 - 60 + i * 16, Y1 + 32 + j * 9, X1 - 52 + i * 16, Y1 + 39 + j * 9, [20, 20, 20]);
+  }
+  // Colorbar: 240 × 20 px strip inside a 1 px frame, 8 px below the cells.
+  const bar = { x0: X1 - 330, y0: Y1 + 10, x1: X1 - 90, y1: Y1 + 30 };
+  for (let x = bar.x0; x < bar.x1; x++) {
+    const s = (x - bar.x0) / (bar.x1 - bar.x0 - 1);
+    fillRect(img, x, bar.y0, x + 1, bar.y1, [Math.round(230 - 65 * s), Math.round(139 - 97 * s), Math.round(140 - 97 * s)]);
+  }
+  outline(img, bar.x0 - 1, bar.y0 - 1, bar.x1 + 1, bar.y1 + 1, [20, 0, 0]);
+  const ticks = [0.09, 0.36, 0.64, 0.91].map((t) => Math.round(bar.x0 + t * (bar.x1 - bar.x0)));
+  ticks.forEach((x, i) => {
+    fillRect(img, x, bar.y0, x + 1, bar.y0 + 4, [40, 20, 20]);
+    text(img, x - (i ? 12 : 3), bar.y1 + 6, i ? 3 : 1);
+  });
+  text(img, bar.x0 - 150, bar.y0 + 4, 16); // title
+  return { img, cells: { x0: X0, y0: Y0, x1: X1, y1: Y1 }, bar, ticks, rows: 12, cols: 32 };
+}

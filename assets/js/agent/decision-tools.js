@@ -1,6 +1,6 @@
 (function (CM) {
   'use strict';
-  const { ticksWithT, projectT, DECISION_TOOLS, validateDecisionTool, decisionQuestions, boxToPage, growBox, besideBox, barLine, besideCheck, tickMisfit, checkSummary, snapBlock, findTickLabels, labelReach, fitCellCounts } = CM;
+  const { rgbToLab, ticksWithT, projectT, DECISION_TOOLS, validateDecisionTool, decisionQuestions, boxToPage, growBox, besideBox, barLine, besideCheck, tickMisfit, checkSummary, snapBlock, findStrip, findTickLabels, labelReach, fitCellCounts } = CM;
 
   // Tools of "agent decision" mode (prompt and schemas in agent/decide.js).
   // Each request to the decision model is about one heatmap and carries one
@@ -59,21 +59,35 @@
       return panel;
     }
 
-    async function locate({ name, description, panelId }) {
+    async function locate({ name, description, panelId, box }) {
       const panel = await targetPanel({ name, panelId });
       const img = page().imageData;
       const { W, H } = size();
       const notes = [];
 
       // 1. Roughly where, on the whole page; 2. the cells, on a crop around that.
-      const found = await askRegion(null, decisionQuestions.find(description), JEV.pageSide);
-      const present = found.answers.present?.noul;
-      const rough = boxToPage(found.answers.cells.box, found.frame);
+      // The LLM's own rough box, after a miss, replaces Jev's page-wide guess.
+      const clip = (b) => ({ x0: Math.max(0, Math.min(b.x0, b.x1)), y0: Math.max(0, Math.min(b.y0, b.y1)), x1: Math.min(W, Math.max(b.x0, b.x1)), y1: Math.min(H, Math.max(b.y0, b.y1)) });
+      const found = box ? null : await askRegion(null, decisionQuestions.find(description), JEV.pageSide);
+      const present = found?.answers.present?.noul;
+      const rough = box ? clip(box) : boxToPage(found.answers.cells.box, found.frame);
       const crop = await askRegion(growBox(rough, 0.25, 20, W, H), decisionQuestions.cells());
       const boxed = boxToPage(crop.answers.cells.box, crop.frame);
       // A crop box on a pale edge column has no solid core to snap from;
       // the page-wide box then still reaches the block.
-      let cells = snapBlock(img, boxed) || snapBlock(img, rough);
+      // A short crop box can also stop the snap at a pale row (the 24h
+      // cytokine heatmap: 6 of 32 rows); a page-wide snap that holds it and
+      // is much larger then wins, unless it outgrew Jev's page box (a
+      // neighbouring heatmap joined in).
+      const near = snapBlock(img, boxed);
+      const wide = snapBlock(img, rough);
+      const area = (b) => (b.x1 - b.x0) * (b.y1 - b.y0);
+      const holds = (a, b) => a.x0 <= b.x0 + 3 && a.y0 <= b.y0 + 3 && a.x1 >= b.x1 - 3 && a.y1 >= b.y1 - 3;
+      let cells = near && wide && holds(wide, near) && area(near) < 0.6 * area(wide) && area(wide) < 1.5 * area(rough) ? wide : near || wide;
+      // A snap far smaller than Jev's page box caught one corner of the
+      // heatmap (once on a 12 × 32 heatmap: 2 × 2 cells); the LLM re-locates.
+      const partial = !!cells && area(cells) < 0.3 * area(rough);
+      if (partial) notes.push(`The snapped cells cover only ${Math.round((100 * area(cells)) / area(rough))}% of where the decision model put the heatmap: if the grid holds only part of it, call locate_heatmap again with panelId and box (its rough extent from the page image's rulers).`);
       if (!cells) {
         cells = boxed;
         notes.push('The cells could not be snapped to a block of color; the grid follows the decision model\'s box and may be off.');
@@ -100,8 +114,11 @@
         // without labels found is kept only as a fallback.
         let fallback = null;
         for (const s of sides) {
-          const b = await askRegion(besideBox(cells, s, W, H), decisionQuestions.bar());
-          const found = snapBlock(img, boxToPage(b.answers.bar.box, b.frame));
+          const strip = besideBox(cells, s, W, H);
+          const b = await askRegion(strip, decisionQuestions.bar());
+          // When Jev's box misses the strip, look for it in the pixels.
+          let found = snapBlock(img, boxToPage(b.answers.bar.box, b.frame));
+          if (!found || !besideCheck(cells, found, s)) found = findStrip(img, strip);
           if (!found || !besideCheck(cells, found, s)) continue;
           const labels = findTickLabels(img, found);
           if (!labels.marks.length) fallback ??= { found, s };
@@ -124,7 +141,9 @@
       // One image for the LLM: the cells with their own labels, colorbar and
       // numbered boxes, cropped at the white gaps around them so a
       // neighbouring panel's colorbar cannot be mistaken for this one.
-      const all = [cells, ...(bar ? [bar] : []), ...marks.map((m) => m.box)];
+      // After a partial snap the image also shows the whole guessed area, so
+      // the LLM can see what the grid missed.
+      const all = [cells, ...(partial ? [rough] : []), ...(bar ? [bar] : []), ...marks.map((m) => m.box)];
       const ext = { x0: Math.min(...all.map((b) => b.x0)), y0: Math.min(...all.map((b) => b.y0)), x1: Math.max(...all.map((b) => b.x1)), y1: Math.max(...all.map((b) => b.y1)) };
       const reach = 300;
       const region = {
@@ -138,10 +157,10 @@
 
       const text = [
         `Panel ${panel.id} "${name}": cells ${boxText(cells)}, ${counted.rows} rows × ${counted.cols} columns (counted by the app).`,
-        bar ? `Colorbar ${bar.y1 - bar.y0 >= bar.x1 - bar.x0 ? 'vertical' : 'horizontal'}, ${barSide} of the cells, ${boxText(bar)}; ${marks.length} tick-label box${marks.length === 1 ? '' : 'es'} numbered in reading order.` : '',
+        bar ? `Colorbar ${bar.y1 - bar.y0 >= bar.x1 - bar.x0 ? 'vertical' : 'horizontal'}, ${barSide === 'left' || barSide === 'right' ? `${barSide} of` : barSide} the cells, ${boxText(bar)}; ${marks.length} tick-label box${marks.length === 1 ? '' : 'es'} numbered in reading order.` : '',
         Number.isFinite(present) && present < 0.5 ? `The decision model doubts this heatmap matches the description (${r1(present)}): check the image.` : '',
         ...notes,
-        'Next: set_ticks and set_labels from the image.',
+        'Next: set_ticks and set_labels from the image (and correct_grid_size if the lines merge or split cells).',
       ].filter(Boolean).join(' ');
       return { ok: true, result: text, image: { dataUrl: view.dataUrl, note: `${name} (panel ${panel.id}): magenta grid, orange colorbar line, blue numbered tick-label boxes.` } };
     }
@@ -158,7 +177,11 @@
       if (fit.colScore >= CLEAN_FIT) out.cols = fit.cols;
       if (out.rows !== grid.rows || out.cols !== grid.cols) must(await api.run('set_grid_size', { panelId: panel.id, ...out }));
       const unsure = (fit.rowScore < CLEAN_FIT && grid.rowConfidence < 1.3) || (fit.colScore < CLEAN_FIT && grid.colConfidence < 1.3);
-      return { ...out, note: unsure ? 'The app is unsure of its row or column count.' : '' };
+      // Its two counts disagree when cells come in groups of similar
+      // replicates (strong group borders, faint ones inside): say both.
+      const other = [fit.rows !== grid.rows && `${fit.rows} or ${grid.rows} rows`, fit.cols !== grid.cols && `${fit.cols} or ${grid.cols} columns`].filter(Boolean);
+      const notes = [unsure && 'The app is unsure of its row or column count.', other.length && `Its two counts disagree (${other.join(', ')}): check the magenta lines and use correct_grid_size if they merge or split cells.`];
+      return { ...out, note: notes.filter(Boolean).join(' ') };
     }
 
     async function setTicks({ panelId, ticks, scale }) {
@@ -186,7 +209,13 @@
       const marks = marksByPanel.get(panel.id) || [];
       const worst = misfit && ticks[misfit.index];
       const mark = worst ? marks.findIndex((m) => Math.abs(projectT(cb.start, cb.end, m.at) - worst.t) < 0.03) + 1 || null : null;
-      return checkSummary({ flagged: all.filter((c) => c.flagged).length, cells: all.length, misfit, mark });
+      const flagged = all.filter((c) => c.flagged);
+      // Lighter or darker than every color on the bar (by L*): the figure's
+      // cells go past its colorbar. (t is no help: a bar that is flat near
+      // its end puts such cells anywhere along the flat part.)
+      const L = (res.samples || []).map((x) => x.lab[0]);
+      const beyond = L.length ? flagged.filter((c) => c.rgb && (rgbToLab(c.rgb)[0] > Math.max(...L) + 3 || rgbToLab(c.rgb)[0] < Math.min(...L) - 3)).length : 0;
+      return checkSummary({ flagged: flagged.length, cells: all.length, misfit, mark, beyond });
     }
 
     async function askTool({ region, overlay = 'none', questions }) {
@@ -203,6 +232,14 @@
     const handlers = {
       locate_heatmap: locate,
       set_ticks: setTicks,
+      correct_grid_size: async ({ panelId, rows, cols }) => {
+        const panel = panelId ? app.project.panels.find((p) => p.id === panelId) : ws.activePanel();
+        if (!panel) throw new Error(`No panel "${panelId}".`);
+        if (!panel.grid.corners) throw new Error('This panel has no grid yet. Run locate_heatmap first.');
+        must(await api.run('set_grid_size', { panelId: panel.id, rows, cols }));
+        const view = renderView({ region: growBox(gridBox(panel), 0.05, 10, size().W, size().H), overlay: 'calibration', rulers: false, maxSide: 900 });
+        return { ok: true, result: `Grid of ${panel.name} is now ${rows} rows × ${cols} columns. ${(await check(panel)).text}`, image: { dataUrl: view.dataUrl, note: `${panel.name} (panel ${panel.id}) with the corrected grid.` } };
+      },
       check_panel: async ({ panelId }) => {
         const panel = panelId ? app.project.panels.find((p) => p.id === panelId) : ws.activePanel();
         if (!panel) throw new Error(`No panel "${panelId}".`);

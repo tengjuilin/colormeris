@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeImage, setPixel, paintHeatmap, paintColorbar, VIRIDISH } from '../helpers.js';
+import { makeImage, setPixel, paintHeatmap, paintColorbar, VIRIDISH, groupedFigure } from '../helpers.js';
 import CM from '../load.js';
 
-const { snapBlock, findTickLabels } = CM;
+const { snapBlock, findStrip, findTickLabels, besideBox, besideCheck } = CM;
 
 const fill = (img, x0, y0, x1, y1, rgb = [20, 20, 20]) => {
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) setPixel(img, x, y, rgb);
@@ -87,6 +87,16 @@ test('labelReach stops at the white gap before the next panel', () => {
   assert.equal(CM.labelReach(img, { x0: 60, y0: 40, x1: 220, y1: 160 }, 'below', 50), 160);
 });
 
+test('labelReach takes a wider gap beside a large heatmap', () => {
+  // 1500 px of cells, legend boxes 12 px left of them, their row labels 24 px
+  // further left: 2% of the width (30 px) bridges that gap.
+  const img = makeImage(1700, 200);
+  fill(img, 150, 40, 1650, 160, [240, 200, 200]);
+  for (let i = 0; i < 4; i++) fill(img, 120, 45 + i * 25, 138, 63 + i * 25);
+  for (let i = 0; i < 4; i++) label(img, 50, 48 + i * 25, 6);
+  assert.equal(CM.labelReach(img, { x0: 150, y0: 40, x1: 1650, y1: 160 }, 'left', 300), 50);
+});
+
 test('snapBlock grows over pale cells of a colormap that starts at white', () => {
   // Blues-like: white (255, 255, 255) to dark blue. The left column is white
   // except two pale cells, so it never fills 75% of a line.
@@ -96,4 +106,53 @@ test('snapBlock grows over pale cells of a colormap that starts at white', () =>
   paintHeatmap(img, rect(60, 20, 220, 180), m, BLUES, { lines: false });
   for (let r = 0; r < 8; r++) label(img, 20, 25 + r * 20, 3); // row labels, 9 px from the cells
   assert.deepEqual(snapBlock(img, { x0: 100, y0: 30, x1: 215, y1: 170 }), { x0: 60, y0: 20, x1: 220, y1: 180 });
+});
+
+test('snapBlock finds pale diverging cells and crosses a frame around them', () => {
+  // Most cells within 30 levels of white, a pale first row 7 levels off, and
+  // a pure-white row inside a 2 px gray frame; a colorbar 15 px below must
+  // not be taken in, even from a box on the top half only.
+  const img = makeImage(300, 260);
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 6; c++) {
+    const d = r === 0 ? 7 : r === 6 ? 0 : 10 + ((r * 5 + c * 3) % 20);
+    fill(img, 50 + c * 30, 30 + r * 20, 80 + c * 30, 50 + r * 20, [255 - (c % 2 ? d : 0), 255 - d, 255 - (c % 2 ? 0 : d)]);
+  }
+  fill(img, 48, 28, 232, 30, [126, 126, 126]);
+  fill(img, 48, 190, 232, 192, [126, 126, 126]);
+  fill(img, 48, 28, 50, 192, [126, 126, 126]);
+  fill(img, 230, 28, 232, 192, [126, 126, 126]);
+  paintColorbar(img, 50, 230, 207, 222, VIRIDISH);
+  for (const box of [{ x0: 60, y0: 40, x1: 220, y1: 180 }, { x0: 60, y0: 40, x1: 220, y1: 130 }]) assert.deepEqual(snapBlock(img, box), { x0: 48, y0: 28, x1: 232, y1: 192 });
+});
+
+test('findStrip finds a colorbar beside the cells without a box', () => {
+  const img = figure();
+  // The page right of the cells: labels are dark, only the strip is colored.
+  assert.deepEqual(findStrip(img, { x0: 225, y0: 0, x1: 320, y1: 220 }), { x0: 240, y0: 40, x1: 256, y1: 160 });
+});
+
+test('snapBlock crosses white lines and gaps between groups of pale cells', () => {
+  // Only rows 4–8 of groups 3–6 are 40 levels off white; every line between
+  // cells is pure white, as in a screenshot. The block used to stop at the
+  // first white line around that dark core (one row, 12 of 32 columns).
+  // Brackets and label underlines 8 px away (as wide as a group gap) stay out.
+  const { img, cells } = groupedFigure();
+  for (const box of [
+    { x0: cells.x0 + 15, y0: cells.y0 - 12, x1: cells.x1 - 10, y1: cells.y1 + 14 },
+    { x0: cells.x0 - 20, y0: cells.y0 + 10, x1: cells.x1 + 20, y1: cells.y1 - 10 },
+    { x0: cells.x0 + 75, y0: cells.y0 + 24, x1: cells.x1 - 75, y1: cells.y1 - 24 },
+  ])
+    assert.deepEqual(snapBlock(img, box), cells);
+});
+
+test('a horizontal colorbar below grouped cells is found with its tick labels', () => {
+  // Left of it a title, right of it empty legend boxes with their labels.
+  const { img, cells, bar, ticks } = groupedFigure();
+  const found = findStrip(img, besideBox(cells, 'below', img.width, img.height));
+  assert.deepEqual(found, bar);
+  const labels = findTickLabels(img, found);
+  assert.equal(labels.side, 'below');
+  assert.equal(labels.marks.length, 4);
+  labels.marks.forEach((m, i) => assert.ok(Math.abs(m.at.x - ticks[i]) <= 2, `label ${i + 1} at ${m.at.x}, tick at ${ticks[i]}`));
+  assert.ok(besideCheck(cells, found, 'below', labels.side));
 });

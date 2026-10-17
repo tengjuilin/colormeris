@@ -13,6 +13,9 @@
   // Growing a block over its palest cells: a line stays in the block while
   // this share of it differs from the page by more than the page's noise.
   const FAINT_FILL = 0.1;
+  // Furthest a frame line may sit past the block, as a share of its size.
+  const FRAME_GAP = 0.06;
+  const FRAME_LINE = 4;
   const TEXT = 90; // the same for dark text
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -90,7 +93,7 @@
     const faint = differs(bg, noiseTol(img, wx0, wy0, wx1, wy1, bg));
 
     // Extent along one axis, from the share of ink in a band of the other.
-    const extent = (horizontal, lo, hi, bandLo, bandHi, inLo, inHi) => {
+    const extent = (horizontal, lo, hi, bandLo, bandHi, inLo, inHi, core = ink, edges = null, inner = []) => {
       const b0 = Math.round(bandLo);
       const b1 = Math.max(b0 + 1, Math.round(bandHi));
       const step = Math.max(1, Math.floor((b1 - b0) / 200));
@@ -101,25 +104,107 @@
         return n / t;
       };
       const profile = [];
-      for (let a = lo; a < hi; a++) profile.push(fill(a));
+      for (let a = lo; a < hi; a++) profile.push(fill(a, core));
       const keep = runs(profile, lo).filter(([a, b]) => b >= inLo && a <= inHi);
       if (!keep.length) return null;
       // Grow over pale cells, and past the window when the box cut the block short.
       let from = keep[0][0];
       let to = keep[keep.length - 1][1] + 1;
       const end = horizontal ? img.width : img.height;
-      while (from > 0 && fill(from - 1, faint) >= FAINT_FILL) from--;
-      while (to < end && fill(to, faint) >= FAINT_FILL) to++;
+      // A frame drawn around the cells is crossed too: a whole edge row of
+      // near-white cells, then a thin full line (at most FRAME_LINE px; a
+      // colorbar or a neighbour's cells are thicker), within FRAME_GAP.
+      // A line of pure-white cells inside a frame still touches the frame's
+      // sides (`edges`: the block's ends on the other axis).
+      const px = (a, b) => (horizontal ? readPixel(img, a, b) : readPixel(img, b, a));
+      const framed = (a) => !!edges && [edges[0], edges[0] + 1].some((b) => ink(px(a, b))) && [edges[1] - 1, edges[1] - 2].some((b) => ink(px(a, b)));
+      const grows = (a) => fill(a, faint) >= FAINT_FILL || framed(a);
+      // A block that already ends on its frame (a line of ink in one even
+      // color, unlike cells) must not jump again, e.g. to a bracket beside
+      // the heatmap. (A column of equally pale cells is even too, but no ink.)
+      const even = (a) => {
+        const lo = [255, 255, 255];
+        const hi = [0, 0, 0];
+        for (let b = b0; b < b1; b += step) px(a, b).forEach((v, i) => ((lo[i] = Math.min(lo[i], v)), (hi[i] = Math.max(hi[i], v))));
+        return hi.every((v, i) => v - lo[i] < 40) && fill(a, ink) >= FILL;
+      };
+      // The edge line or one of the two inside it (an anti-aliased frame).
+      const framedEdge = (a, dir) => [0, 1, 2].some((i) => even(a + dir * i));
+      const gap = Math.max(8, Math.round((to - from) * FRAME_GAP));
+      const full = (a) => a >= 0 && a < end && fill(a, faint) >= FILL;
+      const frame = (a, dir) => {
+        let n = 0;
+        while (n <= FRAME_LINE && full(a + dir * n)) n++;
+        return n <= FRAME_LINE ? n : 0;
+      };
+      // White lines between cells, or wider white gaps between groups of
+      // cells (replicate columns), that cross the whole core: growth stops at
+      // such a line on the block's edge, so a blank run as wide as one inside
+      // the core is crossed when full cells follow it. A clean screenshot
+      // has pure-white lines; the core held only the darker groups (12 of
+      // 32 columns) and the rows between two white lines.
+      // Widths are shared between the passes: the rows of one dark row
+      // have no white line inside, but the columns do.
+      for (let a = from, n = 0; a <= to; a++) {
+        if (a < to && fill(a, faint) < FAINT_FILL) n++;
+        else if (n) [inner.push(n), (n = 0)];
+      }
+      const widest = Math.min(gap, Math.max(0, ...inner));
+      const likeInner = (k) => inner.some((n) => n <= gap && Math.abs(n - k) <= Math.max(1, 0.15 * n));
+      const blankRun = (a, dir) => {
+        let k = 0;
+        while (k <= widest && a + dir * k >= 0 && a + dir * k < end && !grows(a + dir * k)) k++;
+        return k;
+      };
+      // Full cells right past a blank run of `blank` lines (after an
+      // anti-aliased edge line): at least 4 full lines and as many as the
+      // run, so an underline of the column labels is not taken for cells.
+      const cellsAt = (a, dir, blank) => [0, 1, 2].some((i) => {
+        for (let j = 0; j < Math.max(4, blank); j++) if (!full(a + dir * (i + j))) return false;
+        return true;
+      });
+      for (;;) {
+        while (from > 0 && grows(from - 1)) from--;
+        const blank = from > 0 ? blankRun(from - 1, -1) : 0;
+        if (blank && likeInner(blank) && cellsAt(from - 1 - blank, -1, blank) && !framedEdge(from, 1)) {
+          from -= blank;
+          continue;
+        }
+        let k = 1;
+        while (k <= gap && from - k >= 0 && !full(from - k)) k++;
+        const n = k <= gap && !framedEdge(from, 1) ? frame(from - k, -1) : 0;
+        if (!n) break;
+        from -= k + n - 1;
+      }
+      for (;;) {
+        while (to < end && grows(to)) to++;
+        const blank = blankRun(to, 1);
+        if (blank && likeInner(blank) && cellsAt(to + blank, 1, blank) && !framedEdge(to - 1, -1)) {
+          to += blank;
+          continue;
+        }
+        let k = 0;
+        while (k < gap && !full(to + k) && to + k < end) k++;
+        const n = k < gap && !framedEdge(to - 1, -1) ? frame(to + k, 1) : 0;
+        if (!n) break;
+        to += k + n;
+      }
       return [from, to];
     };
 
-    let xs = extent(true, wx0, wx1, box.y0 + h * 0.3, box.y1 - h * 0.3, box.x0 + w * 0.2, box.x1 - w * 0.2);
-    if (!xs) return null;
-    const ys = extent(false, wy0, wy1, xs[0] + (xs[1] - xs[0]) * 0.2, xs[1] - (xs[1] - xs[0]) * 0.2, box.y0 + h * 0.2, box.y1 - h * 0.2);
-    if (!ys) return null;
-    // Once more across the rows actually found, so the band avoids labels.
-    xs = extent(true, wx0, wx1, ys[0] + (ys[1] - ys[0]) * 0.2, ys[1] - (ys[1] - ys[0]) * 0.2, box.x0 + w * 0.2, box.x1 - w * 0.2) || xs;
-    return { x0: xs[0], y0: ys[0], x1: xs[1], y1: ys[1] };
+    const find = (core) => {
+      const inner = []; // widths of white lines inside the block
+      let xs = extent(true, wx0, wx1, box.y0 + h * 0.3, box.y1 - h * 0.3, box.x0 + w * 0.2, box.x1 - w * 0.2, core, null, inner);
+      if (!xs) return null;
+      const ys = extent(false, wy0, wy1, xs[0] + (xs[1] - xs[0]) * 0.2, xs[1] - (xs[1] - xs[0]) * 0.2, box.y0 + h * 0.2, box.y1 - h * 0.2, core, xs, inner);
+      if (!ys) return null;
+      // Once more across the rows actually found, so the band avoids labels.
+      xs = extent(true, wx0, wx1, ys[0] + (ys[1] - ys[0]) * 0.2, ys[1] - (ys[1] - ys[0]) * 0.2, box.x0 + w * 0.2, box.x1 - w * 0.2, core, ys, inner) || xs;
+      return { x0: xs[0], y0: ys[0], x1: xs[1], y1: ys[1] };
+    };
+    // A diverging map around white (most cells pale) has no line that is 75%
+    // strong ink; then the core is found from anything off the page color.
+    return find(ink) || find(faint);
   }
 
   // Connected components (8-neighbour) of `mask(x, y)` inside a window, as
@@ -167,6 +252,31 @@
     const s = [...v].sort((a, b) => a - b);
     return s.length ? s[s.length >> 1] : 0;
   };
+
+  // A colorbar strip inside `region`, found without a decision model's box:
+  // the largest colored (chroma > 30) connected block that is at least 3
+  // times as long as it is thick and 4 px thick, snapped with snapBlock so
+  // its pale or gray parts are taken in. Gray-only colormaps are missed.
+  // A fallback for when a box answer for the colorbar is off.
+  function findStrip(img, region) {
+    const x0 = Math.max(0, Math.floor(region.x0));
+    const y0 = Math.max(0, Math.floor(region.y0));
+    const x1 = Math.min(img.width, Math.ceil(region.x1));
+    const y1 = Math.min(img.height, Math.ceil(region.y1));
+    if (x1 - x0 < 4 || y1 - y0 < 4) return null;
+    const colored = (x, y) => {
+      const [r, g, b] = readPixel(img, x, y);
+      return Math.max(r, g, b) - Math.min(r, g, b) > 30;
+    };
+    let best = null;
+    for (const c of components(x0, y0, x1, y1, colored)) {
+      const w = c.x1 - c.x0;
+      const h = c.y1 - c.y0;
+      if (Math.min(w, h) < 4 || Math.max(w, h) < 3 * Math.min(w, h) || c.n < 0.6 * w * h) continue;
+      if (!best || c.n > best.n) best = c;
+    }
+    return best && (snapBlock(img, best, 0.1) || { x0: best.x0, y0: best.y0, x1: best.x1, y1: best.y1 });
+  }
 
   // Tick labels beside a colorbar strip `bar` (a box around the colored
   // strip). Dark text is split into characters, characters are grouped into
@@ -250,8 +360,12 @@
   // 'right', 'above', 'below'): walk away from the block until `gap` blank
   // lines in a row (within the block's span), at most `reach` pixels. Used
   // to crop a heatmap with its labels but without the next figure panel.
-  function labelReach(img, cells, side, reach, gap = 15) {
+  // The gap grows with the block (2% of its size, at least 15 px): on a
+  // 1770 px wide screenshot the row labels sat 24 px left of their legend
+  // boxes and were cut off.
+  function labelReach(img, cells, side, reach, gap = null) {
     const horizontal = side === 'left' || side === 'right';
+    gap ??= Math.max(15, Math.round(0.02 * (horizontal ? cells.x1 - cells.x0 : cells.y1 - cells.y0)));
     const dir = side === 'left' || side === 'above' ? -1 : 1;
     const start = side === 'left' ? cells.x0 - 1 : side === 'right' ? cells.x1 : side === 'above' ? cells.y0 - 1 : cells.y1;
     const [s0, s1] = horizontal ? [cells.y0, cells.y1] : [cells.x0, cells.x1];
@@ -281,5 +395,5 @@
     return last;
   }
 
-  Object.assign(CM, { snapBlock, findTickLabels, labelReach });
+  Object.assign(CM, { snapBlock, findStrip, findTickLabels, labelReach });
 })((globalThis.Colormeris ??= {}));

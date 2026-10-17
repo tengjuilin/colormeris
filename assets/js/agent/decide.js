@@ -25,11 +25,14 @@ For each page:
 3. Each result has an image of that heatmap: magenta grid lines as placed, the orange colorbar line, and the colorbar's tick labels in blue boxes numbered 1, 2, 3… For every heatmap, in one turn:
    - set_ticks: the printed value of each numbered box that is a colorbar tick label, as {mark, value}. Skip boxes on anything else (a title, a ×10^n note: apply that multiplier to the values instead). Use scale "log10" when the labels grow by constant factors (1, 10, 100).
    - set_labels: row labels top to bottom and column labels left to right, exactly as printed. Labels may cover groups of cells; that is fine.
-4. set_ticks returns the app's check. If it fails, find the cause from the image (a misread or misassigned tick value, the wrong heatmap, a colorbar missing or cut) and fix it once: set_ticks again, or locate_heatmap again with panelId and a better description. If the grid lines miss the cells, say so in finish; do not change the grid size.
-5. When every heatmap of every page is done, call finish with one line per panel and anything a human should check. Keep your messages short.`;
+4. set_ticks returns the app's check. If it fails, find the cause from the image (a misread or misassigned tick value, the wrong heatmap, a colorbar missing or cut) and fix it once: set_ticks again, or locate_heatmap again with panelId and a better description.
+   If the magenta grid covers only part of a heatmap, or something else, the decision model's guess was wrong: call locate_heatmap again with panelId and box, the cells' rough extent read from the page image's rulers (view_page if needed). A box a few % off is fine; the app snaps it. If the grid lines miss the cells, say so in finish.
+5. The app counts rows and columns. Check its count against the image: every cell should sit between magenta lines, one cell per gap. If lines merge cells (e.g. 3 replicate cells under one label) or split them, call correct_grid_size with the count you see and why. Do not correct a count you cannot see in the image.
+6. When every heatmap of every page is done, call finish with one line per panel and anything a human should check. Keep your messages short.`;
 
-  // Agent actions the LLM may call in this mode. No grid size: the app owns it.
-  // set_grid is left out too: it counts again, and locate_heatmap places grids.
+  // Agent actions the LLM may call in this mode. The app counts rows and
+  // columns; the LLM may only correct a count with correct_grid_size (with a
+  // reason), not set a grid itself: locate_heatmap places grids.
   const DECISION_LLM_ACTIONS = ['go_to_page', 'select_panel', 'rename_panel', 'remove_panel', 'set_labels', 'set_colorbar', 'add_tick', 'remove_tick', 'set_colorbar_scale', 'undo'];
 
   const panelId = { type: 'string', description: 'Panel to act on. Defaults to the active panel.' };
@@ -53,6 +56,7 @@ For each page:
           name: { type: 'string', minLength: 1, description: 'Figure label, e.g. "Fig 2f". Becomes the panel name.' },
           description: { type: 'string', minLength: 3, description: 'What singles this heatmap out on the page: panel letter, title, position, first row label.' },
           panelId: { type: 'string', description: 'Re-locate this panel instead of using a new one.' },
+          box: { type: 'object', properties: { x0: { type: 'number' }, y0: { type: 'number' }, x1: { type: 'number' }, y1: { type: 'number' } }, required: ['x0', 'y0', 'x1', 'y1'], description: 'Only when a first locate missed: the cells\' rough extent in page pixels, read from the page image\'s rulers. Replaces the decision model\'s page-wide guess; the app still snaps it.' },
         },
         required: ['name', 'description'],
       },
@@ -75,6 +79,19 @@ For each page:
           scale: { enum: ['linear', 'log10'] },
         },
         required: ['ticks'],
+      },
+    },
+    correct_grid_size: {
+      description: 'Correct the app\'s row and column count of a panel when the image shows it is wrong: magenta lines that merge or split cells. Count cell edges in the image, not labels (one label can cover several replicate cells). Keeps the grid\'s corners, then checks the extraction.',
+      args: {
+        type: 'object',
+        properties: {
+          panelId,
+          rows: { type: 'integer', minimum: 1, maximum: 500 },
+          cols: { type: 'integer', minimum: 1, maximum: 500 },
+          reason: { type: 'string', minLength: 3, description: 'What in the image shows the count, e.g. "3 replicate cells under each column label".' },
+        },
+        required: ['rows', 'cols', 'reason'],
       },
     },
     check_panel: {
@@ -158,9 +175,10 @@ For each page:
     const reach = Math.max(40, 0.25 * (vertical ? cells.x1 - cells.x0 : cells.y1 - cells.y0));
     const [a0, a1, c0, c1] = vertical ? [bar.y0, bar.y1, cells.y0, cells.y1] : [bar.x0, bar.x1, cells.x0, cells.x1];
     const overlap = Math.min(a1, c1) - Math.max(a0, c0);
-    // A strip at least 4 px thick and 30% as long as the cells (not a line or speck).
+    // A strip at least 4 px thick and 15% as long as the cells (not a line or
+    // speck; a 32-column heatmap had a colorbar 24% as long as its width).
     const thick = vertical ? bar.x1 - bar.x0 : bar.y1 - bar.y0;
-    return gap >= -2 && gap <= reach && overlap >= 0.5 * (a1 - a0) && thick >= 4 && a1 - a0 >= 0.3 * (c1 - c0);
+    return gap >= -2 && gap <= reach && overlap >= 0.5 * (a1 - a0) && thick >= 4 && a1 - a0 >= 0.15 * (c1 - c0);
   }
 
   // A box answer (fractions of the image) → page pixels. `frame` describes
@@ -240,13 +258,17 @@ For each page:
   }
 
   // The app's own check of a panel after set_ticks.
-  function checkSummary({ problem, flagged = 0, cells = 0, misfit = null, mark = null }) {
+  // `beyond`: flagged cells lighter or darker than every color on the bar:
+  // the figure drew cells past its colorbar's ends. Their values clamp to that end; no
+  // placement fixes them, so they do not fail the check.
+  function checkSummary({ problem, flagged = 0, cells = 0, misfit = null, mark = null, beyond = 0 }) {
     const parts = [];
     if (problem) parts.push(`Not ready: ${problem}`);
     const badTicks = misfit && misfit.miss > 0.03;
     if (badTicks) parts.push(`The tick values do not lie on a straight line along the bar; ${mark ? `box ${mark}` : 'one tick'} is ${Math.round(misfit.miss * 100)}% of the range off. Check that value, or the scale (log10).`);
-    const many = flagged > cells * 0.2;
+    const many = flagged - beyond > cells * 0.2;
     if (cells) parts.push(`${flagged} of ${cells} cells are flagged as far from the colorbar's colors${many ? ' (many: the colorbar or grid may be wrong)' : ''}.`);
+    if (beyond) parts.push(`${beyond} of them lie past an end of the colorbar (paler or darker than its end colors): the figure's cells go beyond its colorbar, and their values are clamped to that end. Mention it in finish; it is not a placement error.`);
     const ok = !problem && !badTicks && !many;
     return { ok, text: `${ok ? 'Check passed.' : 'Check failed.'} ${parts.join(' ')}` };
   }

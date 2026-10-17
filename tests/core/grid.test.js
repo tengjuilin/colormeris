@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeImage, paintHeatmap, paintDots, VIRIDISH } from '../helpers.js';
+import { groupedFigure, makeImage, paintHeatmap, paintDots, VIRIDISH } from '../helpers.js';
 import CM from '../load.js';
 
 const { rectCorners, bilinear, invertBilinear, cellAt, sampleCell, readPixel, detectGridSize } = CM;
@@ -140,4 +140,22 @@ test('fitCellCounts takes the full count when coarser counts fit as well', () =>
   paintHeatmap(img, corners, matrix, VIRIDISH, { lines: false });
   const fit = CM.fitCellCounts(img, corners);
   assert.deepEqual([fit.rows, fit.cols], [9, 12]);
+});
+
+test('fitCellCounts fits groups of columns split by white gaps one by one', () => {
+  // 8 groups of 4 columns, 8 px gaps, 2 px lines: the gaps shift the cells
+  // off one even spacing (that fit scored 0.77; detectGridSize says 3).
+  const { img, cells } = groupedFigure();
+  const fit = CM.fitCellCounts(img, [{ x: cells.x0, y: cells.y0 }, { x: cells.x1, y: cells.y0 }, { x: cells.x1, y: cells.y1 }, { x: cells.x0, y: cells.y1 }]);
+  assert.deepEqual([fit.rows, fit.cols], [12, 32]);
+  assert.ok(fit.colScore > 0.95, `colScore ${fit.colScore}`);
+});
+
+test('fitCellCounts does not take a column of white cells for a gap', () => {
+  const matrix = Array.from({ length: 6 }, (_, r) => Array.from({ length: 8 }, (_, c) => ((r * 5 + c * 3) % 7) / 6));
+  const img = makeImage(300, 200);
+  const corners = [{ x: 20, y: 20 }, { x: 260, y: 20 }, { x: 260, y: 170 }, { x: 20, y: 170 }];
+  paintHeatmap(img, corners, matrix, VIRIDISH);
+  for (let y = 20; y < 170; y++) for (let x = 110; x < 140; x++) img.data.set([255, 255, 255, 255], (y * 300 + x) * 4);
+  assert.equal(CM.fitCellCounts(img, corners).cols, 8);
 });

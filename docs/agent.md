@@ -448,6 +448,7 @@ Find one heatmap with the decision model and calibrate a panel for it: the grid 
 | `name` | string | yes | Figure label, e.g. "Fig 2f". Becomes the panel name. |
 | `description` | string | yes | What singles this heatmap out on the page: panel letter, title, position, first row label. |
 | `panelId` | string |  | Re-locate this panel instead of using a new one. |
+| `box` | {x0, y0, x1, y1} |  | Only when a first locate missed: the cells' rough extent in page pixels, read from the page image's rulers. Replaces the decision model's page-wide guess; the app still snaps it. |
 
 ### `set_ticks`
 
@@ -458,6 +459,17 @@ Set the colorbar ticks from the numbered tick-label boxes of locate_heatmap (rep
 | `panelId` | string |  | Panel to act on. Defaults to the active panel. |
 | `ticks` | {mark, value}[] | yes |  |
 | `scale` | "linear" \\| "log10" |  |  |
+
+### `correct_grid_size`
+
+Correct the app's row and column count of a panel when the image shows it is wrong: magenta lines that merge or split cells. Count cell edges in the image, not labels (one label can cover several replicate cells). Keeps the grid's corners, then checks the extraction.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `panelId` | string |  | Panel to act on. Defaults to the active panel. |
+| `rows` | integer (≥ 1, ≤ 500) | yes |  |
+| `cols` | integer (≥ 1, ≤ 500) | yes |  |
+| `reason` | string | yes | What in the image shows the count, e.g. "3 replicate cells under each column label". |
 
 ### `check_panel`
 
@@ -488,6 +500,8 @@ For each page:
 3. Each result has an image of that heatmap: magenta grid lines as placed, the orange colorbar line, and the colorbar's tick labels in blue boxes numbered 1, 2, 3… For every heatmap, in one turn:
    - set_ticks: the printed value of each numbered box that is a colorbar tick label, as {mark, value}. Skip boxes on anything else (a title, a ×10^n note: apply that multiplier to the values instead). Use scale "log10" when the labels grow by constant factors (1, 10, 100).
    - set_labels: row labels top to bottom and column labels left to right, exactly as printed. Labels may cover groups of cells; that is fine.
-4. set_ticks returns the app's check. If it fails, find the cause from the image (a misread or misassigned tick value, the wrong heatmap, a colorbar missing or cut) and fix it once: set_ticks again, or locate_heatmap again with panelId and a better description. If the grid lines miss the cells, say so in finish; do not change the grid size.
-5. When every heatmap of every page is done, call finish with one line per panel and anything a human should check. Keep your messages short.
+4. set_ticks returns the app's check. If it fails, find the cause from the image (a misread or misassigned tick value, the wrong heatmap, a colorbar missing or cut) and fix it once: set_ticks again, or locate_heatmap again with panelId and a better description.
+   If the magenta grid covers only part of a heatmap, or something else, the decision model's guess was wrong: call locate_heatmap again with panelId and box, the cells' rough extent read from the page image's rulers (view_page if needed). A box a few % off is fine; the app snaps it. If the grid lines miss the cells, say so in finish.
+5. The app counts rows and columns. Check its count against the image: every cell should sit between magenta lines, one cell per gap. If lines merge cells (e.g. 3 replicate cells under one label) or split them, call correct_grid_size with the count you see and why. Do not correct a count you cannot see in the image.
+6. When every heatmap of every page is done, call finish with one line per panel and anything a human should check. Keep your messages short.
 ```

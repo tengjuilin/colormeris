@@ -55,9 +55,12 @@ test('decision tools validate their arguments', () => {
   assert.ok(validateDecisionTool('ask', { questions: {} }).length);
 });
 
-test('the LLM gets no tool that sets rows or columns', () => {
+test('the LLM can only correct the app\'s rows and columns, with a reason', () => {
   const names = decisionLlmTools().map((t) => t.function.name);
   assert.ok(!names.includes('set_grid_size') && !names.includes('detect_grid_size'));
+  assert.ok(names.includes('correct_grid_size'));
+  assert.ok(validateDecisionTool('correct_grid_size', { rows: 32, cols: 9 }).length);
+  assert.deepEqual(validateDecisionTool('correct_grid_size', { rows: 32, cols: 9, reason: '3 replicate cells per label' }), []);
   assert.ok(names.includes('locate_heatmap') && names.includes('finish'));
   assert.ok(!DECISION_LLM_ACTIONS.includes('set_grid_size'));
 });
@@ -82,4 +85,15 @@ test('besideCheck keeps a colorbar next to the cells and drops a neighbour\'s', 
   assert.ok(!CM.besideCheck(i, { x0: 887, y0: 937, x1: 890, y1: 1292 }, 'left'));
   // A strip beside only the top of the cells.
   assert.ok(!CM.besideCheck(g, { x0: 1067, y0: 600, x1: 1094, y1: 820 }, 'right'));
+});
+
+test('cells past an end of the colorbar do not fail the check', () => {
+  assert.equal(checkSummary({ flagged: 318, cells: 384, beyond: 300 }).ok, true);
+  assert.match(checkSummary({ flagged: 318, cells: 384, beyond: 300 }).text, /past an end of the colorbar/);
+  assert.equal(checkSummary({ flagged: 318, cells: 384 }).ok, false);
+});
+
+test('locate_heatmap takes the LLM\'s rough box after a miss', () => {
+  assert.deepEqual(validateDecisionTool('locate_heatmap', { name: 'c', description: 'panel c', panelId: 'p2', box: { x0: 350, y0: 190, x1: 1830, y1: 730 } }), []);
+  assert.ok(validateDecisionTool('locate_heatmap', { name: 'c', description: 'panel c', box: { x0: 350 } }).length);
 });

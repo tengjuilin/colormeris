@@ -107,23 +107,41 @@
       };
     }
 
-    // Numbered boxes (tick-label candidates), numbers outside the box.
+    // Numbered boxes (tick-label candidates), numbers outside the box: on
+    // the right unless that covers another box (labels side by side under a
+    // horizontal colorbar, where a number hid the next label's first digit),
+    // then below, above or left.
     function drawMarks(ctx, toView, marks) {
       ctx.font = 'bold 16px sans-serif';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
-      for (const m of marks) {
+      const boxes = marks.map((m) => {
         const p = toView({ x: m.box.x0, y: m.box.y0 });
         const q = toView({ x: m.box.x1, y: m.box.y1 });
+        return { x0: p.x - 3, y0: p.y - 3, x1: q.x + 3, y1: q.y + 3 };
+      });
+      const { width, height } = ctx.canvas;
+      const hits = (r) => r.x0 < 0 || r.y0 < 0 || r.x1 > width || r.y1 > height || boxes.some((b) => r.x0 < b.x1 + 2 && r.x1 > b.x0 - 2 && r.y0 < b.y1 + 2 && r.y1 > b.y0 - 2);
+      marks.forEach((m, i) => {
+        const b = boxes[i];
         ctx.strokeStyle = '#1565ff';
         ctx.lineWidth = 2;
-        ctx.strokeRect(p.x - 3, p.y - 3, q.x - p.x + 6, q.y - p.y + 6);
+        ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
         const tw = ctx.measureText(m.label).width + 8;
+        const cx = (b.x0 + b.x1) / 2 - tw / 2;
+        const cy = (b.y0 + b.y1) / 2 - 10;
+        const places = [
+          { x0: b.x1 + 2, y0: cy },
+          { x0: cx, y0: b.y1 + 2 },
+          { x0: cx, y0: b.y0 - 22 },
+          { x0: b.x0 - tw - 2, y0: cy },
+        ].map((r) => ({ ...r, x1: r.x0 + tw, y1: r.y0 + 20 }));
+        const at = places.find((r) => !hits(r)) || places[0];
         ctx.fillStyle = '#1565ff';
-        ctx.fillRect(q.x + 5, (p.y + q.y) / 2 - 10, tw, 20);
+        ctx.fillRect(at.x0, at.y0, tw, 20);
         ctx.fillStyle = '#fff';
-        ctx.fillText(m.label, q.x + 9, (p.y + q.y) / 2 + 1);
-      }
+        ctx.fillText(m.label, at.x0 + 4, at.y0 + 11);
+      });
     }
 
     function drawPanels(ctx, toView, scale, overlay) {

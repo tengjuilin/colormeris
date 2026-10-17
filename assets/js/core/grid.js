@@ -474,9 +474,70 @@
     const { width, height } = gridPixelSize(corners);
     const W = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(width)));
     const H = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(height)));
-    const cols = fitCount(edgeProfile(img, corners, 'u', W, Math.min(FIT_LINES, H)));
-    const rows = fitCount(edgeProfile(img, corners, 'v', H, Math.min(FIT_LINES, W)));
+    const fit = (axis, N, lines) => {
+      const prof = edgeProfile(img, corners, axis, N, lines);
+      const even = fitCount(prof);
+      const grouped = fitGroups(prof, blankProfile(img, corners, axis, N, lines));
+      return grouped && grouped.score > even.score ? grouped : even;
+    };
+    const cols = fit('u', W, Math.min(FIT_LINES, H));
+    const rows = fit('v', H, Math.min(FIT_LINES, W));
     return { rows: rows.count, cols: cols.count, rowScore: rows.score, colScore: cols.score };
+  }
+
+  // Share of lines across the grid that are page white at each sample.
+  function blankProfile(img, corners, axis, samples, lines) {
+    const out = new Float64Array(samples);
+    for (let j = 0; j < lines; j++) {
+      const w = (j + 0.5) / lines;
+      for (let i = 0; i < samples; i++) {
+        const s = (i + 0.5) / samples;
+        const p = axis === 'u' ? bilinear(corners, s, w) : bilinear(corners, w, s);
+        if (Math.min(...readPixel(img, p.x, p.y)) >= GAP_WHITE) out[i]++;
+      }
+    }
+    for (let i = 0; i < samples; i++) out[i] /= lines;
+    return out;
+  }
+
+  // Groups of cells split by white gaps wider than the lines between cells
+  // (4 replicate columns per condition, 9 px apart, with 1–2 px lines inside
+  // a group). The groups shift the cells off an even spacing, so one count
+  // for the whole axis fits badly (score 0.68–0.71 on such a figure) and
+  // the edge spacing says 3 columns for 32. Each group is fitted on its own;
+  // the counts add up when every group fits cleanly with a similar cell size.
+  // Returns {count, score} (the worst group's score) or null.
+  const GAP_WHITE = 245;
+  function fitGroups(prof, blank) {
+    const N = prof.length;
+    const gaps = [];
+    for (let i = 0; i < N; i++) {
+      if (blank[i] < 0.9) continue;
+      let j = i;
+      while (j + 1 < N && blank[j + 1] >= 0.9) j++;
+      if (i > 0 && j < N - 1) gaps.push([i, j + 1]);
+      i = j;
+    }
+    // Group gaps are the widest blank runs (at least 3 samples); the lines
+    // between cells (most runs) are under 40% as wide, though some are
+    // twice as wide as others.
+    const widths = gaps.map(([a, b]) => b - a).sort((a, b) => a - b);
+    const widest = widths[widths.length - 1];
+    const wide = gaps.filter(([a, b]) => b - a >= Math.max(3, 0.6 * widest));
+    if (!wide.length || (wide.length < gaps.length && widths[(widths.length - 1) >> 1] > 0.4 * widest)) return null;
+    const bounds = [0, ...wide.flat(), N];
+    const groups = [];
+    for (let g = 0; g < bounds.length; g += 2) {
+      const [a, b] = [bounds[g], bounds[g + 1]];
+      if (b - a < 2 * MIN_CELL) return null;
+      const f = fitCount(prof.slice(a, b));
+      groups.push({ ...f, size: (b - a) / f.count });
+    }
+    // A gap as wide as a cell is a column of white cells, not a gap.
+    const sizes = groups.map((g) => g.size);
+    if (Math.max(...sizes) > 1.2 * Math.min(...sizes) || widest > 0.5 * Math.min(...sizes)) return null;
+    const score = Math.min(...groups.map((g) => g.score));
+    return score >= 0.7 ? { count: groups.reduce((n, g) => n + g.count, 0), score } : null;
   }
 
   function fitCount(prof) {
