@@ -87,11 +87,11 @@ test('grayscale keeps L*', () => {
 });
 
 test('lightnessStats: viridis is linear, jet is not', () => {
-  const L = (name: string) => parseHexColors(mapNamed(name).colors).map(lightness);
-  const v = lightnessStats(L('viridis'));
+  const lightnessOf = (name: string) => parseHexColors(mapNamed(name).colors).map(lightness);
+  const v = lightnessStats(lightnessOf('viridis'));
   assert.equal(v.monotonic, true);
   assert.ok(v.r2! > 0.99, `viridis r2 ${v.r2}`);
-  const j = lightnessStats(L('jet'));
+  const j = lightnessStats(lightnessOf('jet'));
   assert.equal(j.monotonic, false);
   assert.ok(j.reversals >= 1);
   assert.ok(j.maxDev > 20);

@@ -162,7 +162,7 @@ export function createDecisionTools(
   ];
 
   // A named panel made active (switching page if needed), or the active one.
-  async function usePanel(panelId?: string) {
+  async function takePanel(panelId?: string) {
     if (panelId) must(await api.run('select_panel', { panelId }));
     const panel = panelId ? app.project.panels.find((p) => p.id === panelId) : ws.activePanel();
     if (!panel) throw new Error(`No panel "${panelId}".`);
@@ -495,8 +495,8 @@ export function createDecisionTools(
     return Math.max(0, bar.x0 - cells.x1, cells.x0 - bar.x1, bar.y0 - cells.y1, cells.y0 - bar.y1);
   }
 
-  async function useColorbar({ panelId, candidate, fromPanel, box }: Args): Promise<ToolCallResult> {
-    const panel = await usePanel(panelId);
+  async function chooseColorbarTool({ panelId, candidate, fromPanel, box }: Args): Promise<ToolCallResult> {
+    const panel = await takePanel(panelId);
     if (!panel.grid.corners) throw new Error('This panel has no grid yet. Run locate_heatmap first.');
     if (fromPanel) {
       const src = app.project.panels.find((p) => p.id === fromPanel);
@@ -556,7 +556,7 @@ export function createDecisionTools(
   }
 
   async function setTicks({ panelId, ticks, scale }: Args): Promise<ToolCallResult> {
-    const panel = await usePanel(panelId);
+    const panel = await takePanel(panelId);
     const cb = panel.colorbar;
     if (!cb.start || !cb.end) throw new Error('This panel has no colorbar yet. Use use_colorbar first.');
     const marks = marksByPanel.get(panel.id) || [];
@@ -650,7 +650,7 @@ export function createDecisionTools(
   }
 
   async function correctGridSize({ panelId, rows, cols, box }: Args): Promise<ToolCallResult> {
-    const panel = await usePanel(panelId);
+    const panel = await takePanel(panelId);
     if (!panel.grid.corners) throw new Error('This panel has no grid yet. Run locate_heatmap first.');
     const notes = [];
     const setGrid = async (b: Box) =>
@@ -702,7 +702,7 @@ export function createDecisionTools(
 
   // Printed numbers in cells against the extracted values (printedCheck).
   async function checkPrinted({ panelId, cells }: Args): Promise<ToolCallResult> {
-    const panel = await usePanel(panelId);
+    const panel = await takePanel(panelId);
     const res = ws.resultFor(panel) as HeatmapResult;
     if (res.error) throw new Error(`Not ready: ${res.error}`);
     const outside = cells.filter((c: Args) => c.row > res.rows || c.col > res.cols);
@@ -751,16 +751,16 @@ export function createDecisionTools(
   const handlers: Record<string, (args: Args) => Promise<ToolCallResult>> = {
     locate_heatmap: locate,
     set_ticks: setTicks,
-    use_colorbar: useColorbar,
+    use_colorbar: chooseColorbarTool,
     correct_grid_size: correctGridSize,
-    check_panel: async ({ panelId }) => ({ ok: true, result: (await check(await usePanel(panelId))).text }),
+    check_panel: async ({ panelId }) => ({ ok: true, result: (await check(await takePanel(panelId))).text }),
     check_printed: checkPrinted,
     // The agent action, with the check after it (a scale change can make
     // or break the tick fit).
     set_colorbar_scale: async (args) => {
       const r = await api.run('set_colorbar_scale', args);
       if (!r.ok) return r;
-      const panel = await usePanel(args.panelId);
+      const panel = await takePanel(args.panelId);
       return {
         ok: true,
         result: `Scale of ${panel.name} is now ${panel.colorbar.scale}. ${(await check(panel)).text}`,

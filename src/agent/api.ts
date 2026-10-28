@@ -75,7 +75,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
   };
 
   // Make the panel active (switching tool and page as needed) and return it.
-  async function usePanel(id?: string): Promise<Panel> {
+  async function takePanel(id?: string): Promise<Panel> {
     needSource();
     if (!id) return ws.activePanel();
     const panel = findPanel(id);
@@ -209,7 +209,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
 
   const handlers: Record<string, (args: Args) => unknown> = {
     get_state: () => state(),
-    get_results: async ({ panelId }) => resultsJson(await usePanel(panelId)),
+    get_results: async ({ panelId }) => resultsJson(await takePanel(panelId)),
     get_questions: ({ panelId }) => (needSource(), questions(panelId)),
 
     answer_question: async ({ questionId, answer, confidence = null, source = 'agent', model = null }) => {
@@ -237,7 +237,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       };
       decisions.push(d);
       if (applied) {
-        await usePanel(q.panelId);
+        await takePanel(q.panelId);
         applyAnswer(q, answer, d);
       } else
         ws.toast(
@@ -247,7 +247,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     },
 
     sample_pixel: async ({ panelId, x, y, radius = 0 }) => {
-      const panel = await usePanel(panelId);
+      const panel = await takePanel(panelId);
       const img = imageOf(panel);
       const acc = [0, 0, 0];
       let n = 0;
@@ -309,7 +309,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       return null;
     },
 
-    select_panel: async ({ panelId }) => (await usePanel(panelId), null),
+    select_panel: async ({ panelId }) => (await takePanel(panelId), null),
 
     add_panel: ({ name }) => {
       needSource();
@@ -324,7 +324,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     },
 
     rename_panel: async ({ panelId, name }) => {
-      await usePanel(panelId);
+      await takePanel(panelId);
       ws.commit((p) => (p.name = name));
       return null;
     },
@@ -337,7 +337,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     },
 
     set_grid: async ({ panelId, topLeft, bottomRight, corners }) => {
-      await usePanel(panelId);
+      await takePanel(panelId);
       const cs = corners || rectCorners(topLeft, bottomRight);
       const w = Math.hypot(cs[1].x - cs[0].x, cs[1].y - cs[0].y);
       const h = Math.hypot(cs[3].x - cs[0].x, cs[3].y - cs[0].y);
@@ -361,19 +361,19 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     },
 
     detect_grid_size: async ({ panelId }) => {
-      const panel = await usePanel(panelId);
+      const panel = await takePanel(panelId);
       if (!panel.grid.corners) throw new Error('Place the grid first (set_grid).');
       return detectGridSize(imageOf(panel), panel.grid.corners);
     },
 
     set_grid_size: async ({ panelId, rows, cols }) => {
-      await usePanel(panelId);
+      await takePanel(panelId);
       ws.commit((p) => applyGridSize(p, rows, cols));
       return null;
     },
 
     set_labels: async ({ panelId, rows, cols, boxes }) => {
-      await usePanel(panelId);
+      await takePanel(panelId);
       ws.commit((p) => {
         if (rows) p.grid.rowLabels = [...rows];
         if (cols) p.grid.colLabels = [...cols];
@@ -383,13 +383,13 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     },
 
     remove_grid: async ({ panelId }) => {
-      await usePanel(panelId);
+      await takePanel(panelId);
       ws.commit((p) => (p.grid.corners = null));
       return null;
     },
 
     set_colorbar: async ({ panelId, start, end, halfWidth, snap = true }) => {
-      const panel = await usePanel(panelId);
+      const panel = await takePanel(panelId);
       if (Math.hypot(end.x - start.x, end.y - start.y) < 3) throw new Error('Colorbar is too short.');
       const fit = snap ? refineColorbar(imageOf(panel), start, end) : null;
       const s = fit ? fit.start : start;
@@ -422,7 +422,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     },
 
     add_tick: async ({ panelId, t, at, value, snap = true }) => {
-      const panel = await usePanel(panelId);
+      const panel = await takePanel(panelId);
       const { start, end } = panel.colorbar;
       if (!start || !end) throw new Error('Place the colorbar first (set_colorbar).');
       let tt = at ? projectT(start, end, at) : t;
@@ -440,27 +440,27 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     },
 
     set_tick_value: async ({ panelId, tickId, value }) => {
-      const panel = await usePanel(panelId);
+      const panel = await takePanel(panelId);
       if (!panel.colorbar.ticks.some((k) => k.id === tickId)) throw new Error(`No tick "${tickId}".`);
       ws.commit((p) => (p.colorbar.ticks.find((k) => k.id === tickId)!.value = value));
       return null;
     },
 
     remove_tick: async ({ panelId, tickId }) => {
-      const panel = await usePanel(panelId);
+      const panel = await takePanel(panelId);
       if (!panel.colorbar.ticks.some((k) => k.id === tickId)) throw new Error(`No tick "${tickId}".`);
       ws.commit((p) => (p.colorbar.ticks = p.colorbar.ticks.filter((k) => k.id !== tickId)));
       return null;
     },
 
     set_colorbar_scale: async ({ panelId, scale }) => {
-      await usePanel(panelId);
+      await takePanel(panelId);
       ws.commit((p) => (p.colorbar.scale = scale));
       return null;
     },
 
     set_settings: async ({ panelId, sampleFraction, ...settings }) => {
-      await usePanel(panelId);
+      await takePanel(panelId);
       ws.commit((p) => {
         Object.assign(p.settings, settings);
         if (sampleFraction !== undefined) p.grid.sampleFraction = sampleFraction;
@@ -469,7 +469,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     },
 
     add_region: async ({ panelId, shape, geom, name, replicate = true }) => {
-      const panel = await usePanel(panelId);
+      const panel = await takePanel(panelId);
       if (panel.tool !== 'roi') throw new Error('Regions belong to ROI panels; use set_tool first.');
       const px =
         shape === 'polygon'
@@ -489,14 +489,14 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     },
 
     remove_region: async ({ panelId, regionId }) => {
-      const panel = await usePanel(panelId);
+      const panel = await takePanel(panelId);
       if (!panel.rois.some((r) => r.id === regionId)) throw new Error(`No region "${regionId}".`);
       ws.commit((p) => (p.rois = p.rois.filter((r) => r.id !== regionId)));
       return null;
     },
 
     set_scale_bar: async ({ panelId, p1, p2, length, unit = 'cm' }) => {
-      const panel = await usePanel(panelId);
+      const panel = await takePanel(panelId);
       if (panel.tool !== 'roi') throw new Error('The scale bar belongs to ROI panels.');
       if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 3) throw new Error('Scale bar is too short.');
       ws.commit((p) => (p.scale = { p1: { ...p1 }, p2: { ...p2 }, length, unit }));
@@ -504,7 +504,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     },
 
     set_review: async ({ panelId, status, note = '', source = 'agent' }) => {
-      const panel = await usePanel(panelId);
+      const panel = await takePanel(panelId);
       const hash = currentHash(panel);
       if (status && !hash) throw new Error(`Nothing to review yet: ${ws.resultFor(panel).error}`);
       const time = new Date().toISOString();
