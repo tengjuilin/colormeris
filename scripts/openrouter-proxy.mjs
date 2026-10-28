@@ -37,7 +37,7 @@ createServer(async (req, res) => {
   const origin = req.headers.origin;
   // Only pages served from localhost may use the key. "null" is refused: any
   // website can send it from a sandboxed iframe. (Serve the app with
-  // `npm run serve` rather than opening it from disk.) Requests without an
+  // `npm run dev` rather than opening it from disk.) Requests without an
   // Origin come from local programs, not web pages.
   const originOk = !origin || ALLOWED_ORIGIN.test(origin);
   if (originOk && origin) {

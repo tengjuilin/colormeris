@@ -1,41 +1,15 @@
-# Converting to TypeScript
+# TypeScript conventions
 
-How each classic script in `assets/js/**` becomes a TypeScript ES module in `src/**`. The conversion is 1:1: same code, same comments, same exported names, now with types. Shared domain types are in `src/types/` (import them from `src/types/index.ts`). Check every file with `npx tsc`, `npx biome lint src` and `npx vitest run <test file>`.
+Colormeris is strict TypeScript in ES modules, bundled by Vite (see CLAUDE.md for the layout). The code was converted 1:1 from classic scripts in October 2026 (commits `a39363c`..`c278af4`; `git log --follow` reaches the old JS). These are the rules that conversion set, and they apply to new code. Check every change with `npm run check` (Biome lint, `tsc`, Vitest).
 
 ## Ground rules
 
-- **No behaviour changes.** No logic edits, no renames of exported names, no refactors. Typing may add annotations, casts, `!` after a check the code already makes, and `String(n)` where a DOM property wants a string. Anything bigger: leave a `// TODO(types)` and report it.
-- **Files are already moved** to their new paths (rename-only commit `a39363c`), still holding the classic-script code; edit them in place. Do not commit.
-- **Keep every comment**, including the header comment that says what the file does. Drop `'use strict'` (modules are strict) and the IIFE wrapper, and dedent the body by 2 spaces. Do not run `biome format` on converted files; formatting is a later, separate commit.
-- `strict: true`. Pure modules (the ones `tests/load.js` imports) are fully typed: no `any`. UI code may use `any` at DOM seams only, marked `// TODO(types)`. Prefer `unknown` plus a check in pure code, `Record<string, unknown>` for open objects.
+- `strict: true`. Pure modules (no DOM: `src/core`, `project/`, `settings/settings.ts`, `heatmap/sampling.ts`, `roi/geometry.ts`, `roi/quantify.ts`, `map/field.ts`, agent `schema`/`llm`/`decide`/`labels`, colormaps `metrics`/`route`/`recolor`/`references`) are fully typed: no `any`. Prefer `unknown` plus a check, `Record<string, unknown>` for open objects. Untrusted JSON read field by field uses the one `Raw` alias in project.ts / settings.ts.
+- UI code may use `any` at DOM seams only, marked `// TODO(types)`.
 - `import type { … }` for types (`verbatimModuleSyntax`), always with the `.ts` extension: `import { rgbToLab } from '../core/color.ts'`.
-- Out of scope for converters: the HTML pages, `package.json`, `scripts/`, CLAUDE.md, README.
-
-## IIFE → module
-
-```js
-(function (CM) {                         // removed
-  'use strict';                          // removed
-  const { rgbToLab, readPixel } = CM;    // → import { rgbToLab } from '../core/color.ts';
-                                         //   import { readPixel } from '../core/grid.ts';
-  function sampleColorbar(img, …) { … }  // → export function sampleColorbar(img: PixelImage, …): ColorbarSample[] { … }
-  Object.assign(CM, { sampleColorbar }); // removed: `export` at each declaration instead
-})((globalThis.Colormeris ??= {}));       // removed
-```
-
-- Every name in `Object.assign(CM, {…})` becomes an `export` where it is declared (`export function`, `export const`). Names used only inside stay unexported.
-- Lazy lookups `CM.x(…)` (decide.js, colorbar.js, project.js, project-files.js, colorbar-card.js and the colormap tabs) become plain imports of `x`.
-- Aliased public names keep the public name. Rename the local declaration only where nothing else uses it, else add `export const PUBLIC = local;`:
-  - schema.js `AGENT_ACTIONS: ACTIONS`
-  - llm.js `AGENT_SYSTEM_PROMPT: SYSTEM_PROMPT`; `AGENT_LIMITS: { MAX_ATTEMPTS, MAX_ERRORS_IN_A_ROW, MAX_FINISH_REFUSALS }` → `export const AGENT_LIMITS = {…}`
-  - decide.js `DECISION_SYSTEM_PROMPT: SYSTEM_PROMPT`, `decisionQuestions: questions`
-  - colormap-match.js `cmapColorAt: colorAt`
-  - metrics.js `READ_WINDOW: FLAT_WINDOW`, `CMAP_RATING: RATING`
-  - references.js `CMAP_REFS: REFS`
-- `CM.cmapCommon = {…}` (colormaps/common.js) → export each member; viewer.js imports them from `common.ts`.
-- `CM.cmapData` → `import { cmapData } from '../core/colormap-library.ts'` (done: it loads `src/generated/colormap-data.json`). `CM.cmapData &&` guards become `cmapData &&` or are dropped where always true.
-- `extract/main.js` becomes `src/pages/extract.ts`. The boot block at the end of `colormaps/viewer.js` (the `cmap-root` lookup) moves verbatim to `src/pages/colormaps.ts`; `viewer.ts` exports `setupColormapViewer` and `showStartupError`.
-- Top-level code that ran at script load (workspace.js `resize` listener, hotkeys.js `isMac`) stays at module top level.
+- Every file starts with a comment saying what it does; comments explain why. Keep exported names stable: the agent API, docs/agent.md and tests use them.
+- Libraries come from npm (pinned in `package.json`): `import JSZip from 'jszip'`; pdf.js is loaded lazily in `pdf-loader.ts`; the OpenRouter SDK is a lazy `import('@openrouter/sdk')` in `openrouter-client.ts`, which returns a pre-set `globalThis.OpenRouterSDK` first (mocks). Static files are in `public/` and are fetched relative to the page (`examples/example.pdf`).
+- Formatting is Biome's; formatting-only changes go in their own commit.
 
 ## Types to use
 
@@ -72,42 +46,10 @@ Types of one module only (a locate.js candidate, a decide.js plan, `fitCellCount
 
 ## Tests
 
-- `tests/<dir>/x.test.js` → next to the module as `src/<dir>/x.test.ts` (map below). `import { describe, test } from 'vitest'`; keep `import assert from 'node:assert/strict'`.
-- Import the functions from their modules, not from `tests/load.js` (`const { a, b } = CM` → named imports). Helpers come from `src/testing/helpers.ts` (`tests/helpers.js` converted; it imports `invertBilinear` from `core/grid.ts`).
-- openrouter-client.test.js: `t.mock.timers.enable({ apis: ['setTimeout'] })` → `vi.useFakeTimers({ toFake: ['setTimeout'] })`, `t.mock.timers.tick(ms)` → `vi.advanceTimersByTime(ms)`, `vi.useRealTimers()` at the end; stub `location` with `vi.stubGlobal` before a dynamic `await import('./openrouter-client.ts')`.
-- docs.test.js is `scripts/agent-docs.test.ts` (the lead converts that script).
-- Test values may need casts (`as Panel`); never change what a test checks.
-
-## Path map
-
-| Old | New |
-| --- | --- |
-| `assets/js/core/{color,cvd,grid,colorbar,locate,colormap-match,colormap-library}.js` | `src/core/<same>.ts` (+ `src/generated/colormap-data.json`) |
-| `assets/js/extract/project.js`, `project-files.js` | `src/extract/project/project.ts`, `project-files.ts` |
-| `assets/js/extract/settings.js`, `settings-dialog.js` | `src/extract/settings/settings.ts`, `settings-dialog.ts` |
-| `assets/js/extract/{pdf-loader,viewer,scale-bar}.js` | `src/extract/<same>.ts` |
-| `assets/js/extract/main.js` | `src/pages/extract.ts` |
-| `assets/js/extract/workspace/*.js` (10 files) | `src/extract/workspace/<same>.ts` |
-| `assets/js/extract/heatmap/{sampling,heatmap-tool}.js` | `src/extract/heatmap/<same>.ts` |
-| `assets/js/extract/roi/{geometry,quantify,roi-tool,roi-overlay,roi-sidebar}.js` | `src/extract/roi/<same>.ts` |
-| `assets/js/extract/map/{field,map-tool,map-sidebar}.js` | `src/extract/map/<same>.ts` |
-| `assets/js/agent/{schema,llm,decide,decision-tools,labels,runner,api,openrouter-client}.js` | `src/agent/<same>.ts` |
-| `assets/js/agent/{agent-card,labels-reader}.js` | `src/agent/ui/<same>.ts` |
-| `assets/js/colormaps/{viewer,common,metrics,route,recolor,references,map-picker,figure-input,scroll-anchor,strips,plots,footer}.js` | `src/colormaps/<same>.ts` |
-| `assets/js/colormaps/{browse-tab,detail-drawer,compare-tab,identify-tab,recolor-tab,cvd-tab}.js` | `src/colormaps/tabs/<same>.ts` |
-| (boot block of `colormaps/viewer.js`) | `src/pages/colormaps.ts` |
-| `tests/helpers.js` | `src/testing/helpers.ts` |
-| `tests/core/<x>.test.js` | `src/core/<x>.test.ts` |
-| `tests/extract/project.test.js`, `settings.test.js` | `src/extract/project/project.test.ts`, `src/extract/settings/settings.test.ts` |
-| `tests/extract/sampling.test.js` | `src/extract/heatmap/sampling.test.ts` |
-| `tests/extract/roi-geometry.test.js`, `quantify.test.js` | `src/extract/roi/geometry.test.ts`, `quantify.test.ts` |
-| `tests/extract/map.test.js` | `src/extract/map/field.test.ts` |
-| `tests/agent/{schema,llm,decide,labels,openrouter-client,docs}.test.js` | `src/agent/<same>.test.ts` |
-| `tests/colormaps/{metrics,recolor,route}.test.js` | `src/colormaps/<same>.test.ts` |
-| `tests/load.js` | deleted once nothing imports it (lead) |
-| `tests/fixtures/` | `src/testing/fixtures/` (data written by `scripts/make-calibration.mjs`) |
-
-Import paths follow the new layout: from `src/extract/roi/quantify.ts`, `../../core/color.ts`, `../project/project.ts`, `../heatmap/sampling.ts`, `../../types/index.ts`.
+- Tests sit next to the module (`grid.ts` → `grid.test.ts`): `import { describe, test } from 'vitest'` and `import assert from 'node:assert/strict'`; helpers from `src/testing/helpers.ts`.
+- Fake timers: `vi.useFakeTimers({ toFake: ['setTimeout'] })`, `vi.advanceTimersByTime(ms)`, `vi.useRealTimers()`; stub globals with `vi.stubGlobal` before a dynamic `await import(...)` (see openrouter-client.test.ts).
+- `scripts/agent-docs.test.ts` fails when docs/agent.md is stale (`npm run docs`).
+- Test values may need casts (`as Panel`); never weaken what a test checks.
 
 ## Watch for
 

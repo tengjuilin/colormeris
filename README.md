@@ -169,32 +169,34 @@ The agent logs are written but not read back when a zip is reopened; panel revie
 
 More documentation: [docs/agent.md](docs/agent.md) (agent reference, generated), [docs/research.md](docs/research.md) (prior work, novelty, experiment plan), and [CLAUDE.md](CLAUDE.md) (architecture, conventions, status and next steps for Claude sessions).
 
-There is no build step. The pages are plain HTML, CSS and classic scripts that register on a shared `Colormeris` namespace. Each page loads them in order. pdf.js 6.3.289, JSZip 3.10.2 and a browser bundle of the OpenRouter TypeScript SDK (loaded only when the agent runs; rebuild with `node scripts/bundle-openrouter.mjs`) are vendored in `assets/vendor/`.
-
-You can open `index.html` directly from disk or serve the folder:
+The app is written in TypeScript (strict) and built with [Vite](https://vite.dev). `extract.html` and `colormaps.html` each load one module entry from `src/pages/`; `index.html` is static. pdf.js, JSZip and the OpenRouter TypeScript SDK (loaded only when the agent runs) come from npm. Node 22.18 or newer:
 
 ```bash
-npm run serve   # python3 -m http.server 8000, then open http://localhost:8000
-npm test        # unit tests (node:test, no dependencies)
-npm run proxy   # optional: OpenRouter proxy on :8787 using the key in .env
-npm run docs    # regenerate docs/agent.md after changing the agent
-npm run fixtures  # regenerate the synthetic calibration heatmaps in tests/fixtures/
+npm install
+npm run dev       # dev server on http://localhost:8000 with hot reload
+npm run check     # lint (Biome), typecheck (tsc) and unit tests (Vitest); run before every commit
+npm run build     # production build in dist/ (npm run preview serves it)
+npm run format    # format with Biome
+npm run proxy     # optional: OpenRouter proxy on :8787 using the key in .env
+npm run docs      # regenerate docs/agent.md after changing the agent
+npm run fixtures  # regenerate the synthetic calibration heatmaps in src/testing/fixtures/
 ```
 
-Opened from disk (`file://`), browsers block module files, fetches and workers. There, pdf.js is loaded from `assets/vendor/pdfjs/pdf.embed.js` and runs on the main thread. PDFs that need extra data (non-embedded fonts, CJK character maps, JPEG 2000 images) render best when served over HTTP. After updating the vendored pdf.js, regenerate the embed with `node scripts/embed-pdfjs.mjs`.
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests and the build on every push and pull request. Pushes to `main` that pass CI are deployed to GitHub Pages by `.github/workflows/pages.yml` (repository settings → Pages → Source: GitHub Actions). [docs/typescript.md](docs/typescript.md) has the coding conventions.
 
-To deploy, publish the repository root with GitHub Pages or any static host. `.nojekyll` is already included.
-
-The code is grouped by page. Files that need no DOM are loaded by the tests through `tests/load.js`; the tests mirror the folders.
+The code is grouped by feature. Files without DOM code have unit tests next to them (`grid.ts` and `grid.test.ts`).
 
 | Folder | Purpose |
 | --- | --- |
-| `assets/css/` | `base.css` for every page, plus `landing.css`, `extract.css` and `colormaps.css` |
-| `assets/js/core/` | shared by both apps: color spaces and ΔE (`color.js`), CVD simulation (`cvd.js`), grid geometry and cell sampling (`grid.js`), colorbar calibration (`colorbar.js`), snapping rough boxes to cells, colorbars and tick labels (`locate.js`), the colormap data (`colormap-library.js`, generated) and matching a bar to a known colormap (`colormap-match.js`) |
-| `assets/js/extract/` | `extract.html`: project model (`project.js`), CSV and zip (`project-files.js`), settings, PDF loading, the canvas viewer and `main.js`, which starts the page |
-| `assets/js/extract/workspace/` | the shell both tools share: `workspace.js` (state, modes, tool switching) and one file each for undo, overlay drawing, pointer input, the Grid, Colorbar and Panels cards, opening files and pages, export and hotkeys |
-| `assets/js/extract/heatmap/` | heatmap tool: extraction (`sampling.js`) and the tool (`heatmap-tool.js`) |
-| `assets/js/extract/roi/` | ROI tool: region geometry (`geometry.js`), signal statistics (`quantify.js`), the tool, its overlay and its sidebar |
-| `assets/js/agent/` | agent API and heatmap agent: action schema (`schema.js`), `window.colormeris` (`api.js`), prompt, tools and retry guard (`llm.js`), decision mode (`decide.js`, `decision-tools.js`), the loop (`runner.js`) and the Agent card (`agent-card.js`) |
-| `assets/js/colormaps/` | `colormaps.html`: `viewer.js` (state, tabs, page) with one file per tab, plus strips, plots, footer, URL routing (`route.js`), ratings (`metrics.js`), references and recoloring |
-| `scripts/` | generators and tools: `agent-docs.mjs` (docs/agent.md), `export-mpl-colormaps.py` (colormap data), `make-calibration.mjs` (synthetic test heatmaps, `npm run fixtures`), `bundle-openrouter.mjs`, `embed-pdfjs.mjs`, `openrouter-proxy.mjs` |
+| `src/pages/` | one entry per page: `extract.ts` starts the extraction app, `colormaps.ts` the colormap viewer |
+| `src/types/` | shared domain types: project, panels, grids, colorbars, results, settings, workspace, agent, colormaps |
+| `src/core/` | shared by both apps: color spaces and ΔE (`color.ts`), CVD simulation (`cvd.ts`), grid geometry and cell sampling (`grid.ts`), colorbar calibration (`colorbar.ts`), snapping rough boxes to cells, colorbars and tick labels (`locate.ts`), the colormap library (`colormap-library.ts`, data in `src/generated/`) and matching a bar to a known colormap (`colormap-match.ts`) |
+| `src/extract/` | `extract.html`: project model and files (`project/`), settings (`settings/`), PDF loading, the canvas viewer and the scale bar |
+| `src/extract/workspace/` | the shell the tools share: `workspace.ts` (state, modes, tool switching) and one file each for undo, overlay drawing, pointer input, the Grid, Colorbar and Panels cards, opening files and pages, export and hotkeys |
+| `src/extract/heatmap/`, `roi/`, `map/` | the three tools: pure extraction (`sampling.ts`, `geometry.ts` and `quantify.ts`, `field.ts`) and the tool UI |
+| `src/agent/` | agent API and heatmap agent: action schema (`schema.ts`), `window.colormeris` (`api.ts`), prompt, tools and retry guard (`llm.ts`), decision mode (`decide.ts`, `decision-tools.ts`), the loop (`runner.ts`); the Agent card and label reader in `ui/` |
+| `src/colormaps/` | `colormaps.html`: `viewer.ts` (state, tabs, page) with one file per tab in `tabs/`, plus strips, plots, footer, URL routing (`route.ts`), ratings (`metrics.ts`), references and recoloring |
+| `src/styles/` | `base.css` for every page, plus `landing.css`, `extract.css` and `colormaps.css` |
+| `src/testing/` | test helpers and the synthetic calibration fixtures |
+| `public/` | files served as they are: `examples/` (example.pdf, example-jet.png) and, copied from node_modules before dev and build, `pdfjs/` |
+| `scripts/` | generators and tools: `agent-docs.ts` (docs/agent.md), `export-mpl-colormaps.py` (colormap data), `make-calibration.mjs` (synthetic test heatmaps), `copy-pdfjs-assets.mjs`, `openrouter-proxy.mjs` |

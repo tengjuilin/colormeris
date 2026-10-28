@@ -9,7 +9,7 @@ __pycache__
 
 # temporary excel file
 ~$*
-assets/img
+test-images/
 
 .env
 .env.*
