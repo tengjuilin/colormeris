@@ -1,6 +1,26 @@
 import { invertBilinear } from '../../core/grid.ts';
-import type { AxisScale, DomEl, AxisTick, ErrorResult, MapField, MapResult, MapUnits, Panel, PixelImage, Point, Profile, ProfileSample } from '../../types/index.ts';
-import { formatNumber, mapLongCsv, mapMatrixCsv, profileCsv, profilesCsv, safeFileName } from '../project/project-files.ts';
+import type {
+  AxisScale,
+  AxisTick,
+  DomEl,
+  ErrorResult,
+  MapField,
+  MapResult,
+  MapUnits,
+  Panel,
+  PixelImage,
+  Point,
+  Profile,
+  ProfileSample,
+} from '../../types/index.ts';
+import {
+  formatNumber,
+  mapLongCsv,
+  mapMatrixCsv,
+  profileCsv,
+  profilesCsv,
+  safeFileName,
+} from '../project/project-files.ts';
 import {
   type AxisKey,
   axisEdgePoint,
@@ -162,9 +182,15 @@ export function setupMapSidebar(mctx: MapToolContext) {
       if (e.key === 'Enter') at.blur();
     });
     pos.append(at, '%');
-    const del = Object.assign(document.createElement('button'), { className: 'btn subtle icon', textContent: '×', title: 'Remove tick' });
+    const del = Object.assign(document.createElement('button'), {
+      className: 'btn subtle icon',
+      textContent: '×',
+      title: 'Remove tick',
+    });
     del.setAttribute('aria-label', 'Remove tick');
-    del.addEventListener('click', () => ws.commit((p) => (p.map[key].ticks = p.map[key].ticks.filter((x) => x.id !== k.id))));
+    del.addEventListener('click', () =>
+      ws.commit((p) => (p.map[key].ticks = p.map[key].ticks.filter((x) => x.id !== k.id))),
+    );
     const tdIn = document.createElement('td');
     tdIn.append(input);
     const tdDel = document.createElement('td');
@@ -174,7 +200,9 @@ export function setupMapSidebar(mctx: MapToolContext) {
   }
 
   function focusAxisTick(key: AxisKey, id: string) {
-    requestAnimationFrame(() => $(`axis-${key}-ticks`).querySelector<HTMLInputElement>(`tr[data-id="${id}"] input`)?.focus());
+    requestAnimationFrame(() =>
+      $(`axis-${key}-ticks`).querySelector<HTMLInputElement>(`tr[data-id="${id}"] input`)?.focus(),
+    );
   }
 
   // ---------------------------------------------------------------- profiles
@@ -207,7 +235,10 @@ export function setupMapSidebar(mctx: MapToolContext) {
           const sw = document.createElement('span');
           sw.className = 'swatch';
           sw.style.background = mctx.profileColor(panel, l);
-          btn.append(sw, Object.assign(document.createElement('span'), { className: 'chip-label', textContent: l.name }));
+          btn.append(
+            sw,
+            Object.assign(document.createElement('span'), { className: 'chip-label', textContent: l.name }),
+          );
           btn.addEventListener('click', (e) => mctx.selectProfile(l.id, { add: e.shiftKey || e.metaKey || e.ctrlKey }));
           li.append(btn);
           return li;
@@ -229,30 +260,53 @@ export function setupMapSidebar(mctx: MapToolContext) {
     ws.setValue($('profile-length'), Number(length.toPrecision(6)));
     $('profile-length-label').textContent = `Length (${unit})`;
     $('profile-length-field').title =
-      (kind === 'x' || kind === 'y' ? `Span of ${kind} values along the profile.` : `Length of the profile in ${kind === 'px' ? 'pixels' : unit}.`) +
+      (kind === 'x' || kind === 'y'
+        ? `Span of ${kind} values along the profile.`
+        : `Length of the profile in ${kind === 'px' ? 'pixels' : unit}.`) +
       ' Typing a length moves its end; the start and direction stay.';
-    $('profile-delete').title = shown.length > 1 ? `Delete the ${shown.length} selected profiles (Delete or Backspace; ⌫ on a Mac)` : 'Delete (Delete or Backspace; ⌫ on a Mac)';
+    $('profile-delete').title =
+      shown.length > 1
+        ? `Delete the ${shown.length} selected profiles (Delete or Backspace; ⌫ on a Mac)`
+        : 'Delete (Delete or Backspace; ⌫ on a Mac)';
     const results = (ws.resultFor(panel) as MapResult).profiles || {};
     const series: Series[] = [];
     const errors: { name: string; error: string }[] = [];
     ws.setValue($('profile-norm'), state.profileNorm);
     // Show what is plotted, which may be a fallback from the choice.
-    renderUnits($('profile-x'), panel, shown.some((l) => profileAxisKey(panel, l)), kind === 'x' || kind === 'y' ? 'axis' : kind);
+    renderUnits(
+      $('profile-x'),
+      panel,
+      shown.some((l) => profileAxisKey(panel, l)),
+      kind === 'x' || kind === 'y' ? 'axis' : kind,
+    );
     for (const l of shown) {
       const samples = results[l.id] as ProfileSample[] & ErrorResult;
       const norm = Array.isArray(samples) ? profileDivisor(samples, state.profileNorm) : null;
       // A sweep running off the edge plots nothing for a moment; that is no error.
       const gone = Array.isArray(samples) && samples.every((q) => q.outside) && !state.sweep;
-      const error = samples?.error || (!samples ? 'Calibrate the colorbar to read the profile.' : gone ? 'The profile lies outside the plot area.' : norm!.error);
+      const error =
+        samples?.error ||
+        (!samples
+          ? 'Calibrate the colorbar to read the profile.'
+          : gone
+            ? 'The profile lies outside the plot area.'
+            : norm!.error);
       if (error) errors.push({ name: l.name, error });
-      else series.push({ profile: l, samples, divisor: (norm as { divisor: number }).divisor, color: mctx.profileColor(panel, l) });
+      else
+        series.push({
+          profile: l,
+          samples,
+          divisor: (norm as { divisor: number }).divisor,
+          color: mctx.profileColor(panel, l),
+        });
     }
     // The same problem for every profile (no colorbar yet) is said once.
     const once = errors.length === shown.length && new Set(errors.map((e) => e.error)).size === 1;
     $('profile-problem').textContent = once ? errors[0].error : errors.map((e) => `${e.name}: ${e.error}`).join(' ');
     $('profile-csv').disabled = !series.length;
     renderSweep(panel, sel);
-    $('profile-csv').textContent = series.length > 1 ? `Download ${series.length} profiles CSV` : 'Download profile CSV';
+    $('profile-csv').textContent =
+      series.length > 1 ? `Download ${series.length} profiles CSV` : 'Download profile CSV';
     drawProfiles(panel, series);
   }
 
@@ -278,9 +332,13 @@ export function setupMapSidebar(mctx: MapToolContext) {
   // the calibrated axis the lines mostly run along, the distance along the
   // lines in scale-bar units, or in pixels. Overlaid profiles share it, so
   // lines along different axes fall back to a distance.
-  function plotAxis(panel: Panel, series: Series[]): { get: (s: ProfileSample) => number; name: string; short: string } {
+  function plotAxis(
+    panel: Panel,
+    series: Series[],
+  ): { get: (s: ProfileSample) => number; name: string; short: string } {
     const kinds = new Set(series.map((s) => profileXKind(panel, s.profile)));
-    const kind = kinds.size === 1 ? [...kinds][0] : kinds.has('length') || lengthPerPixel(panel.scale) !== null ? 'length' : 'px';
+    const kind =
+      kinds.size === 1 ? [...kinds][0] : kinds.has('length') || lengthPerPixel(panel.scale) !== null ? 'length' : 'px';
     if (kind === 'x' || kind === 'y') return { get: (s) => s[kind] as number, name: kind, short: kind };
     if (kind === 'length') return { get: (s) => s.len as number, name: `distance (${panel.scale!.unit})`, short: 'd' };
     return { get: (s) => s.d, name: 'distance (px)', short: 'd' };
@@ -313,7 +371,12 @@ export function setupMapSidebar(mctx: MapToolContext) {
     const danger = css.getPropertyValue('--danger').trim() || '#c62a2a';
     const axis = plotAxis(panel, series);
     // A single profile keeps the accent color; overlaid ones match their lines.
-    const lines: PlotLine[] = series.map((s) => ({ ...s, xs: s.samples.map(axis.get), ys: s.samples.map((q) => q.value / s.divisor), color: series.length > 1 ? s.color : accent }));
+    const lines: PlotLine[] = series.map((s) => ({
+      ...s,
+      xs: s.samples.map(axis.get),
+      ys: s.samples.map((q) => q.value / s.divisor),
+      color: series.length > 1 ? s.color : accent,
+    }));
     // The x span covers whole lines; values only the parts inside the plot area.
     const allX = lines.flatMap((s) => s.xs);
     const allY = lines.flatMap((s) => s.ys.filter((y, i) => !s.samples[i].outside));
@@ -377,14 +440,38 @@ export function setupMapSidebar(mctx: MapToolContext) {
     const traced = state.trace && lines.find((s) => s.profile.id === state.trace!.id);
     const tracedSample = traced?.samples[state.trace!.i];
     if (tracedSample && !tracedSample.outside) {
-      drawTraceMark(ctx, { i: state.trace!.i, line: traced!, sx, sy, pad, W, H, axis, text, css, many: lines.length > 1 });
+      drawTraceMark(ctx, {
+        i: state.trace!.i,
+        line: traced!,
+        sx,
+        sy,
+        pad,
+        W,
+        H,
+        axis,
+        text,
+        css,
+        many: lines.length > 1,
+      });
     }
   }
 
   // Guide line, dot and readout for the traced sample.
   function drawTraceMark(
     ctx: CanvasRenderingContext2D,
-    { i, line, sx, sy, pad, W, H, axis, text, css, many }: {
+    {
+      i,
+      line,
+      sx,
+      sy,
+      pad,
+      W,
+      H,
+      axis,
+      text,
+      css,
+      many,
+    }: {
       i: number;
       line: PlotLine;
       sx: (x: number) => number;
@@ -442,7 +529,8 @@ export function setupMapSidebar(mctx: MapToolContext) {
     for (const s of plot.lines) {
       let i = -1;
       for (let k = 0; k < s.xs.length; k++) {
-        if (!s.samples[k].outside && (i < 0 || Math.abs(plot.sx(s.xs[k]) - mx) < Math.abs(plot.sx(s.xs[i]) - mx))) i = k;
+        if (!s.samples[k].outside && (i < 0 || Math.abs(plot.sx(s.xs[k]) - mx) < Math.abs(plot.sx(s.xs[i]) - mx)))
+          i = k;
       }
       if (i < 0) continue;
       const dx = Math.abs(plot.sx(s.xs[i]) - mx);
@@ -500,7 +588,12 @@ export function setupMapSidebar(mctx: MapToolContext) {
   }
 
   // The plotted values (after Scale) over 25 positions across the sweep.
-  function sweepValueRange(image: ImageData | PixelImage, panel: Panel, l: Profile, { n, min, max }: { n: Point; min: number; max: number }): [number, number] | null {
+  function sweepValueRange(
+    image: ImageData | PixelImage,
+    panel: Panel,
+    l: Profile,
+    { n, min, max }: { n: Point; min: number; max: number },
+  ): [number, number] | null {
     let lo = Infinity;
     let hi = -Infinity;
     for (let k = 0; k <= 24; k++) {
@@ -527,7 +620,15 @@ export function setupMapSidebar(mctx: MapToolContext) {
     const l = panel.map.profiles.find((x) => x.id === sw.id);
     // Anything else that moved the line (a drag, a typed length, undo),
     // or leaving it, ends the sweep.
-    if (ws.tool().kind !== 'map' || panel.id !== sw.panelId || !l || state.selectedId !== sw.id || l.a !== sw.set.a || l.b !== sw.set.b) return stopSweep();
+    if (
+      ws.tool().kind !== 'map' ||
+      panel.id !== sw.panelId ||
+      !l ||
+      state.selectedId !== sw.id ||
+      l.a !== sw.set.a ||
+      l.b !== sw.set.b
+    )
+      return stopSweep();
     // A long gap (a hidden tab) does not make the line jump.
     const dt = sw.last === null ? 0 : Math.min(0.1, (now - sw.last) / 1000);
     sw.last = now;
@@ -596,7 +697,12 @@ export function setupMapSidebar(mctx: MapToolContext) {
     ws.setValue($('map-bin'), panel.map.bin);
     const axisFns = (['x', 'y'] as const).map((k) => !!(panel.grid.corners && axisFn(panel, k).fn));
     // With one axis calibrated, 'axis' reports the other in length or pixels.
-    renderUnits($('map-units'), panel, axisFns.some(Boolean), axisFns.some(Boolean) && panel.map.units === 'axis' ? 'axis' : coordKind(panel, 'x'));
+    renderUnits(
+      $('map-units'),
+      panel,
+      axisFns.some(Boolean),
+      axisFns.some(Boolean) && panel.map.units === 'axis' ? 'axis' : coordKind(panel, 'x'),
+    );
     const res = ws.resultFor(panel) as MapField & { axisProblems?: string[] };
     $('map-dl-csv').disabled = $('map-dl-long').disabled = !!res.error;
     $('map-axis-hint').textContent = res.axisProblems?.join(' ') || '';
@@ -639,7 +745,9 @@ export function setupMapSidebar(mctx: MapToolContext) {
 
   for (const key of ['x', 'y'] as const) {
     $(`axis-${key}-add`).addEventListener('click', () => mctx.toggleMode(`${key}tick`));
-    $(`axis-${key}-scale`).addEventListener('change', (e) => ws.commit((p) => (p.map[key].scale = (e.target as HTMLSelectElement).value as AxisScale)));
+    $(`axis-${key}-scale`).addEventListener('change', (e) =>
+      ws.commit((p) => (p.map[key].scale = (e.target as HTMLSelectElement).value as AxisScale)),
+    );
   }
   $('profile-add').addEventListener('click', () => mctx.toggleMode('profile'));
   ws.bindText('profile-name', (p, v) => {
@@ -676,7 +784,10 @@ export function setupMapSidebar(mctx: MapToolContext) {
     if (l && image) sw.yRange = sweepValueRange(image, panel, { ...l, a: sw.a0, b: sw.b0 }, sw);
   });
   // One setting for the profile plot and the matrix, edited from either card.
-  for (const id of ['profile-x', 'map-units']) $(id).addEventListener('change', (e) => ws.commit((p) => (p.map.units = (e.target as HTMLSelectElement).value as MapUnits)));
+  for (const id of ['profile-x', 'map-units'])
+    $(id).addEventListener('change', (e) =>
+      ws.commit((p) => (p.map.units = (e.target as HTMLSelectElement).value as MapUnits)),
+    );
   $('profile-norm').addEventListener('change', (e) => {
     state.profileNorm = (e.target as HTMLSelectElement).value;
     // The fixed value axis was measured in the old scale.
@@ -684,7 +795,8 @@ export function setupMapSidebar(mctx: MapToolContext) {
       const panel = ws.activePanel();
       const l = mctx.selectedProfile();
       const image = app.pages.get(panel.page)?.imageData;
-      state.sweep.yRange = l && image ? sweepValueRange(image, panel, { ...l, a: state.sweep.a0, b: state.sweep.b0 }, state.sweep) : null;
+      state.sweep.yRange =
+        l && image ? sweepValueRange(image, panel, { ...l, a: state.sweep.a0, b: state.sweep.b0 }, state.sweep) : null;
     }
     ws.changed({ light: true });
   });
@@ -694,14 +806,22 @@ export function setupMapSidebar(mctx: MapToolContext) {
     const mode = state.profileNorm;
     // The normalized column follows the plot; a profile that cannot be
     // normalized leaves it empty.
-    const normOf = (samples: ProfileSample[]) => (mode === 'raw' ? null : { mode, divisor: ((profileDivisor(samples, mode) as { divisor?: number }).divisor) ?? NaN });
+    const normOf = (samples: ProfileSample[]) =>
+      mode === 'raw' ? null : { mode, divisor: (profileDivisor(samples, mode) as { divisor?: number }).divisor ?? NaN };
     const entries = mctx
       .selectedProfiles()
       .filter((l) => Array.isArray(results[l.id]))
-      .map((l) => ({ name: l.name, samples: results[l.id] as ProfileSample[], norm: normOf(results[l.id] as ProfileSample[]) }));
+      .map((l) => ({
+        name: l.name,
+        samples: results[l.id] as ProfileSample[],
+        norm: normOf(results[l.id] as ProfileSample[]),
+      }));
     if (!entries.length) return;
     const unit = lengthPerPixel(panel.scale) !== null ? panel.scale!.unit : null;
-    const [csv, suffix] = entries.length === 1 ? [profileCsv(entries[0].samples, entries[0].norm, unit), `_profile_${safeFileName(entries[0].name)}`] : [profilesCsv(entries, unit), '_profiles'];
+    const [csv, suffix] =
+      entries.length === 1
+        ? [profileCsv(entries[0].samples, entries[0].norm, unit), `_profile_${safeFileName(entries[0].name)}`]
+        : [profilesCsv(entries, unit), '_profiles'];
     ws.download(new Blob([csv], { type: 'text/csv' }), ws.csvName(panel, suffix));
   });
   ws.bindNumber('map-bin', (p, v) => (p.map.bin = Math.min(256, Math.max(1, Math.round(v)))));
@@ -721,13 +841,15 @@ export function setupMapSidebar(mctx: MapToolContext) {
   $('map-dl-long').addEventListener('click', () => {
     const p = ws.activePanel();
     const r = ws.resultFor(p) as MapResult;
-    if (!r.error) ws.download(new Blob([mapLongCsv([{ panel: p, result: r }])], { type: 'text/csv' }), ws.csvName(p, '_map_long'));
+    if (!r.error)
+      ws.download(new Blob([mapLongCsv([{ panel: p, result: r }])], { type: 'text/csv' }), ws.csvName(p, '_map_long'));
   });
   // The plot follows the card's width.
   if (typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(() => app.sourceCanvas && ws.tool().kind === 'map' && renderProfiles(ws.activePanel())).observe($('profile-plot'));
+    new ResizeObserver(() => app.sourceCanvas && ws.tool().kind === 'map' && renderProfiles(ws.activePanel())).observe(
+      $('profile-plot'),
+    );
   }
 
   return { renderSidebar, focusAxisTick, setTrace, stopSweep, toggleSweep };
 }
-

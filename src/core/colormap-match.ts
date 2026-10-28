@@ -158,9 +158,11 @@ export function identifyColors(pixels: Rgb[], maps: MatchMap[]): LooseMatch[] {
   if (!labs.length) return [];
   const out: LooseMatch[] = [];
   for (const map of maps) {
-    const ref = mapLabs(map, 'loose', () => (map.kind === 'qualitative'
-      ? map.rgbs.map((c) => rgbToLab(c))
-      : Array.from({ length: 64 }, (_, i) => rgbToLab(colorAt(map, i / 63)))));
+    const ref = mapLabs(map, 'loose', () =>
+      map.kind === 'qualitative'
+        ? map.rgbs.map((c) => rgbToLab(c))
+        : Array.from({ length: 64 }, (_, i) => rgbToLab(colorAt(map, i / 63))),
+    );
     const covered = new Array(ref.length).fill(false);
     const d = labs.map((lab) => {
       // Nearest by ΔE76 (fast), then the ΔE2000 to that color. Squared
@@ -176,7 +178,10 @@ export function identifyColors(pixels: Rgb[], maps: MatchMap[]): LooseMatch[] {
         const da = A - r[1];
         const db = B - r[2];
         e += da * da + db * db;
-        if (e < bd) { bd = e; bi = i; }
+        if (e < bd) {
+          bd = e;
+          bi = i;
+        }
       }
       const e = deltaE2000(lab, ref[bi]);
       if (e < COVER_DE) covered[bi] = true;
@@ -195,7 +200,8 @@ export function matchLevel(score: number) {
 // 'rrggbb…' → [[r, g, b], …]. Kept here so the heatmap page needs no cvd.js.
 function unpack(hex: string) {
   const out: Rgb[] = [];
-  for (let i = 0; i + 6 <= hex.length; i += 6) out.push([0, 2, 4].map((k) => parseInt(hex.slice(i + k, i + k + 2), 16)));
+  for (let i = 0; i + 6 <= hex.length; i += 6)
+    out.push([0, 2, 4].map((k) => parseInt(hex.slice(i + k, i + k + 2), 16)));
   return out;
 }
 
@@ -224,7 +230,10 @@ export function suggestColormap(rgbs: Rgb[], { lowAtStart = null }: { lowAtStart
   const byValue = lowAtStart != null;
   const flip = (r: boolean) => (lowAtStart === false ? !r : r);
   const name = (m: { name: string; reversed: boolean }) => `${m.name}${flip(m.reversed) ? '_r' : ''}`;
-  const same = ranked.slice(1).filter((m) => m.score - best.score < 0.01).map(name);
+  const same = ranked
+    .slice(1)
+    .filter((m) => m.score - best.score < 0.01)
+    .map(name);
   return {
     name: best.name,
     mplName: name(best),
@@ -241,7 +250,10 @@ export function suggestColormap(rgbs: Rgb[], { lowAtStart = null }: { lowAtStart
 // itself instead of a bar sampled from the figure. colormap: {name,
 // reversed}. Returns [{t, rgb, lab}] from t = 0 (the map's start, or its end
 // when reversed) to 1, like sampleColorbar, or null for an unknown name.
-export function colormapSamples(colormap: { name: string; reversed?: boolean } | null | undefined, n = 256): ColorbarSample[] | null {
+export function colormapSamples(
+  colormap: { name: string; reversed?: boolean } | null | undefined,
+  n = 256,
+): ColorbarSample[] | null {
   const map = colormap && knownMaps().find((m) => m.name === colormap.name);
   if (!map) return null;
   return Array.from({ length: n }, (_, i) => {

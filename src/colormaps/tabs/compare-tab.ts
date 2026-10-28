@@ -1,10 +1,10 @@
+import { rgbToHex } from '../../core/color.ts';
+import { lightnessStats } from '../../core/cvd.ts';
 import type { CmapViewerContext, ViewKey } from '../../types/index.ts';
 import { createMapPicker } from '../map-picker.ts';
 import { READ_DE, worstCvd } from '../metrics.ts';
 import { colorsLut, paintValues, sinePattern } from '../recolor.ts';
 import { COMPARE_MAX } from '../route.ts';
-import { rgbToHex } from '../../core/color.ts';
-import { lightnessStats } from '../../core/cvd.ts';
 
 // The Compare tab of the colormap viewer (colormaps.html): up to 10 maps
 // side by side as strips, four plots with every map on the same axes, and a
@@ -23,9 +23,34 @@ const CMP_METRICS = [
 
 export function setupCmapCompare(ctx: CmapViewerContext) {
   const {
-    el, svgEl, pct, VIEWS, state, items, mapByName, viewData, metrics, profile, stepPoints, niceAxis,
-    drawAxes, drawSeries, figure, POS_TICKS, PW, PH, M, HUE_MIN_CHROMA, stripCanvas, makeStrip,
-    showTip, hideTip, ratingPills, ratingCells, headerRow, applyStripView,
+    el,
+    svgEl,
+    pct,
+    VIEWS,
+    state,
+    items,
+    mapByName,
+    viewData,
+    metrics,
+    profile,
+    stepPoints,
+    niceAxis,
+    drawAxes,
+    drawSeries,
+    figure,
+    POS_TICKS,
+    PW,
+    PH,
+    M,
+    HUE_MIN_CHROMA,
+    stripCanvas,
+    makeStrip,
+    showTip,
+    hideTip,
+    ratingPills,
+    ratingCells,
+    headerRow,
+    applyStripView,
   } = ctx;
   const MAX_CMP = COMPARE_MAX;
   const CP = { W: PW, H: PH, m: M };
@@ -50,10 +75,28 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
 
   function buildSeries(map: any, key: any) {
     const p = profile(map, isRev(map));
-    if (key === 'L') return { points: p.pts(p.Ls, (v: any) => `L* = ${v.toFixed(1)}`), mode: p.qual ? 'dots' : 'line', dotR: p.qual ? 4 : 0 };
-    if (key === 'C') return { points: p.pts(p.C, (v: any) => `C* = ${v.toFixed(1)}`), mode: p.qual ? 'dots' : 'line', dotR: p.qual ? 4 : 0 };
+    if (key === 'L')
+      return {
+        points: p.pts(p.Ls, (v: any) => `L* = ${v.toFixed(1)}`),
+        mode: p.qual ? 'dots' : 'line',
+        dotR: p.qual ? 4 : 0,
+      };
+    if (key === 'C')
+      return {
+        points: p.pts(p.C, (v: any) => `C* = ${v.toFixed(1)}`),
+        mode: p.qual ? 'dots' : 'line',
+        dotR: p.qual ? 4 : 0,
+      };
     if (key === 'h') {
-      return { points: p.pts(p.h, (v: any) => `h = ${v.toFixed(0)}°`, (i: any) => p.C[i] < HUE_MIN_CHROMA), mode: 'dots', dotR: p.qual ? 4 : 2.2 };
+      return {
+        points: p.pts(
+          p.h,
+          (v: any) => `h = ${v.toFixed(0)}°`,
+          (i: any) => p.C[i] < HUE_MIN_CHROMA,
+        ),
+        mode: 'dots',
+        dotR: p.qual ? 4 : 2.2,
+      };
     }
     // Qualitative maps have no neighbors in order, so no steps.
     if (p.qual) return { points: null };
@@ -102,10 +145,20 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     const key = metric.key;
     const series = list.map((map: any) => ({ map, ...cmpSeries(map, key) }));
     const svg = svgEl('svg', {
-      class: 'cmap-plot', viewBox: `0 0 ${W} ${H}`, role: 'img',
+      class: 'cmap-plot',
+      viewBox: `0 0 ${W} ${H}`,
+      role: 'img',
       'aria-label': `${metric.label} of ${list.map((x: any) => x.name).join(', ')} against position`,
     });
-    const { px, py } = drawAxes(svg, { W, H, m, ...cmpAxis(key, series), xTicks: POS_TICKS, xLabel: 'Position', yLabel: metric.yLabel });
+    const { px, py } = drawAxes(svg, {
+      W,
+      H,
+      m,
+      ...cmpAxis(key, series),
+      xTicks: POS_TICKS,
+      xLabel: 'Position',
+      yLabel: metric.yLabel,
+    });
 
     const groups = series.map((s: any) => {
       if (!s.points) return null;
@@ -144,10 +197,15 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
       ring.setAttribute('cy', py(best.p.y));
       ring.setAttribute('visibility', 'visible');
       const hex = rgbToHex(best.p.color);
-      showTip({
-        hex, title: `${best.map.name} · ${metric.label}`,
-        text: [hex, `rgb(${best.p.color[0]}, ${best.p.color[1]}, ${best.p.color[2]})`, best.p.pos, best.p.value],
-      }, e.clientX, e.clientY);
+      showTip(
+        {
+          hex,
+          title: `${best.map.name} · ${metric.label}`,
+          text: [hex, `rgb(${best.p.color[0]}, ${best.p.color[1]}, ${best.p.color[2]})`, best.p.pos, best.p.value],
+        },
+        e.clientX,
+        e.clientY,
+      );
     });
     svg.addEventListener('pointerleave', () => {
       guide.setAttribute('visibility', 'hidden');
@@ -196,7 +254,13 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     wrap.append(grid, legend);
     const qual = list.filter((map: any) => map.kind === 'qualitative').map((map: any) => map.name);
     if (qual.length) {
-      wrap.append(el('p', { class: 'cmap-fig-cap muted' }, `Qualitative maps (${qual.join(', ')}) have no order: their colors are spread evenly from 0 to 1 as dots, and they have no step plot.`));
+      wrap.append(
+        el(
+          'p',
+          { class: 'cmap-fig-cap muted' },
+          `Qualitative maps (${qual.join(', ')}) have no order: their colors are spread evenly from 0 to 1 as dots, and they have no step plot.`,
+        ),
+      );
     }
     return wrap;
   }
@@ -206,33 +270,124 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
   // one group sit next to each other, under one group header.
   const NUM_COLS: any[] = [
     { id: 'name', label: 'Colormap', key: true, get: (f: any) => f.map.name.toLowerCase() },
-    { id: 'range', group: 'Lightness', key: true, label: 'L* range', hint: 'Spread of lightness. Wider means more contrast.', best: 'max', dp: 0,
-      get: (f: any) => f.ls.range[1] - f.ls.range[0], show: (f: any) => `${f.ls.range[0].toFixed(0)}–${f.ls.range[1].toFixed(0)}` },
-    { id: 'mono', group: 'Lightness', label: 'Monotonic', hint: 'Does L* only rise or only fall? Fewer reversals are better.', best: 'min', dp: 0,
-      get: (f: any) => (f.qual ? null : f.ls.reversals), show: (f: any) => (f.qual ? '—' : `${f.ls.monotonic ? 'yes' : 'no'} (${f.ls.reversals})`) },
-    { id: 'r2', group: 'Lightness', label: 'L* R²', hint: 'How close L* is to a straight line. Higher is better.', best: 'max', dp: 3,
-      get: (f: any) => (f.qual ? null : f.ls.r2), show: (f: any) => (f.qual || f.ls.r2 == null ? '—' : f.ls.r2.toFixed(3)) },
-    { id: 'cv', group: 'Uniformity', key: true, label: 'Step CV', hint: 'Variation of the ΔE2000 steps. Lower is better.', best: 'min', dp: 2,
-      get: (f: any) => (f.qual ? null : f.m.stepStats.cv), show: (f: any) => (f.qual ? '—' : f.m.stepStats.cv.toFixed(2)) },
-    { id: 'max', group: 'Uniformity', label: 'Max step ΔE', hint: 'Largest ΔE2000 jump between neighbors. Lower is better.', best: 'min', dp: 2,
-      get: (f: any) => (f.qual ? null : f.m.stepStats.max), show: (f: any) => (f.qual ? '—' : f.m.stepStats.max.toFixed(2)) },
-    { id: 'cvd', group: 'Color vision', key: true, label: 'Worst CVD view', hint: 'Smallest ΔE2000 in the worst color-vision view, and the share of the map’s own separation it keeps. Higher is better.', best: 'max', dp: 1,
-      get: (f: any) => f.m.cvdWorst, show: (f: any) => `${f.worstLabel} ${f.m.cvdWorst.toFixed(1)} ΔE (${pct(f.m.cvdRatio)})` },
-    { id: 'gray', group: 'Color vision', label: 'Gray min ΔL*', hint: 'Smallest L* difference in grayscale. Higher is better.', best: 'max', dp: 1,
-      get: (f: any) => f.m.separations.gray?.min ?? null, show: (f: any) => (f.m.separations.gray ? f.m.separations.gray.min.toFixed(1) : '—') },
-    { id: 'levels', group: 'Readability', key: true, label: 'Levels', hint: `Distinguishable levels from end to end (each ${READ_DE} ΔE apart). Higher is better.`, best: 'max', dp: 0,
-      get: (f: any) => f.m.readability?.orig.levels ?? null, show: (f: any) => (f.m.readability ? String(f.m.readability.orig.levels) : '—') },
-    { id: 'flat', group: 'Readability', label: 'Flat %', hint: 'Share of the map where values 5% apart look almost the same. Lower is better.', best: 'min', dp: 2,
-      get: (f: any) => f.m.readability?.orig.flat ?? null, show: (f: any) => (f.m.readability ? pct(f.m.readability.orig.flat) : '—') },
-    { id: 'amb', group: 'Readability', key: true, label: 'Ambiguous %', hint: 'Share of the map whose color has a look-alike elsewhere. Lower is better.', best: 'min', dp: 2,
-      get: (f: any) => f.m.readability?.orig.ambiguous ?? null, show: (f: any) => (f.m.readability ? pct(f.m.readability.orig.ambiguous) : '—') },
+    {
+      id: 'range',
+      group: 'Lightness',
+      key: true,
+      label: 'L* range',
+      hint: 'Spread of lightness. Wider means more contrast.',
+      best: 'max',
+      dp: 0,
+      get: (f: any) => f.ls.range[1] - f.ls.range[0],
+      show: (f: any) => `${f.ls.range[0].toFixed(0)}–${f.ls.range[1].toFixed(0)}`,
+    },
+    {
+      id: 'mono',
+      group: 'Lightness',
+      label: 'Monotonic',
+      hint: 'Does L* only rise or only fall? Fewer reversals are better.',
+      best: 'min',
+      dp: 0,
+      get: (f: any) => (f.qual ? null : f.ls.reversals),
+      show: (f: any) => (f.qual ? '—' : `${f.ls.monotonic ? 'yes' : 'no'} (${f.ls.reversals})`),
+    },
+    {
+      id: 'r2',
+      group: 'Lightness',
+      label: 'L* R²',
+      hint: 'How close L* is to a straight line. Higher is better.',
+      best: 'max',
+      dp: 3,
+      get: (f: any) => (f.qual ? null : f.ls.r2),
+      show: (f: any) => (f.qual || f.ls.r2 == null ? '—' : f.ls.r2.toFixed(3)),
+    },
+    {
+      id: 'cv',
+      group: 'Uniformity',
+      key: true,
+      label: 'Step CV',
+      hint: 'Variation of the ΔE2000 steps. Lower is better.',
+      best: 'min',
+      dp: 2,
+      get: (f: any) => (f.qual ? null : f.m.stepStats.cv),
+      show: (f: any) => (f.qual ? '—' : f.m.stepStats.cv.toFixed(2)),
+    },
+    {
+      id: 'max',
+      group: 'Uniformity',
+      label: 'Max step ΔE',
+      hint: 'Largest ΔE2000 jump between neighbors. Lower is better.',
+      best: 'min',
+      dp: 2,
+      get: (f: any) => (f.qual ? null : f.m.stepStats.max),
+      show: (f: any) => (f.qual ? '—' : f.m.stepStats.max.toFixed(2)),
+    },
+    {
+      id: 'cvd',
+      group: 'Color vision',
+      key: true,
+      label: 'Worst CVD view',
+      hint: 'Smallest ΔE2000 in the worst color-vision view, and the share of the map’s own separation it keeps. Higher is better.',
+      best: 'max',
+      dp: 1,
+      get: (f: any) => f.m.cvdWorst,
+      show: (f: any) => `${f.worstLabel} ${f.m.cvdWorst.toFixed(1)} ΔE (${pct(f.m.cvdRatio)})`,
+    },
+    {
+      id: 'gray',
+      group: 'Color vision',
+      label: 'Gray min ΔL*',
+      hint: 'Smallest L* difference in grayscale. Higher is better.',
+      best: 'max',
+      dp: 1,
+      get: (f: any) => f.m.separations.gray?.min ?? null,
+      show: (f: any) => (f.m.separations.gray ? f.m.separations.gray.min.toFixed(1) : '—'),
+    },
+    {
+      id: 'levels',
+      group: 'Readability',
+      key: true,
+      label: 'Levels',
+      hint: `Distinguishable levels from end to end (each ${READ_DE} ΔE apart). Higher is better.`,
+      best: 'max',
+      dp: 0,
+      get: (f: any) => f.m.readability?.orig.levels ?? null,
+      show: (f: any) => (f.m.readability ? String(f.m.readability.orig.levels) : '—'),
+    },
+    {
+      id: 'flat',
+      group: 'Readability',
+      label: 'Flat %',
+      hint: 'Share of the map where values 5% apart look almost the same. Lower is better.',
+      best: 'min',
+      dp: 2,
+      get: (f: any) => f.m.readability?.orig.flat ?? null,
+      show: (f: any) => (f.m.readability ? pct(f.m.readability.orig.flat) : '—'),
+    },
+    {
+      id: 'amb',
+      group: 'Readability',
+      key: true,
+      label: 'Ambiguous %',
+      hint: 'Share of the map whose color has a look-alike elsewhere. Lower is better.',
+      best: 'min',
+      dp: 2,
+      get: (f: any) => f.m.readability?.orig.ambiguous ?? null,
+      show: (f: any) => (f.m.readability ? pct(f.m.readability.orig.ambiguous) : '—'),
+    },
     { id: 'rating', group: 'Ratings', label: 'Ratings', noSort: true },
   ];
 
   function facts(map: any) {
     const m = metrics(map);
     const worst = worstCvd(m);
-    return { map, m, ls: lightnessStats(viewData(map, 'orig').L!), qual: map.kind === 'qualitative', worstLabel: VIEWS.find((v) => v.key === worst)!.label };
+    return {
+      map,
+      m,
+      ls: lightnessStats(viewData(map, 'orig').L!),
+      qual: map.kind === 'qualitative',
+      worstLabel: VIEWS.find((v) => v.key === worst)!.label,
+    };
   }
 
   function compareTable(list: any) {
@@ -254,7 +409,10 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     const best: Record<string, number> = {};
     for (const c of cols) {
       if (!c.best) continue;
-      const vals = rows.map((f: any) => c.get(f)).filter((v: any) => v != null).map((v: any) => rnd(c, v));
+      const vals = rows
+        .map((f: any) => c.get(f))
+        .filter((v: any) => v != null)
+        .map((v: any) => rnd(c, v));
       if (vals.length < 2) continue;
       const b = c.best === 'max' ? Math.max(...vals) : Math.min(...vals);
       if (vals.some((v: any) => v !== b)) best[c.id] = b;
@@ -263,7 +421,7 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     const table = el('table', { class: 'cmap-nums' });
     // Group headers over runs of columns of the same group.
     const groupRow = el('tr', { class: 'cmap-groups' });
-    for (let i = 0; i < cols.length;) {
+    for (let i = 0; i < cols.length; ) {
       let j = i + 1;
       while (j < cols.length && cols[j].group && cols[j].group === cols[i].group) j++;
       groupRow.append(el('th', { scope: 'colgroup', colspan: String(j - i) }, cols[i].group || ''));
@@ -276,7 +434,11 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
         th.textContent = c.label;
       } else {
         th.setAttribute('aria-sort', cmpSort?.id === c.id ? (cmpSort!.dir > 0 ? 'ascending' : 'descending') : 'none');
-        const b = el('button', { type: 'button', class: 'cmap-th', title: `${c.hint ? `${c.hint} ` : ''}Click to sort.` }, c.label);
+        const b = el(
+          'button',
+          { type: 'button', class: 'cmap-th', title: `${c.hint ? `${c.hint} ` : ''}Click to sort.` },
+          c.label,
+        );
         b.addEventListener('click', () => {
           // none -> ascending -> descending -> back to selection order
           if (cmpSort?.id !== c.id) cmpSort = { id: c.id, dir: 1 };
@@ -331,15 +493,23 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     const actions = el('div', { class: 'cmap-actions' });
     const btn = (act: any, label: any, path: any) => {
       const b = el('button', {
-        class: 'cmap-toggle cmap-sm', type: 'button', title: `${label} ${map.name}`, 'aria-label': `${label} ${map.name}`,
-        'data-act': act, 'data-name': map.name,
+        class: 'cmap-toggle cmap-sm',
+        type: 'button',
+        title: `${label} ${map.name}`,
+        'aria-label': `${label} ${map.name}`,
+        'data-act': act,
+        'data-name': map.name,
       });
       b.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${path}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
       actions.append(b);
       return b;
     };
     // Drag to reorder; arrow keys move the focused handle for keyboard users.
-    const grip = btn('drag', 'Drag to reorder (or press ↑ ↓):', 'M6 3.5v.01M10 3.5v.01M6 8v.01M10 8v.01M6 12.5v.01M10 12.5v.01');
+    const grip = btn(
+      'drag',
+      'Drag to reorder (or press ↑ ↓):',
+      'M6 3.5v.01M10 3.5v.01M6 8v.01M10 8v.01M6 12.5v.01M10 12.5v.01',
+    );
     grip.classList.add('cmap-grip');
     row.prepend(grip); // first column, before the name
     grip.querySelector('path').setAttribute('stroke-width', '2.6');
@@ -353,7 +523,9 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     flip.setAttribute('aria-pressed', String(isRev(map)));
     flip.title = `${isRev(map) ? 'Reversed: show' : 'Reverse'} ${map.name}${isRev(map) ? ' in its original direction' : ' in the plots and test images'}`;
     flip.addEventListener('click', () => toggleReversed(map.name));
-    btn('remove', 'Remove from comparison:', 'M4 4l8 8M12 4l-8 8').addEventListener('click', () => removeCompared(map.name));
+    btn('remove', 'Remove from comparison:', 'M4 4l8 8M12 4l-8 8').addEventListener('click', () =>
+      removeCompared(map.name),
+    );
     row.append(actions);
     return row;
   }
@@ -362,8 +534,16 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
 
   const SINE_N = 256; // pixels per side
   const SINE_PATTERNS = [
-    { key: 'waves', label: 'Sine waves', cap: 'Two tilted sine waves and rings around an off-center point, added up and stretched to the whole range: smooth hills (high values), dips (low values) and saddles that never repeat. The data has no edges, so any edge or band you see comes from the colormap.' },
-    { key: 'bumps', label: 'Equal bumps', cap: 'A smooth ramp from low (top left) to high (bottom right) with 36 bumps of exactly the same height, one at every level. A perceptually uniform sequential map shows every bump equally clearly and the ramp without bands. Other maps hide bumps where they are flat and make others stand out, so equal changes look unequal.' },
+    {
+      key: 'waves',
+      label: 'Sine waves',
+      cap: 'Two tilted sine waves and rings around an off-center point, added up and stretched to the whole range: smooth hills (high values), dips (low values) and saddles that never repeat. The data has no edges, so any edge or band you see comes from the colormap.',
+    },
+    {
+      key: 'bumps',
+      label: 'Equal bumps',
+      cap: 'A smooth ramp from low (top left) to high (bottom right) with 36 bumps of exactly the same height, one at every level. A perceptually uniform sequential map shows every bump equally clearly and the ramp without bands. Other maps hide bumps where they are flat and make others stand out, so equal changes look unequal.',
+    },
   ];
   const sineValues = new Map<string, any>(); // pattern key -> values, computed once
 
@@ -371,7 +551,10 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     const qual = map.kind === 'qualitative';
     const colors = viewData(map, sineView, isRev(map)).colors;
     const cv = el('canvas', {
-      class: 'cmap-sine-img', width: String(SINE_N), height: String(SINE_N), role: 'img',
+      class: 'cmap-sine-img',
+      width: String(SINE_N),
+      height: String(SINE_N),
+      role: 'img',
       'aria-label': `${map.name} applied to the ${SINE_PATTERNS.find((p) => p.key === sinePat)!.label.toLowerCase()} test image`,
     });
     const g = cv.getContext('2d');
@@ -385,7 +568,15 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
       const k = (j * SINE_N + i) * 4;
       const c = [img.data[k], img.data[k + 1], img.data[k + 2]];
       const hex = rgbToHex(c);
-      showTip({ hex, title: map.name, text: [`value ${values[j * SINE_N + i].toFixed(3)}`, hex, `rgb(${c[0]}, ${c[1]}, ${c[2]})`] }, e.clientX, e.clientY);
+      showTip(
+        {
+          hex,
+          title: map.name,
+          text: [`value ${values[j * SINE_N + i].toFixed(3)}`, hex, `rgb(${c[0]}, ${c[1]}, ${c[2]})`],
+        },
+        e.clientX,
+        e.clientY,
+      );
     });
     cv.addEventListener('pointerleave', hideTip);
     return cv;
@@ -449,7 +640,10 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
   }
 
   function render() {
-    if (state.tab !== 'compare') { stale = true; return; }
+    if (state.tab !== 'compare') {
+      stale = true;
+      return;
+    }
     stale = false;
     const list = selected.map((n) => mapByName.get(n));
     cmp.count.textContent = list.length ? `Comparing ${list.length} of up to ${MAX_CMP}` : 'Compare';
@@ -478,7 +672,11 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     const full = selected.length >= MAX_CMP;
     e.cmpBtn.setAttribute('aria-pressed', String(on));
     e.cmpBtn.disabled = !on && full;
-    e.cmpBtn.title = on ? `Remove ${e.map.name} from comparison` : full ? `Up to ${MAX_CMP} maps can be compared` : `Add ${e.map.name} to comparison`;
+    e.cmpBtn.title = on
+      ? `Remove ${e.map.name} from comparison`
+      : full
+        ? `Up to ${MAX_CMP} maps can be compared`
+        : `Add ${e.map.name} to comparison`;
   }
 
   function syncButtons() {
@@ -491,24 +689,33 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
   const trayChips = el('div', { class: 'cmap-tray-chips' });
   const trayOpen = el('a', { class: 'btn small primary', href: '#compare' }, 'Open comparison');
   const trayClear = el('button', { type: 'button', class: 'btn small' }, 'Clear');
-  trayClear.addEventListener('click', () => { selected.length = 0; commit(); });
+  trayClear.addEventListener('click', () => {
+    selected.length = 0;
+    commit();
+  });
   tray.append(el('span', { class: 'cmap-tray-label' }, 'Comparing'), trayChips, trayOpen, trayClear);
 
   function syncTray() {
     tray.hidden = !(selected.length && state.tab === 'browse');
     document.body.classList.toggle('cmap-tray-on', !tray.hidden);
-    trayChips.replaceChildren(...selected.map((name) => {
-      const chip = el('span', { class: 'cmap-chip' });
-      chip.append(miniStrip(mapByName.get(name)), el('code', {}, name));
-      const x = el('button', { type: 'button', class: 'cmap-chip-x', 'aria-label': `Remove ${name} from comparison`, title: 'Remove' }, '×');
-      x.addEventListener('click', () => {
-        removeCompared(name);
-        // Keep the keyboard in the tray: on the next chip, or on Clear.
-        (trayChips.querySelector('.cmap-chip-x') || (tray.hidden ? null : trayClear))?.focus();
-      });
-      chip.append(x);
-      return chip;
-    }));
+    trayChips.replaceChildren(
+      ...selected.map((name) => {
+        const chip = el('span', { class: 'cmap-chip' });
+        chip.append(miniStrip(mapByName.get(name)), el('code', {}, name));
+        const x = el(
+          'button',
+          { type: 'button', class: 'cmap-chip-x', 'aria-label': `Remove ${name} from comparison`, title: 'Remove' },
+          '×',
+        );
+        x.addEventListener('click', () => {
+          removeCompared(name);
+          // Keep the keyboard in the tray: on the next chip, or on Clear.
+          (trayChips.querySelector('.cmap-chip-x') || (tray.hidden ? null : trayClear))?.focus();
+        });
+        chip.append(x);
+        return chip;
+      }),
+    );
   }
 
   // `focus` names the button to focus again, since the view is rebuilt.
@@ -552,14 +759,18 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     const grip = e.currentTarget;
     const items = [...cmp.strips.querySelectorAll('.cmap-item')];
     const item = items[from];
-    const mids = items.map((x) => { const r = x.getBoundingClientRect(); return r.top + r.height / 2; });
+    const mids = items.map((x) => {
+      const r = x.getBoundingClientRect();
+      return r.top + r.height / 2;
+    });
     let to = from;
     grip.setPointerCapture(e.pointerId);
     item.classList.add('dragging');
-    const mark = () => items.forEach((x, k) => {
-      x.classList.toggle('drop-before', k === to && to < from);
-      x.classList.toggle('drop-after', k === to && to > from);
-    });
+    const mark = () =>
+      items.forEach((x, k) => {
+        x.classList.toggle('drop-before', k === to && to < from);
+        x.classList.toggle('drop-after', k === to && to > from);
+      });
     const move = (ev: any) => {
       item.style.transform = `translateY(${ev.clientY - e.clientY}px)`;
       to = mids.reduce((best, m, k) => (Math.abs(m - ev.clientY) < Math.abs(mids[best] - ev.clientY) ? k : best), 0);
@@ -587,23 +798,42 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     const i = selected.indexOf(name);
     if (i < 0) return;
     selected.splice(i, 1);
-    commit(state.tab === 'compare' && selected.length ? { name: selected[Math.min(i, selected.length - 1)], act: 'remove' } : null);
+    commit(
+      state.tab === 'compare' && selected.length
+        ? { name: selected[Math.min(i, selected.length - 1)], act: 'remove' }
+        : null,
+    );
   }
 
   function buildCompare() {
-    const sec = el('section', { class: 'cmap-compare', id: 'cmap-compare', 'aria-labelledby': 'cmap-compare-count', hidden: '' });
+    const sec = el('section', {
+      class: 'cmap-compare',
+      id: 'cmap-compare',
+      'aria-labelledby': 'cmap-compare-count',
+      hidden: '',
+    });
     const head = el('div', { class: 'cmap-compare-head' });
     const count = el('h2', { id: 'cmap-compare-count', tabindex: '-1' });
     const clear = el('button', { type: 'button', class: 'btn small' }, 'Clear');
     const copyLink = el('button', { type: 'button', class: 'btn small' }, 'Copy link');
-    clear.addEventListener('click', () => { selected.length = 0; commit(); });
+    clear.addEventListener('click', () => {
+      selected.length = 0;
+      commit();
+    });
     let timer: ReturnType<typeof setTimeout> | undefined;
     copyLink.addEventListener('click', async () => {
       let msg = 'Copied';
-      try { await navigator.clipboard.writeText(location.href); } catch (err) { console.warn('Could not copy', err); msg = 'Copy failed'; }
+      try {
+        await navigator.clipboard.writeText(location.href);
+      } catch (err) {
+        console.warn('Could not copy', err);
+        msg = 'Copy failed';
+      }
       copyLink.textContent = msg;
       clearTimeout(timer);
-      timer = setTimeout(() => { copyLink.textContent = 'Copy link'; }, 1500);
+      timer = setTimeout(() => {
+        copyLink.textContent = 'Copy link';
+      }, 1500);
     });
     head.append(count, clear, copyLink);
 
@@ -641,15 +871,34 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     const sineHead = el('div', { class: 'cmap-sine-head' });
     sineHead.append(
       el('h3', {}, 'Sine wave test'),
-      choiceTabs('Test image', SINE_PATTERNS, sinePat, (k: any) => { sinePat = k; renderSine(current()); }),
-      choiceTabs('View', VIEWS, sineView, (k: ViewKey) => { sineView = k; renderSine(current()); }),
+      choiceTabs('Test image', SINE_PATTERNS, sinePat, (k: any) => {
+        sinePat = k;
+        renderSine(current());
+      }),
+      choiceTabs('View', VIEWS, sineView, (k: ViewKey) => {
+        sineView = k;
+        renderSine(current());
+      }),
     );
 
     const body = el('div', { class: 'cmap-compare-body' });
     const h3 = (t: any) => el('h3', {}, t);
     body.append(h3('Colormaps'), strips, h3('Profiles'), plot, numsHead, table, sineHead, sineCap, sine);
     sec.append(head, add, empty, body, gradDefs);
-    Object.assign(cmp, { sec, picker: picker.input, count, strips, plot, table, sine, sineCap, empty, body, clear, copyLink });
+    Object.assign(cmp, {
+      sec,
+      picker: picker.input,
+      count,
+      strips,
+      plot,
+      table,
+      sine,
+      sineCap,
+      empty,
+      body,
+      clear,
+      copyLink,
+    });
     return sec;
   }
 

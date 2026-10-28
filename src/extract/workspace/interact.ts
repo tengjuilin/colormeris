@@ -1,8 +1,8 @@
-import { cellAt, detectGridSize, readPixel, rectCorners } from '../../core/grid.ts';
 import { rgbToHex } from '../../core/color.ts';
 import { pointAtT, projectT } from '../../core/colorbar.ts';
-import { ticksWithT } from '../project/project.ts';
+import { cellAt, detectGridSize, readPixel, rectCorners } from '../../core/grid.ts';
 import type { Cell, Handle, InteractMembers, Panel, Point, WorkspaceContext } from '../../types/index.ts';
+import { ticksWithT } from '../project/project.ts';
 
 // Pointer input on the viewer: clicks while placing the grid, colorbar and
 // ticks, dragging handles (grid corners, colorbar ends, the bar, ticks) and
@@ -25,7 +25,12 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
         const [a, b] = mode.points;
         if (Math.abs(a.x - b.x) < 2 || Math.abs(a.y - b.y) < 2) {
           mode.points.pop();
-          w.toast(w.activePanel().grid.anchor === 'centers' ? 'Click the center of the opposite corner dot.' : 'Grid is too small; click the opposite corner.', true);
+          w.toast(
+            w.activePanel().grid.anchor === 'centers'
+              ? 'Click the center of the opposite corner dot.'
+              : 'Grid is too small; click the opposite corner.',
+            true,
+          );
           return;
         }
         w.setMode(null);
@@ -119,7 +124,8 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
     w.tool().onHandleDrop?.(handle);
     // Re-detect the cell count after moving a corner unless the user set it by hand.
     const panel = w.activePanel();
-    if (handle.kind === 'corner' && panel.grid.autoSize && !w.tool().plotArea) applyDetectedSize(panel, { onlyIfChanged: true });
+    if (handle.kind === 'corner' && panel.grid.autoSize && !w.tool().plotArea)
+      applyDetectedSize(panel, { onlyIfChanged: true });
     w.changed();
   }
 
@@ -163,9 +169,14 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
       if (handle.kind === 'barStart') cb.start = q;
       else cb.end = q;
       const L = len() || 1e-9;
-      const tAt = (t0: number) => (handle.kind === 'barEnd' ? (t0 * handle.len!) / L : 1 - ((1 - t0) * handle.len!) / L);
+      const tAt = (t0: number) =>
+        handle.kind === 'barEnd' ? (t0 * handle.len!) / L : 1 - ((1 - t0) * handle.len!) / L;
       // Ticks typed along a known colormap have no page point to move.
-      cb.ticks.forEach((k, i) => Number.isFinite(k.x) && Object.assign(k, pointAtT(cb.start!, cb.end!, fixed ? tAt(handle.ts![i]) : handle.ts![i])));
+      cb.ticks.forEach(
+        (k, i) =>
+          Number.isFinite(k.x) &&
+          Object.assign(k, pointAtT(cb.start!, cb.end!, fixed ? tAt(handle.ts![i]) : handle.ts![i])),
+      );
     } else if (handle.kind === 'bar') {
       // Move the line and its ticks together, from where the drag started.
       // Shift: only along the axis the pointer has moved furthest on.
@@ -194,7 +205,8 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
   function handlePoint(handle: Handle, p: Point): Point | null | undefined {
     const panel = w.activePanel();
     const cb = panel.colorbar;
-    if (handle.kind === 'bar' && cb.start && cb.end) return pointAtT(cb.start, cb.end, Math.min(1, Math.max(0, projectT(cb.start, cb.end, p))));
+    if (handle.kind === 'bar' && cb.start && cb.end)
+      return pointAtT(cb.start, cb.end, Math.min(1, Math.max(0, projectT(cb.start, cb.end, p))));
     if (handle.kind === 'barStart') return cb.start;
     if (handle.kind === 'barEnd') return cb.end;
     if (handle.kind === 'corner') return panel.grid.corners?.[handle.i!];

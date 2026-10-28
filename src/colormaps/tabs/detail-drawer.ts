@@ -1,9 +1,9 @@
+import { rgbToHex } from '../../core/color.ts';
+import { lightnessStats } from '../../core/cvd.ts';
 import type { CmapViewerContext } from '../../types/index.ts';
 import { READ_DE, READ_WINDOW, ratingNotes, worstCvd } from '../metrics.ts';
 import { citeFor } from '../references.ts';
 import { COMPARE_MAX } from '../route.ts';
-import { rgbToHex } from '../../core/color.ts';
-import { lightnessStats } from '../../core/cvd.ts';
 
 // The detail view of one colormap in the viewer (colormaps.html). On wide
 // screens it opens in a drawer at the right, so the list stays in place; on
@@ -18,8 +18,28 @@ const PLOT_H = 150;
 
 export function setupCmapDetail(ctx: CmapViewerContext) {
   const {
-    el, pct, VIEWS, GLYPH, state, items, metrics, viewData, sepOf, profile, stepPoints, niceAxis,
-    linePlot, figure, POS_TICKS, M, HUE_MIN_CHROMA, stripCanvas, makeStrip, refNumber, refItem, hideTip,
+    el,
+    pct,
+    VIEWS,
+    GLYPH,
+    state,
+    items,
+    metrics,
+    viewData,
+    sepOf,
+    profile,
+    stepPoints,
+    niceAxis,
+    linePlot,
+    figure,
+    POS_TICKS,
+    M,
+    HUE_MIN_CHROMA,
+    stripCanvas,
+    makeStrip,
+    refNumber,
+    refItem,
+    hideTip,
   } = ctx;
   const wide = window.matchMedia(WIDE);
   const drawer = el('aside', { class: 'cmap-drawer', id: 'cmap-drawer', hidden: '', 'aria-label': 'Colormap details' });
@@ -47,32 +67,96 @@ export function setupCmapDetail(ctx: CmapViewerContext) {
     const W = PLOT_H - M.t - M.b + M.l + M.r; // plot box as wide as it is tall
     const opt = { compact: true };
     const lin = qual ? null : { x1: 0, y1: Ls[0], x2: 1, y2: Ls[n - 1], label: 'linear' };
-    out.L = figure('Lightness L*', linePlot({
-      map, title: 'Lightness L*', yLabel: 'L*', yMax: 100, yTicks: [0, 20, 40, 60, 80, 100], xTicks, xLabel,
-      points: pts(Ls, (v: any) => `L* = ${v.toFixed(1)}`), mode, ref: lin, dotR, W, H,
-    }), qual ? null : 'A straight rising or falling line reads best, in color and in grayscale.', opt);
+    out.L = figure(
+      'Lightness L*',
+      linePlot({
+        map,
+        title: 'Lightness L*',
+        yLabel: 'L*',
+        yMax: 100,
+        yTicks: [0, 20, 40, 60, 80, 100],
+        xTicks,
+        xLabel,
+        points: pts(Ls, (v: any) => `L* = ${v.toFixed(1)}`),
+        mode,
+        ref: lin,
+        dotR,
+        W,
+        H,
+      }),
+      qual ? null : 'A straight rising or falling line reads best, in color and in grayscale.',
+      opt,
+    );
 
     if (!qual) {
       const stepPts = stepPoints(map, { colors, n, reversed });
       const k = stepPts.length;
       const axis = niceAxis(Math.max(...stepPts.map((p: any) => p.y)) * 1.05);
       const mean = m.stepStats.mean;
-      out.step = figure('Perceptual step ΔE2000', linePlot({
-        map, title: 'Perceptual step ΔE2000', yLabel: 'ΔE2000 per step', yMax: axis.top, yTicks: axis.ticks, xTicks,
-        points: stepPts, mode: 'line', ref: { x1: 0, y1: mean, x2: 1, y2: mean, label: 'mean' }, W, H,
-      }), `ΔE2000 between neighbors, in steps of 1/${k} of the map. A flat line means equal steps in the data look like equal steps in color.`, opt);
+      out.step = figure(
+        'Perceptual step ΔE2000',
+        linePlot({
+          map,
+          title: 'Perceptual step ΔE2000',
+          yLabel: 'ΔE2000 per step',
+          yMax: axis.top,
+          yTicks: axis.ticks,
+          xTicks,
+          points: stepPts,
+          mode: 'line',
+          ref: { x1: 0, y1: mean, x2: 1, y2: mean, label: 'mean' },
+          W,
+          H,
+        }),
+        `ΔE2000 between neighbors, in steps of 1/${k} of the map. A flat line means equal steps in the data look like equal steps in color.`,
+        opt,
+      );
     }
 
     const cAxis = niceAxis(Math.max(100, Math.max(...C) * 1.05));
-    out.C = figure('Chroma C*', linePlot({
-      map, title: 'Chroma C*', yLabel: 'C*', yMax: cAxis.top, yTicks: cAxis.ticks, xTicks, xLabel,
-      points: pts(C, (v: any) => `C* = ${v.toFixed(1)}`), mode, dotR, W, H,
-    }), 'Colorfulness: 0 is gray.', opt);
+    out.C = figure(
+      'Chroma C*',
+      linePlot({
+        map,
+        title: 'Chroma C*',
+        yLabel: 'C*',
+        yMax: cAxis.top,
+        yTicks: cAxis.ticks,
+        xTicks,
+        xLabel,
+        points: pts(C, (v: any) => `C* = ${v.toFixed(1)}`),
+        mode,
+        dotR,
+        W,
+        H,
+      }),
+      'Colorfulness: 0 is gray.',
+      opt,
+    );
 
-    out.h = figure('Hue h°', linePlot({
-      map, title: 'Hue h°', yLabel: 'h (°)', yMax: 360, yTicks: [0, 90, 180, 270, 360], xTicks, xLabel,
-      points: pts(h, (v: any) => `h = ${v.toFixed(0)}°`, (i: any) => C[i] < HUE_MIN_CHROMA), mode: 'dots', dotR: qual ? 4.5 : 1.8, W, H,
-    }), `Hue wraps around at 360°, so it is drawn as dots. Colors with C* < ${HUE_MIN_CHROMA} (grays) are left out, since their hue is not defined.`, opt);
+    out.h = figure(
+      'Hue h°',
+      linePlot({
+        map,
+        title: 'Hue h°',
+        yLabel: 'h (°)',
+        yMax: 360,
+        yTicks: [0, 90, 180, 270, 360],
+        xTicks,
+        xLabel,
+        points: pts(
+          h,
+          (v: any) => `h = ${v.toFixed(0)}°`,
+          (i: any) => C[i] < HUE_MIN_CHROMA,
+        ),
+        mode: 'dots',
+        dotR: qual ? 4.5 : 1.8,
+        W,
+        H,
+      }),
+      `Hue wraps around at 360°, so it is drawn as dots. Colors with C* < ${HUE_MIN_CHROMA} (grays) are left out, since their hue is not defined.`,
+      opt,
+    );
     return out;
   }
 
@@ -87,7 +171,13 @@ export function setupCmapDetail(ctx: CmapViewerContext) {
     };
     if (map.kind === 'qualitative') {
       add('L* range', `${s.range[0].toFixed(0)}–${s.range[1].toFixed(0)}`);
-      ul.append(el('li', { class: 'muted' }, 'Qualitative colors have no order, so monotonicity, linearity and steps do not apply.'));
+      ul.append(
+        el(
+          'li',
+          { class: 'muted' },
+          'Qualitative colors have no order, so monotonicity, linearity and steps do not apply.',
+        ),
+      );
       return ul;
     }
     const st = metrics(map).stepStats;
@@ -124,15 +214,26 @@ export function setupCmapDetail(ctx: CmapViewerContext) {
     const r = m.readability;
     const worst = worstCvd(m);
     const table = el('table', { class: 'cmap-sep' });
-    table.append(el('caption', {}, qual
-      ? 'Smallest difference between any two colors'
-      : `Smallest difference between values at least 10% apart, and reading values back (differences under ${READ_DE} ΔE are not relied on)`));
+    table.append(
+      el(
+        'caption',
+        {},
+        qual
+          ? 'Smallest difference between any two colors'
+          : `Smallest difference between values at least 10% apart, and reading values back (differences under ${READ_DE} ΔE are not relied on)`,
+      ),
+    );
     const head = el('tr');
     const cols = ['View', 'Min', 'Between', 'Confused', 'Levels', 'Flat', 'Ambiguous'];
-    const tips = [null, 'Smallest ΔE2000 (ΔL* for grayscale)', null, 'The two colors that are closest',
+    const tips = [
+      null,
+      'Smallest ΔE2000 (ΔL* for grayscale)',
+      null,
+      'The two colors that are closest',
       `Distinguishable levels from end to end (each ${READ_DE} ΔE apart)`,
       `Share where values ${pct(READ_WINDOW)} apart look almost the same`,
-      'Share whose color has a look-alike at least 10% away'];
+      'Share whose color has a look-alike at least 10% away',
+    ];
     cols.forEach((t, i) => head.append(el('th', tips[i] ? { scope: 'col', title: tips[i] } : { scope: 'col' }, t)));
     const thead = el('thead');
     thead.append(head);
@@ -156,7 +257,8 @@ export function setupCmapDetail(ctx: CmapViewerContext) {
       }
       tr.append(sw);
       const x = r?.[v.key];
-      for (const t of x ? [String(x.levels), pct(x.flat), pct(x.ambiguous)] : ['—', '—', '—']) tr.append(el('td', {}, t));
+      for (const t of x ? [String(x.levels), pct(x.flat), pct(x.ambiguous)] : ['—', '—', '—'])
+        tr.append(el('td', {}, t));
       tr.addEventListener('pointerenter', () => showPair(strips[vi], s.t, qual, n));
       tr.addEventListener('pointerleave', () => clearPair(strips[vi]));
       tbody.append(tr);
@@ -170,18 +272,29 @@ export function setupCmapDetail(ctx: CmapViewerContext) {
   // ---- where values get confused ----
 
   // Spans are on the original map; flip them when the map is shown reversed.
-  const spansOf = (map: any, spans: any) => (ctx.isRev(map) ? spans.map(([a, b]: [number, number]) => [1 - b, 1 - a]).reverse() : spans);
+  const spansOf = (map: any, spans: any) =>
+    ctx.isRev(map) ? spans.map(([a, b]: [number, number]) => [1 - b, 1 - a]).reverse() : spans;
 
   // The strip with two thin tracks below it: where values are flat, and where
   // a color has a look-alike elsewhere. Positions are percentages, so it scales.
   function readTracks(map: any, viewKey: any) {
     const r = metrics(map).readability[viewKey];
     const box = el('div', { class: 'cmap-tracks' });
-    const strip = el('div', { class: 'cmap-track-strip', role: 'img', 'aria-label': `${map.name} ${VIEWS.find((v) => v.key === viewKey)!.label}` });
+    const strip = el('div', {
+      class: 'cmap-track-strip',
+      role: 'img',
+      'aria-label': `${map.name} ${VIEWS.find((v) => v.key === viewKey)!.label}`,
+    });
     strip.append(stripCanvas(viewData(map, viewKey).colors, false));
     const track = (label: any, cls: any, spans: any, what: any) => {
       box.append(el('span', { class: 'cmap-track-label' }, label));
-      const t = el('div', { class: `cmap-track ${cls}`, role: 'img', 'aria-label': spans.length ? `${label}: ${spans.map(([a, b]: [number, number]) => `${a.toFixed(2)} to ${b.toFixed(2)}`).join(', ')}` : `${label}: none` });
+      const t = el('div', {
+        class: `cmap-track ${cls}`,
+        role: 'img',
+        'aria-label': spans.length
+          ? `${label}: ${spans.map(([a, b]: [number, number]) => `${a.toFixed(2)} to ${b.toFixed(2)}`).join(', ')}`
+          : `${label}: none`,
+      });
       for (const [a, b] of spans) {
         const s = el('span', { title: `${what}: t = ${a.toFixed(2)}–${b.toFixed(2)}` });
         s.style.left = `${a * 100}%`;
@@ -214,7 +327,13 @@ export function setupCmapDetail(ctx: CmapViewerContext) {
     }
     show();
     sec.append(tabs, holder);
-    sec.append(el('p', { class: 'cmap-fig-cap muted' }, `Flat: values ${pct(READ_WINDOW)} of the range apart look almost the same. Ambiguous: the color also appears at a value at least 10% away, so it could mean either.`));
+    sec.append(
+      el(
+        'p',
+        { class: 'cmap-fig-cap muted' },
+        `Flat: values ${pct(READ_WINDOW)} of the range apart look almost the same. Ambiguous: the color also appears at a value at least 10% away, so it could mean either.`,
+      ),
+    );
     return sec;
   }
 
@@ -234,7 +353,11 @@ export function setupCmapDetail(ctx: CmapViewerContext) {
     btn.textContent = on ? 'In comparison ✓' : 'Add to comparison';
     btn.setAttribute('aria-pressed', String(on));
     btn.disabled = full;
-    btn.title = full ? `Up to ${COMPARE_MAX} maps can be compared` : on ? 'Remove from the comparison' : 'Add to the comparison';
+    btn.title = full
+      ? `Up to ${COMPARE_MAX} maps can be compared`
+      : on
+        ? 'Remove from the comparison'
+        : 'Add to the comparison';
   }
 
   function build(entry: any) {
@@ -248,8 +371,14 @@ export function setupCmapDetail(ctx: CmapViewerContext) {
     const cmpBtn = el('button', { type: 'button', class: 'btn small' });
     cmpLabel(cmpBtn, map.name);
     cmpBtn.addEventListener('click', () => ctx.setCompared(map.name, !state.selected.includes(map.name)));
-    const close = el('button', { type: 'button', class: 'cmap-toggle', 'aria-label': 'Close details', title: 'Close (Esc)' });
-    close.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+    const close = el('button', {
+      type: 'button',
+      class: 'cmap-toggle',
+      'aria-label': 'Close details',
+      title: 'Close (Esc)',
+    });
+    close.innerHTML =
+      '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
     close.addEventListener('click', () => api.close({ focus: true }));
     const expand = el('button', { type: 'button', class: 'btn small subtle' });
     head.append(title, expand, cmpBtn, close);
@@ -271,7 +400,14 @@ export function setupCmapDetail(ctx: CmapViewerContext) {
       li.append(pill, el('span', {}, n.text));
       notes.append(li);
     }
-    if (qual) notes.append(el('li', { class: 'muted' }, 'Qualitative maps are not rated for uniformity or readability, since their colors have no order.'));
+    if (qual)
+      notes.append(
+        el(
+          'li',
+          { class: 'muted' },
+          'Qualitative maps are not rated for uniformity or readability, since their colors have no order.',
+        ),
+      );
 
     const figs = plotFigs(map);
     const plots = el('div', { class: 'cmap-plots cmap-detail-plots' });
@@ -326,14 +462,21 @@ export function setupCmapDetail(ctx: CmapViewerContext) {
     const top = from === 'drawer' && !inDrawer ? drawerAnchor() : null;
     drawer.hidden = !(inDrawer && state.tab === 'browse');
     document.body.classList.toggle('cmap-drawer-open', !drawer.hidden);
-    if (!current) { mode = null; drawer.replaceChildren(); return null; }
+    if (!current) {
+      mode = null;
+      drawer.replaceChildren();
+      return null;
+    }
     const { entry, box } = current;
     mode = inDrawer ? 'drawer' : 'inline';
     if (inDrawer) {
       entry.panel.hidden = true;
       if (box.parentNode !== drawer) drawer.replaceChildren(box);
       const bar = document.querySelector('.topbar');
-      document.documentElement.style.setProperty('--cmap-drawer-top', `${bar ? Math.round(bar.getBoundingClientRect().bottom) : 0}px`);
+      document.documentElement.style.setProperty(
+        '--cmap-drawer-top',
+        `${bar ? Math.round(bar.getBoundingClientRect().bottom) : 0}px`,
+      );
       entry.button.setAttribute('aria-controls', drawer.id);
     } else {
       drawer.replaceChildren();

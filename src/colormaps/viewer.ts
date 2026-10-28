@@ -1,13 +1,20 @@
 import { cmapData } from '../core/colormap-library.ts';
 import { CVD_TYPES, grayscale, lightness, parseHexColors, simulateCvd } from '../core/cvd.ts';
-import type { ColormapMetrics } from './metrics.ts';
-import type { Rgb, ViewData } from '../types/index.ts';
-import type { CmapListItem, CmapViewerContext, CmapViewerState, ColormapEntry, ViewKey } from '../types/index.ts';
-import { GLYPH, PILL, RATING_COLS, VIEWS, anchorPopover, clamp8, el, pct, roundRgb, svgEl } from './common.ts';
+import type {
+  CmapListItem,
+  CmapViewerContext,
+  CmapViewerState,
+  ColormapEntry,
+  Rgb,
+  ViewData,
+  ViewKey,
+} from '../types/index.ts';
+import { anchorPopover, clamp8, el, GLYPH, PILL, pct, RATING_COLS, roundRgb, svgEl, VIEWS } from './common.ts';
 import { setupCmapFooter } from './footer.ts';
+import type { ColormapMetrics } from './metrics.ts';
 import { colormapMetrics, ratingNotes } from './metrics.ts';
 import { setupCmapPlots } from './plots.ts';
-import { VIEWER_TABS, parseViewerRoute } from './route.ts';
+import { parseViewerRoute, VIEWER_TABS } from './route.ts';
 import { keepPlaceOnResize } from './scroll-anchor.ts';
 import { setupCmapStrips } from './strips.ts';
 import { setupCmapBrowse } from './tabs/browse-tab.ts';
@@ -16,7 +23,6 @@ import { setupCmapCvd } from './tabs/cvd-tab.ts';
 import { setupCmapDetail } from './tabs/detail-drawer.ts';
 import { setupCmapIdentify } from './tabs/identify-tab.ts';
 import { setupCmapRecolor } from './tabs/recolor-tab.ts';
-
 
 // The colormap viewer page (colormaps.html), in five tabs:
 //   Browse    every colormap as five vector SVG strips (as seen, three
@@ -50,7 +56,12 @@ export function setupColormapViewer(root: HTMLElement) {
   // Shared with the modules. `selected` is the comparison (?compare=),
   // `open` the map in the detail view (?map=). Browse sets stripView.
   const state: CmapViewerState = {
-    reversed: false, selected: route.compare, open: null, tab: 'browse', stripView: 'all', sort: null,
+    reversed: false,
+    selected: route.compare,
+    open: null,
+    tab: 'browse',
+    stripView: 'all',
+    sort: null,
     // Maps shown the other way round in Browse. It starts with the sequential
     // maps the export script marked `flip`, so every Sequential map runs dark to light.
     flipped: new Set(data.maps.filter((m) => m.flip).map((m) => m.name)),
@@ -134,14 +145,23 @@ export function setupColormapViewer(root: HTMLElement) {
       const n = notes.find((x) => x.key === c.key);
       if (!n) return el('span', { class: 'cmap-rc na', title: `${c.label}: does not apply to qualitative maps` }, '—');
       const s = el('span', { class: `cmap-rc ${n.rating}`, title: `${c.label}: ${n.rating}. ${n.text}` });
-      s.append(el('span', { 'aria-hidden': 'true' }, GLYPH[n.rating]), el('span', { class: 'sr-only' }, `${c.label}: ${n.rating}`));
+      s.append(
+        el('span', { 'aria-hidden': 'true' }, GLYPH[n.rating]),
+        el('span', { class: 'sr-only' }, `${c.label}: ${n.rating}`),
+      );
       return s;
     });
   }
 
   // ---- tabs ----
 
-  const TAB_TITLES: Record<string, string> = { browse: 'Browse', compare: 'Compare', identify: 'Identify', recolor: 'Recolor', cvd: 'CVD' };
+  const TAB_TITLES: Record<string, string> = {
+    browse: 'Browse',
+    compare: 'Compare',
+    identify: 'Identify',
+    recolor: 'Recolor',
+    cvd: 'CVD',
+  };
   const tabLinks = new Map();
 
   function buildTabs() {
@@ -181,7 +201,10 @@ export function setupColormapViewer(root: HTMLElement) {
     detail.place();
     compare.syncTray();
     // A new tab starts at its top; the list keeps its place within Browse.
-    if (changed && scroll) { root.scrollTop = 0; window.scrollTo(0, 0); }
+    if (changed && scroll) {
+      root.scrollTop = 0;
+      window.scrollTo(0, 0);
+    }
   }
 
   // Switch tabs from code (Identify's Show button), as a history entry.
@@ -217,13 +240,42 @@ export function setupColormapViewer(root: HTMLElement) {
   // ---- page ----
 
   const ctx = {
-    el, svgEl, pct, clamp8, roundRgb, anchorPopover, VIEWS, RATING_COLS, GLYPH, PILL, data, state, items, mapByName, root,
-    base, viewData, metrics, sepOf, rev, isRev, ratingPills, ratingCells, updateUrl, goTab,
+    el,
+    svgEl,
+    pct,
+    clamp8,
+    roundRgb,
+    anchorPopover,
+    VIEWS,
+    RATING_COLS,
+    GLYPH,
+    PILL,
+    data,
+    state,
+    items,
+    mapByName,
+    root,
+    base,
+    viewData,
+    metrics,
+    sepOf,
+    rev,
+    isRev,
+    ratingPills,
+    ratingCells,
+    updateUrl,
+    goTab,
     // Late bound: the modules call each other through these.
     setCompared: (name: string, on: boolean) => compare.setCompared(name, on),
-    onCompareChange: () => { syncTabs(); detail.syncCompare(); },
+    onCompareChange: () => {
+      syncTabs();
+      detail.syncCompare();
+    },
     openDetail: (name: string) => detail.open(name),
-    recolorFigure: (file: File, line?: unknown) => { goTab('recolor'); recolor.open(file, line); },
+    recolorFigure: (file: File, line?: unknown) => {
+      goTab('recolor');
+      recolor.open(file, line);
+    },
     showRow: (name: string, opts?: { smooth?: boolean }) => browse.showRow(name, opts),
     detail: null, // set below
     compare: null,
@@ -245,7 +297,13 @@ export function setupColormapViewer(root: HTMLElement) {
   root.replaceChildren();
   const inner = el('div', { class: 'cmap-inner' });
   inner.append(el('h1', {}, 'Colormaps'));
-  inner.append(el('p', { class: 'cmap-intro' }, `The ${data.maps.length} colormaps of Matplotlib, CMasher, Crameri’s Scientific colour maps, cmocean, colorcet, seaborn, CarbonPlan, NCL, SciVisColor, CARTOColors, MATLAB and R packages as seen, as simulated for three kinds of color-vision deficiency, and in grayscale, rated for uniformity, CVD and grayscale safety, and how well values can be read back. Hover a strip for its values; click to copy the hex.`));
+  inner.append(
+    el(
+      'p',
+      { class: 'cmap-intro' },
+      `The ${data.maps.length} colormaps of Matplotlib, CMasher, Crameri’s Scientific colour maps, cmocean, colorcet, seaborn, CarbonPlan, NCL, SciVisColor, CARTOColors, MATLAB and R packages as seen, as simulated for three kinds of color-vision deficiency, and in grayscale, rated for uniformity, CVD and grayscale safety, and how well values can be read back. Hover a strip for its values; click to copy the hex.`,
+    ),
+  );
   // Tabs, controls and column names share one sticky bar, so they stay
   // readable while scrolling instead of one floating header per section.
   const top = el('div', { class: 'cmap-top' });
@@ -272,20 +330,29 @@ export function setupColormapViewer(root: HTMLElement) {
   setTab(route.tab || 'browse', { scroll: false });
   // Every history entry gets its tab, so Back returns to the right one.
   if (!location.hash) {
-    try { history.replaceState(history.state, '', `${location.pathname}${location.search}#${state.tab}`); } catch { /* file:// */ }
+    try {
+      history.replaceState(history.state, '', `${location.pathname}${location.search}#${state.tab}`);
+    } catch {
+      /* file:// */
+    }
   }
   if (route.map) browse.showRow(route.map, { smooth: false });
   keepPlaceOnResize({ root, top, state, detail });
   browse.precomputeMetrics();
-  return { items, setReversed(v: unknown) { state.reversed = !!v; } };
+  return {
+    items,
+    setReversed(v: unknown) {
+      state.reversed = !!v;
+    },
+  };
 }
 
 export function showStartupError(err: unknown) {
   console.error(err);
   const e = document.createElement('div');
   e.setAttribute('role', 'alert');
-  e.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99;padding:10px 14px;background:#b3261e;color:#fff;font:14px system-ui,sans-serif';
+  e.style.cssText =
+    'position:fixed;top:0;left:0;right:0;z-index:99;padding:10px 14px;background:#b3261e;color:#fff;font:14px system-ui,sans-serif';
   e.textContent = `The colormap viewer could not start (${(err as Error)?.message || err}). Try a hard refresh (Ctrl+Shift+R). If it persists, report the first error in the browser console.`;
   document.body.prepend(e);
 }
-

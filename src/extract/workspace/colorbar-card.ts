@@ -1,11 +1,22 @@
+import { createMapPicker } from '../../colormaps/map-picker.ts';
+import { rgbToHex } from '../../core/color.ts';
+import { colorAtT, isLogScale, makeValueFn, pointAtT, sampleColorbar } from '../../core/colorbar.ts';
 import { cmapData } from '../../core/colormap-library.ts';
 import { cmapRgbs, colormapSamples, suggestColormap } from '../../core/colormap-match.ts';
-import { colorAtT, isLogScale, makeValueFn, pointAtT, sampleColorbar } from '../../core/colorbar.ts';
-import { rgbToHex } from '../../core/color.ts';
 import { readPixel } from '../../core/grid.ts';
-import { createMapPicker } from '../../colormaps/map-picker.ts';
+import type {
+  Colorbar,
+  ColorbarCardMembers,
+  ColorbarScale,
+  ColormapEntry,
+  DomEl,
+  HeatmapResult,
+  Panel,
+  Rgb,
+  Tick,
+  WorkspaceContext,
+} from '../../types/index.ts';
 import { ticksWithT } from '../project/project.ts';
-import type { ColormapEntry, Colorbar, ColorbarCardMembers, ColorbarScale, DomEl, HeatmapResult, Panel, Rgb, Tick, WorkspaceContext } from '../../types/index.ts';
 
 // The Colorbar card: ends, the tick table, the sampled strip and the
 // suggested reference colormap. The colors come from the bar in the figure
@@ -26,7 +37,15 @@ export function setupWorkspaceColorbarCard(w: WorkspaceContext): ColorbarCardMem
     const known = !!cb.colormap;
     const ready = !!cb.start || known;
     const ticksText = `${validTicks} tick${validTicks === 1 ? '' : 's'}`;
-    w.setBadge($('bar-state'), !ready ? 'not placed' : known ? `${cb.colormap!.name}${cb.colormap!.reversed ? '_r' : ''} · ${ticksText}` : ticksText, ready && validTicks >= 2);
+    w.setBadge(
+      $('bar-state'),
+      !ready
+        ? 'not placed'
+        : known
+          ? `${cb.colormap!.name}${cb.colormap!.reversed ? '_r' : ''} · ${ticksText}`
+          : ticksText,
+      ready && validTicks >= 2,
+    );
     $('tick-add').disabled = !cb.start;
     $('tick-type').disabled = !ready;
     renderSource(cb);
@@ -64,7 +83,14 @@ export function setupWorkspaceColorbarCard(w: WorkspaceContext): ColorbarCardMem
           // ticks whose mark is hard to click, e.g. at the very ends.
           const pos = document.createElement('td');
           pos.className = 'pos';
-          const at = Object.assign(document.createElement('input'), { type: 'number', step: 'any', min: '-10', max: '110', className: 'num', title: 'Position along the colorbar: 0% at the start, 100% at the end' });
+          const at = Object.assign(document.createElement('input'), {
+            type: 'number',
+            step: 'any',
+            min: '-10',
+            max: '110',
+            className: 'num',
+            title: 'Position along the colorbar: 0% at the start, 100% at the end',
+          });
           at.setAttribute('aria-label', 'Position in % along the colorbar');
           at.title = 'Position along the colorbar or colormap: 0% at the start, 100% at the end';
           at.addEventListener('focus', () => w.pushHistory());
@@ -226,7 +252,9 @@ export function setupWorkspaceColorbarCard(w: WorkspaceContext): ColorbarCardMem
       use.className = 'link';
       use.textContent = 'Use its colors';
       use.title = `Read the colors from ${m.name} itself instead of the colorbar in the figure`;
-      use.addEventListener('click', () => w.commit((p) => (p.colorbar.colormap = { name: m.name, reversed: m.reversed })));
+      use.addEventListener('click', () =>
+        w.commit((p) => (p.colorbar.colormap = { name: m.name, reversed: m.reversed })),
+      );
       out.append(' · ', use);
     }
   }
@@ -260,7 +288,11 @@ export function setupWorkspaceColorbarCard(w: WorkspaceContext): ColorbarCardMem
     base: (m: ColormapEntry) => cmapRgbs(m.name) || [],
     stripCanvas(colors: Rgb[], qualitative: boolean) {
       const n = Math.max(1, colors.length);
-      const canvas = Object.assign(document.createElement('canvas'), { className: qualitative ? 'cmap-paint qual' : 'cmap-paint', width: n, height: 1 });
+      const canvas = Object.assign(document.createElement('canvas'), {
+        className: qualitative ? 'cmap-paint qual' : 'cmap-paint',
+        width: n,
+        height: 1,
+      });
       const img = new ImageData(n, 1);
       colors.forEach((c, i) => img.data.set([c[0], c[1], c[2], 255], i * 4));
       canvas.getContext('2d')!.putImageData(img, 0, 0);
@@ -273,7 +305,8 @@ export function setupWorkspaceColorbarCard(w: WorkspaceContext): ColorbarCardMem
     placeholder: 'Type to search',
     // Called while the picker is built too, before any tool is set.
     current: () => (w.tool() ? w.activePanel()?.colorbar.colormap?.name || null : null),
-    onChoose: (name: string, typedReversed?: boolean) => chooseColormap(name, typedReversed || $('bar-cmap-rev').checked),
+    onChoose: (name: string, typedReversed?: boolean) =>
+      chooseColormap(name, typedReversed || $('bar-cmap-rev').checked),
   });
   $('bar-cmap-pick').append(picker.box);
 
@@ -295,7 +328,11 @@ export function setupWorkspaceColorbarCard(w: WorkspaceContext): ColorbarCardMem
     const [lo, hi] = isLogScale(cb.scale) ? [1, 10] : [0, 1];
     w.commit((p) => {
       p.colorbar.colormap = { name, reversed: !!reversed };
-      if (addEnds) p.colorbar.ticks = [{ id: ids[0], t: 0, value: lo }, { id: ids[1], t: 1, value: hi }];
+      if (addEnds)
+        p.colorbar.ticks = [
+          { id: ids[0], t: 0, value: lo },
+          { id: ids[1], t: 1, value: hi },
+        ];
     });
     if (addEnds) focusTick(ids[0]);
   }
@@ -309,7 +346,8 @@ export function setupWorkspaceColorbarCard(w: WorkspaceContext): ColorbarCardMem
     chooseColormap(m ? m.name : 'viridis', m ? m.reversed : false);
   });
   $('bar-cmap-rev').addEventListener('change', (e) => {
-    if (w.activePanel().colorbar.colormap) w.commit((p) => (p.colorbar.colormap = { ...p.colorbar.colormap!, reversed: (e.target as DomEl).checked }));
+    if (w.activePanel().colorbar.colormap)
+      w.commit((p) => (p.colorbar.colormap = { ...p.colorbar.colormap!, reversed: (e.target as DomEl).checked }));
   });
 
   // A tick entered by value and position: the first free end, else the middle.
@@ -325,7 +363,9 @@ export function setupWorkspaceColorbarCard(w: WorkspaceContext): ColorbarCardMem
     focusTick(id);
   });
 
-  $('bar-scale').addEventListener('change', (e) => w.commit((p) => (p.colorbar.scale = (e.target as DomEl).value as ColorbarScale)));
+  $('bar-scale').addEventListener('change', (e) =>
+    w.commit((p) => (p.colorbar.scale = (e.target as DomEl).value as ColorbarScale)),
+  );
   w.bindNumber('bar-halfwidth', (p, v) => (p.colorbar.halfWidth = Math.min(50, Math.max(0, v))));
 
   return { renderColorbarCard, focusTick };

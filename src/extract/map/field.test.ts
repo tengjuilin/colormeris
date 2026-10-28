@@ -1,13 +1,34 @@
-import { test } from 'vitest';
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 import { colorAtT, sampleColorbar } from '../../core/colorbar.ts';
 import { rectCorners } from '../../core/grid.ts';
+import { cmap, makeImage, paintColorbar, setPixel, VIRIDISH } from '../../testing/helpers.ts';
 import type { MapField, MapResult, Panel, PixelImage, Point, Profile, ProfileSample } from '../../types/index.ts';
-import { mapLongCsv, mapMatrixCsv, mapPanelFiles, profileCsv, profilesCsv } from '../project/project-files.ts';
 import { createAxisTick, createPanel, createProfile } from '../project/project.ts';
-import { FLAG_HIGH, MAX_MAP_CELLS, axisCoords, axisEdgePoint, axisFn, colorbarLevels, extractMap, lengthPerPixel, mapAt, mapProblem, mapSize, onAxisEdge, pastedProfiles, profileAxisKey, profileDivisor, profileEndForLength, profileLength, profileXKind, reconPixels, sampleProfile, sweepRange } from './field.ts';
-import { makeImage, setPixel, paintColorbar, cmap, VIRIDISH } from '../../testing/helpers.ts';
-
+import { mapLongCsv, mapMatrixCsv, mapPanelFiles, profileCsv, profilesCsv } from '../project/project-files.ts';
+import {
+  axisCoords,
+  axisEdgePoint,
+  axisFn,
+  colorbarLevels,
+  extractMap,
+  FLAG_HIGH,
+  lengthPerPixel,
+  MAX_MAP_CELLS,
+  mapAt,
+  mapProblem,
+  mapSize,
+  onAxisEdge,
+  pastedProfiles,
+  profileAxisKey,
+  profileDivisor,
+  profileEndForLength,
+  profileLength,
+  profileXKind,
+  reconPixels,
+  sampleProfile,
+  sweepRange,
+} from './field.ts';
 
 const close = (a: number, b: number, eps: number) => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b}`);
 
@@ -15,7 +36,8 @@ const close = (a: number, b: number, eps: number) => assert.ok(Math.abs(a - b) <
 // check that the test got the result.
 type OkMap = MapField & { profiles: Record<string, ProfileSample[]> };
 const okMap = (res: MapResult) => res as OkMap;
-const samplesOf = (img: PixelImage, panel: Panel, profile: Profile) => sampleProfile(img, panel, profile) as ProfileSample[];
+const samplesOf = (img: PixelImage, panel: Panel, profile: Profile) =>
+  sampleProfile(img, panel, profile) as ProfileSample[];
 type Sweep = { n: Point; min: number; max: number; error?: string };
 const sweep = (...args: Parameters<typeof sweepRange>) => sweepRange(...args) as Sweep;
 
@@ -37,14 +59,21 @@ function scene() {
   panel.grid.corners = rectCorners({ x: X0, y: Y0 }, { x: X0 + W, y: Y0 + H });
   panel.colorbar.start = { x: 245, y: 110 };
   panel.colorbar.end = { x: 245, y: 10 };
-  panel.colorbar.ticks = [{ x: 245, y: 110, value: 0 }, { x: 245, y: 10, value: 1 }];
+  panel.colorbar.ticks = [
+    { x: 245, y: 110, value: 0 },
+    { x: 245, y: 10, value: 1 },
+  ];
   return { img, panel };
 }
 
 function maxError(res: MapField) {
   let worst = 0;
   for (let r = 0; r < res.rows; r++) {
-    for (let c = 0; c < res.cols; c++) worst = Math.max(worst, Math.abs(res.values[r * res.cols + c] - truth((c + 0.5) / res.cols, (r + 0.5) / res.rows)));
+    for (let c = 0; c < res.cols; c++)
+      worst = Math.max(
+        worst,
+        Math.abs(res.values[r * res.cols + c] - truth((c + 0.5) / res.cols, (r + 0.5) / res.rows)),
+      );
   }
   return worst;
 }
@@ -90,7 +119,10 @@ test('extractMap refuses more values than MAX_MAP_CELLS', () => {
 test('axis ticks give axis coordinates, linear or log', () => {
   const { img, panel } = scene();
   // x: 400 at the left edge, 700 at the right edge, ticks clicked below the plot.
-  panel.map.x.ticks = [createAxisTick({ x: X0, y: Y0 + H + 5 }, 400), createAxisTick({ x: X0 + W, y: Y0 + H + 5 }, 700)];
+  panel.map.x.ticks = [
+    createAxisTick({ x: X0, y: Y0 + H + 5 }, 400),
+    createAxisTick({ x: X0 + W, y: Y0 + H + 5 }, 700),
+  ];
   // y: 1000 at the top, 1 at the bottom, log scale, ticks clicked left of the plot.
   panel.map.y.scale = 'log10';
   panel.map.y.ticks = [createAxisTick({ x: X0 - 5, y: Y0 }, 1000), createAxisTick({ x: X0 - 5, y: Y0 + H }, 1)];
@@ -140,7 +172,8 @@ test('sampleProfile reads one value per pixel along a line', () => {
 test('colorbarLevels counts the values a bar can tell apart', () => {
   const img = makeImage(20, 110);
   // Five flat color steps.
-  for (let y = 0; y <= 100; y++) for (let x = 0; x < 20; x++) setPixel(img, x, y, cmap(VIRIDISH, Math.min(4, Math.floor(y / 20.2)) / 4));
+  for (let y = 0; y <= 100; y++)
+    for (let x = 0; x < 20; x++) setPixel(img, x, y, cmap(VIRIDISH, Math.min(4, Math.floor(y / 20.2)) / 4));
   assert.equal(colorbarLevels(sampleColorbar(img, { x: 10, y: 0 }, { x: 10, y: 100 }, 1, 256)), 5);
   const smooth = makeImage(20, 260);
   paintColorbar(smooth, 0, 19, 0, 255, VIRIDISH);
@@ -152,21 +185,29 @@ test('map CSVs carry axis headers', () => {
   panel.map.bin = 50;
   panel.map.profiles.push(createProfile({ x: X0, y: Y0 + 50 }, { x: X0 + 10, y: Y0 + 50 }, { name: 'mid row' }));
   let res = okMap(extractMap(img, panel));
-  let lines = mapMatrixCsv(panel, res).trim().split('\n');
+  const lines = mapMatrixCsv(panel, res).trim().split('\n');
   assert.equal(lines.length, 3); // header + 2 rows
   assert.equal(lines[0], 'y_px\\x_px,25,75,125,175');
   assert.equal(lines[1].split(',').length, 5);
   panel.map.x.ticks = [createAxisTick({ x: X0, y: 0 }, 0), createAxisTick({ x: X0 + W, y: 0 }, 4)];
   res = okMap(extractMap(img, panel));
   assert.match(mapMatrixCsv(panel, res), /^y_px\\x,0\.5,1\.5,2\.5,3\.5\n/);
-  const long = mapLongCsv([{ panel, result: res }]).trim().split('\n');
+  const long = mapLongCsv([{ panel, result: res }])
+    .trim()
+    .split('\n');
   assert.equal(long[0], 'panel,page,row,col,x,y_px,value,deltaE,flagged,clipped');
   assert.equal(long.length, 1 + 8);
   assert.equal(profileCsv(res.profiles[panel.map.profiles[0].id]).trim().split('\n').length, 1 + 11);
-  assert.deepEqual(mapPanelFiles(panel, res, 'fig').map((f) => f.path), ['data/fig_map.csv', 'data/fig_map_long.csv', 'data/fig_profile_mid_row.csv']);
+  assert.deepEqual(
+    mapPanelFiles(panel, res, 'fig').map((f) => f.path),
+    ['data/fig_map.csv', 'data/fig_map_long.csv', 'data/fig_profile_mid_row.csv'],
+  );
   // Profiles are written even before the plot area is placed.
   panel.grid.corners = null;
-  assert.deepEqual(mapPanelFiles(panel, extractMap(img, panel), 'fig').map((f) => f.path), ['data/fig_profile_mid_row.csv']);
+  assert.deepEqual(
+    mapPanelFiles(panel, extractMap(img, panel), 'fig').map((f) => f.path),
+    ['data/fig_profile_mid_row.csv'],
+  );
 });
 
 test('axis ticks sit on the plot edges', () => {
@@ -236,7 +277,7 @@ test('a scale bar measures profiles in real units', () => {
   const lines = profileCsv(samples, null, 'µm').trim().split('\n');
   assert.match(lines[0], /^d_px,d_µm,x,/);
   assert.equal(lines.at(-1)!.split(',')[1], '12.5');
-  assert.match((mapPanelFiles(panel, extractMap(img, panel), 'fig').at(-1)!.content as string), /^d_px,d_µm,/);
+  assert.match(mapPanelFiles(panel, extractMap(img, panel), 'fig').at(-1)!.content as string, /^d_px,d_µm,/);
 });
 
 test('the matrix reports pixels, scale-bar lengths or axis values', () => {
@@ -264,8 +305,23 @@ test('the matrix reports pixels, scale-bar lengths or axis values', () => {
 });
 
 test('several profiles go into one long CSV', () => {
-  const s = { d: 0, x: null, y: null, px: 1, py: 2, value: 0.5, deltaE: 1, flagged: false, clipped: false } as unknown as ProfileSample;
-  const lines = profilesCsv([{ name: 'a, b', samples: [s, s] }, { name: 'c', samples: [s] }]).trim().split('\n');
+  const s = {
+    d: 0,
+    x: null,
+    y: null,
+    px: 1,
+    py: 2,
+    value: 0.5,
+    deltaE: 1,
+    flagged: false,
+    clipped: false,
+  } as unknown as ProfileSample;
+  const lines = profilesCsv([
+    { name: 'a, b', samples: [s, s] },
+    { name: 'c', samples: [s] },
+  ])
+    .trim()
+    .split('\n');
   assert.equal(lines[0], 'profile,d_px,x,y,page_x,page_y,value,deltaE,flagged,clipped');
   assert.equal(lines.length, 4);
   assert.match(lines[1], /^"a, b",0\.00,/);
@@ -273,7 +329,18 @@ test('several profiles go into one long CSV', () => {
 });
 
 test('profiles can be divided by their max or mean', () => {
-  const at = (value: number) => ({ d: 0, x: null, y: null, px: 0, py: 0, value, deltaE: 0, flagged: false, clipped: false }) as unknown as ProfileSample;
+  const at = (value: number) =>
+    ({
+      d: 0,
+      x: null,
+      y: null,
+      px: 0,
+      py: 0,
+      value,
+      deltaE: 0,
+      flagged: false,
+      clipped: false,
+    }) as unknown as ProfileSample;
   const samples = [at(1), at(2), at(6)];
   assert.deepEqual(profileDivisor(samples, 'raw'), { divisor: 1 });
   assert.deepEqual(profileDivisor(samples, 'max'), { divisor: 6 });
@@ -284,7 +351,9 @@ test('profiles can be divided by their max or mean', () => {
   const lines = profilesCsv([
     { name: 'a', samples, norm: { mode: 'mean', divisor: 3 } },
     { name: 'b', samples: [at(0)], norm: { mode: 'mean', divisor: NaN } },
-  ]).trim().split('\n');
+  ])
+    .trim()
+    .split('\n');
   assert.equal(lines[0], 'profile,d_px,x,y,page_x,page_y,value,value_per_mean,deltaE,flagged,clipped');
   assert.equal(lines[3].split(',')[7], '2');
   assert.equal(lines[4].split(',')[7], ''); // b cannot be normalized
@@ -374,7 +443,10 @@ test('profiles follow changes to the colorbar, its ticks and the image despite t
   assert.deepEqual(samplesOf(img, panel, prof), first);
   // Moving the colorbar line reads other colors.
   panel.colorbar.end = { x: 245, y: 60 };
-  assert.notDeepEqual(samplesOf(img, panel, prof).map((q) => q.value), first.map((q) => q.value));
+  assert.notDeepEqual(
+    samplesOf(img, panel, prof).map((q) => q.value),
+    first.map((q) => q.value),
+  );
   panel.colorbar.end = { x: 245, y: 10 };
   // Another image object with other pixels is not served from the cache.
   const img2 = makeImage(280, 130);

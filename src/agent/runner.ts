@@ -1,16 +1,41 @@
-import { colorAtT } from '../core/colorbar.ts';
 import { rgbToHex } from '../core/color.ts';
+import { colorAtT } from '../core/colorbar.ts';
 import { bilinear, cellSamplePolygon, outerCorners } from '../core/grid.ts';
 import { renderPdfPage } from '../extract/pdf-loader.ts';
 import { ticksWithT } from '../extract/project/project.ts';
 import type {
-  Box, ChatContentPart, ChatRequest, HeatmapResult, ChatMessage, ColormerisApi, Point, RenderedView, RunEventData, RunEventType, RunOutcome, RunSettings, RunUsage, StateSnapshot, ToolCall,
-  ToolCallResult, ViewFrame, Workspace,
+  Box,
+  ChatContentPart,
+  ChatMessage,
+  ChatRequest,
+  ColormerisApi,
+  HeatmapResult,
+  Point,
+  RenderedView,
+  RunEventData,
+  RunEventType,
+  RunOutcome,
+  RunSettings,
+  RunUsage,
+  StateSnapshot,
+  ToolCall,
+  ToolCallResult,
+  ViewFrame,
+  Workspace,
 } from '../types/index.ts';
 import { DECISION_LLM_ACTIONS, DECISION_SYSTEM_PROMPT, decisionLlmTools, panelBrief } from './decide.ts';
 import { createDecisionTools } from './decision-tools.ts';
 import {
-  AGENT_SYSTEM_PROMPT, LLM_ACTIONS, RUNNER_TOOLS, createRetryGuard, finishCheck, llmTools, progressNote, pruneImages, toolResultText, validateRunnerTool,
+  AGENT_SYSTEM_PROMPT,
+  createRetryGuard,
+  finishCheck,
+  LLM_ACTIONS,
+  llmTools,
+  progressNote,
+  pruneImages,
+  RUNNER_TOOLS,
+  toolResultText,
+  validateRunnerTool,
 } from './llm.ts';
 
 // Runs the extraction agent: an LLM (any OpenRouter chat model with vision
@@ -72,7 +97,15 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
   // `marks` are numbered boxes ({box, label}) drawn on top. Without rulers
   // (images for the decision model) the picture is padded with white to at
   // least `minSide` on each side and `frame` maps it back to the page.
-  function renderView({ region, overlay = 'none', maxSide = MAX_VIEW, rulers = true, marks = [], minSide = 0, zoom = true }: RenderViewOptions = {}): RenderedView {
+  function renderView({
+    region,
+    overlay = 'none',
+    maxSide = MAX_VIEW,
+    rulers = true,
+    marks = [],
+    minSide = 0,
+    zoom = true,
+  }: RenderViewOptions = {}): RenderedView {
     const page = app.pages.get(ws.currentPage());
     if (!page) throw new Error('No page is shown.');
     const src = page.canvas;
@@ -126,7 +159,11 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       ctx.stroke();
       ctx.fillText(String(Math.round(y)), W + 8, Math.min(Math.max(vy, 7), H - 7));
     }
-    if (zoom) ws.zoomToPoints([{ x: x0, y: y0 }, { x: x1, y: y1 }]);
+    if (zoom)
+      ws.zoomToPoints([
+        { x: x0, y: y0 },
+        { x: x1, y: y1 },
+      ]);
     const r = (v: number) => Math.round(v * 100) / 100;
     return {
       dataUrl: out.toDataURL('image/jpeg', 0.9),
@@ -150,7 +187,12 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       return { x0: p.x - 3, y0: p.y - 3, x1: q.x + 3, y1: q.y + 3 };
     });
     const { width, height } = ctx.canvas;
-    const hits = (r: Box) => r.x0 < 0 || r.y0 < 0 || r.x1 > width || r.y1 > height || boxes.some((b) => r.x0 < b.x1 + 2 && r.x1 > b.x0 - 2 && r.y0 < b.y1 + 2 && r.y1 > b.y0 - 2);
+    const hits = (r: Box) =>
+      r.x0 < 0 ||
+      r.y0 < 0 ||
+      r.x1 > width ||
+      r.y1 > height ||
+      boxes.some((b) => r.x0 < b.x1 + 2 && r.x1 > b.x0 - 2 && r.y0 < b.y1 + 2 && r.y1 > b.y0 - 2);
     marks.forEach((m, i) => {
       const b = boxes[i];
       const color = m.color || '#1565ff';
@@ -215,8 +257,10 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
         const frame = dots ? g.corners : outerCorners(g);
         const nu = dots ? g.cols - 1 : g.cols;
         const nv = dots ? g.rows - 1 : g.rows;
-        for (let c = 0; c <= nu; c++) line(bilinear(frame, c / nu, 0), bilinear(frame, c / nu, 1), '#e22bd0', c % nu ? 1 : 2);
-        for (let r = 0; r <= nv; r++) line(bilinear(frame, 0, r / nv), bilinear(frame, 1, r / nv), '#e22bd0', r % nv ? 1 : 2);
+        for (let c = 0; c <= nu; c++)
+          line(bilinear(frame, c / nu, 0), bilinear(frame, c / nu, 1), '#e22bd0', c % nu ? 1 : 2);
+        for (let r = 0; r <= nv; r++)
+          line(bilinear(frame, 0, r / nv), bilinear(frame, 1, r / nv), '#e22bd0', r % nv ? 1 : 2);
       }
       const cb = panel.colorbar;
       if (cb.start && cb.end && overlay === 'calibration') {
@@ -281,14 +325,37 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
   // "decision" gives the LLM the tools of agent/decide.js, answered with
   // `decide` (agent/openrouter-client.js) by `decisionModel`.
   async function run(settings: RunSettings): Promise<RunOutcome> {
-    const { client, llmModel, pages, maxSteps = 60, signal, onEvent = () => {}, focus, systemPrompt, mode = 'agent', decide, decisionModel } = settings;
+    const {
+      client,
+      llmModel,
+      pages,
+      maxSteps = 60,
+      signal,
+      onEvent = () => {},
+      focus,
+      systemPrompt,
+      mode = 'agent',
+      decide,
+      decisionModel,
+    } = settings;
     const decisionMode = mode === 'decision';
     // One id for the whole run keeps the requests on the provider that
     // holds the cache (sticky routing).
     const sessionId = `colormeris-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const usage: RunUsage = { llmCost: 0, promptTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, completionTokens: 0, steps: 0, decisions: 0, decisionCost: 0 };
+    const usage: RunUsage = {
+      llmCost: 0,
+      promptTokens: 0,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+      completionTokens: 0,
+      steps: 0,
+      decisions: 0,
+      decisionCost: 0,
+    };
     const emit = (type: RunEventType, data: object) => onEvent(type, { ...data, usage: { ...usage } } as RunEventData);
-    const decision = decisionMode ? createDecisionTools(ws, api, { renderView, decide: decide!, model: decisionModel, usage, signal }) : null;
+    const decision = decisionMode
+      ? createDecisionTools(ws, api, { renderView, decide: decide!, model: decisionModel, usage, signal })
+      : null;
     const llmActions = decisionMode ? DECISION_LLM_ACTIONS : LLM_ACTIONS;
     // What the model has looked at and built, so it cannot stop after the
     // first heatmap (see finishCheck).
@@ -299,13 +366,20 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
     const runPanels = () =>
       app.project.panels
         .filter((p) => p.tool === 'heatmap' && pages.includes(p.page))
-        .map((p) => ({ id: p.id, name: p.name, page: p.page, ready: !ws.resultFor(p).error, started: !!(p.grid.corners || p.colorbar.start || p.grid.rowLabels.length || p.grid.colLabels.length) }));
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          page: p.page,
+          ready: !ws.resultFor(p).error,
+          started: !!(p.grid.corners || p.colorbar.start || p.grid.rowLabels.length || p.grid.colLabels.length),
+        }));
     const progress = () => progressNote({ pages, viewedPages, panels: runPanels(), currentPage: ws.currentPage() });
 
     async function callTool(name: string, args: Args): Promise<ToolCallResult> {
       if (decision?.handles(name)) return decision.call(name, args);
       if (llmActions.includes(name)) {
-        if (name === 'go_to_page' && !pages.includes(args.page)) return { ok: false, error: `Page ${args.page} is not part of this run (pages ${pages.join(', ')}).` };
+        if (name === 'go_to_page' && !pages.includes(args.page))
+          return { ok: false, error: `Page ${args.page} is not part of this run (pages ${pages.join(', ')}).` };
         const r: RunResult = await api.run(name, args);
         // In decision mode a new page comes with its image (one step less).
         if (decisionMode && name === 'go_to_page' && r.ok) {
@@ -346,14 +420,19 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
     const first: RunResult = await api.run('go_to_page', { page: pages[0] });
     const panelsNow = (((await api.run('get_state')) as RunResult).result as StateSnapshot).panels;
     const target = focus && panelsNow.find((p) => p.id === focus.panelId);
-    const rejected = target && `\n\nThis is a redo. Panel "${target.name}" (id ${target.id}) was rejected${focus.note ? ` with the note: "${focus.note}"` : ''}.`;
+    const rejected =
+      target &&
+      `\n\nThis is a redo. Panel "${target.name}" (id ${target.id}) was rejected${focus.note ? ` with the note: "${focus.note}"` : ''}.`;
     const focusText = !target
       ? ''
       : decisionMode
         ? `${rejected} Do not add panels. locate_heatmap with panelId "${target.id}" and a description that singles it out, then set_ticks and set_labels, then finish.`
         : `${rejected} Its current calibration: ${JSON.stringify({ grid: target.grid, colorbar: target.colorbar })}. Do not add panels. select_panel it, find what is wrong (grid corners, grid size, colorbar ends, ticks or scale), fix it, check with overlays, then finish.`;
     if (!first.ok) throw new Error(first.error);
-    const opening = pages.length > 1 && app.pdfDoc ? await renderOverview(pages[0], pages[Math.min(pages.length, 12) - 1]) : renderView();
+    const opening =
+      pages.length > 1 && app.pdfDoc
+        ? await renderOverview(pages[0], pages[Math.min(pages.length, 12) - 1])
+        : renderView();
     if (!(pages.length > 1 && app.pdfDoc)) viewedPages.add(ws.currentPage());
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt || (decisionMode ? DECISION_SYSTEM_PROMPT : AGENT_SYSTEM_PROMPT) },
@@ -377,7 +456,20 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       if (signal?.aborted) throw new DOMException('Stopped', 'AbortError');
       usage.steps++;
       emit('thinking', { step: usage.steps });
-      const res = await client.chat.send({ chatRequest: { model: llmModel, messages: pruneImages(messages), tools, toolChoice: 'auto', maxTokens: 4096, cacheControl: CACHE_CONTROL, sessionId } }, { signal });
+      const res = await client.chat.send(
+        {
+          chatRequest: {
+            model: llmModel,
+            messages: pruneImages(messages),
+            tools,
+            toolChoice: 'auto',
+            maxTokens: 4096,
+            cacheControl: CACHE_CONTROL,
+            sessionId,
+          },
+        },
+        { signal },
+      );
       const msg = res.choices?.[0]?.message;
       if (!msg) throw new Error('The model returned no message.');
       usage.llmCost += res.usage?.cost || 0;
@@ -385,12 +477,19 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       usage.cachedTokens += res.usage?.promptTokensDetails?.cachedTokens || 0;
       usage.cacheWriteTokens += res.usage?.promptTokensDetails?.cacheWriteTokens || 0;
       usage.completionTokens += res.usage?.completionTokens || 0;
-      messages.push({ role: 'assistant', content: (msg.content ?? '') as string, ...(msg.toolCalls?.length ? { toolCalls: msg.toolCalls } : {}) });
+      messages.push({
+        role: 'assistant',
+        content: (msg.content ?? '') as string,
+        ...(msg.toolCalls?.length ? { toolCalls: msg.toolCalls } : {}),
+      });
       const text = typeof msg.content === 'string' ? msg.content : '';
       if (text.trim()) emit('assistant', { text });
       if (!msg.toolCalls?.length) {
         if (++nudges > 2) break;
-        messages.push({ role: 'user', content: `Continue with the tools. ${progress()} Call finish only when every heatmap on every page has its own calibrated panel.` });
+        messages.push({
+          role: 'user',
+          content: `Continue with the tools. ${progress()} Call finish only when every heatmap on every page has its own calibrated panel.`,
+        });
         continue;
       }
       nudges = 0;
@@ -432,18 +531,34 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
         result = guard.after(name, panelKey, result);
         if (call.function.name === 'finish' && result.ok && result.finished !== false) summary = args.summary;
         // Decision tools report what the decision model and the app found.
-        if (result.ok && decision?.handles(name) && typeof result.result === 'string') emit('result', { name, text: result.result });
+        if (result.ok && decision?.handles(name) && typeof result.result === 'string')
+          emit('result', { name, text: result.result });
         const shown = result.images || (result.image ? [result.image] : []);
         if (shown.length) {
           images.push(...shown);
           // Keep a tool's own text (locate_heatmap) next to the image notes.
-          result = { ok: true, result: [result.result, ...shown.map((im) => im.note), shown.length > 1 ? 'The images follow.' : 'The image follows.'].filter(Boolean).join(' ') };
+          result = {
+            ok: true,
+            result: [
+              result.result,
+              ...shown.map((im) => im.note),
+              shown.length > 1 ? 'The images follow.' : 'The image follows.',
+            ]
+              .filter(Boolean)
+              .join(' '),
+          };
         }
         if (!result.ok) emit('tool-error', { name: call.function.name, error: result.error });
         messages.push({ role: 'tool', toolCallId: call.id, content: toolResultText(result) });
       }
       if (images.length) {
-        messages.push({ role: 'user', content: images.flatMap((im): ChatContentPart[] => [{ type: 'text', text: im.note ?? '' }, { type: 'image_url', imageUrl: { url: im.dataUrl } }]) });
+        messages.push({
+          role: 'user',
+          content: images.flatMap((im): ChatContentPart[] => [
+            { type: 'text', text: im.note ?? '' },
+            { type: 'image_url', imageUrl: { url: im.dataUrl } },
+          ]),
+        });
       }
       if (guard.stop) {
         emit('tool-error', { name: 'run', error: `Stopped: ${guard.stop}` });
@@ -451,7 +566,12 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       }
     }
 
-    const out: RunOutcome = { summary: summary ?? (usage.steps >= maxSteps ? `Stopped after ${maxSteps} steps.` : 'The model stopped without a summary.'), usage };
+    const out: RunOutcome = {
+      summary:
+        summary ??
+        (usage.steps >= maxSteps ? `Stopped after ${maxSteps} steps.` : 'The model stopped without a summary.'),
+      usage,
+    };
     emit('done', out);
     return out;
   }

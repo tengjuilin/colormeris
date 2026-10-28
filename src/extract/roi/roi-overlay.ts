@@ -1,8 +1,8 @@
-import { hexToRgb } from '../settings/settings.ts';
 import { readPixel } from '../../core/grid.ts';
 import type { Cell, Mode, Panel, Point, Roi, RoiResult, RoiRow, ViewerApi } from '../../types/index.ts';
 import { boxLabel, colorbarProblem } from '../project/project.ts';
 import { drawScaleBar, drawScalePreview } from '../scale-bar.ts';
+import { hexToRgb } from '../settings/settings.ts';
 import { boxGeom, roiControlPoints, roiFromLocal, roiInstances, shapeOutline } from './geometry.ts';
 import { metricValue, panelClassifier, shortNumber } from './quantify.ts';
 import type { RoiToolContext } from './roi-tool.ts';
@@ -59,7 +59,14 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
     if (sel) {
       const color = rctx.roiColor(panel, sel);
       for (const inst of roiInstances(sel, panel.grid)) {
-        for (const q of roiControlPoints(sel)) ws.drawHandle(ctx, v, roiFromLocal(sel, panel.grid, inst.row!, inst.col!, q), color, sel.shape === 'polygon' ? 'circle' : 'square');
+        for (const q of roiControlPoints(sel))
+          ws.drawHandle(
+            ctx,
+            v,
+            roiFromLocal(sel, panel.grid, inst.row!, inst.col!, q),
+            color,
+            sel.shape === 'polygon' ? 'circle' : 'square',
+          );
       }
     }
     if (panel.scale) drawScaleBar(ws, ctx, v, panel.scale);
@@ -89,7 +96,9 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
         else ctx.lineTo(s.x, s.y);
       });
       ws.strokeDual(ctx, ws.color('roiDraft') as string, 1.5, [6, 4]);
-      m.points.forEach((q, i) => ws.drawHandle(ctx, v, q, i === 0 ? ws.COLORS.highlight : (ws.color('roiDraft') as string), 'circle'));
+      m.points.forEach((q, i) =>
+        ws.drawHandle(ctx, v, q, i === 0 ? ws.COLORS.highlight : (ws.color('roiDraft') as string), 'circle'),
+      );
     } else {
       drawScalePreview(ws, ctx, v, m, hover);
     }
@@ -103,7 +112,10 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
     const key = JSON.stringify([ws.currentPage(), img.width, panel.colorbar, panel.settings, tint]);
     if (state.mask?.key !== key) {
       const classify = panelClassifier(img, panel);
-      const at = classify.img === img ? classify.pixel : (i: number) => classify(readPixel(img, i % img.width, Math.floor(i / img.width)));
+      const at =
+        classify.img === img
+          ? classify.pixel
+          : (i: number) => classify(readPixel(img, i % img.width, Math.floor(i / img.width)));
       const canvas = document.createElement('canvas');
       canvas.width = img.width;
       canvas.height = img.height;
@@ -130,7 +142,9 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
     const hit = rctx.regionAt(p);
     if (!hit) return box;
     const result = ws.resultFor(panel) as RoiResult;
-    const r = result.error ? null : result.rows.find((x) => x.roi === hit.roi && (hit.row === null || (x.row === hit.row && x.col === hit.col)));
+    const r = result.error
+      ? null
+      : result.rows.find((x) => x.roi === hit.roi && (hit.row === null || (x.row === hit.row && x.col === hit.col)));
     const where = box ? `${box} · ` : '';
     if (!r) return `${where}${hit.roi.name}`;
     const s = r.stats;
@@ -139,4 +153,3 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
 
   return { drawOverlay, drawModePreview, hoverText };
 }
-

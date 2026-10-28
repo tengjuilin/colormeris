@@ -1,6 +1,5 @@
 import type { Box, JsonSchema, LlmTool } from '../types/index.ts';
 
-
 // Reading a heatmap's row and column labels with a vision LLM (pure: prompt,
 // forced tool and answer parsing). The UI (agent/labels-reader.js) sends one
 // image of the current view with the grid outline drawn on it.
@@ -18,7 +17,9 @@ If a side has no labels or they are unreadable, return an empty list for it and 
 
 // Expected counts and the grid's place in the image, so the model reads the right labels.
 export function labelsUserText({ rows, cols, box }: { rows: number; cols: number; box?: Box | null }) {
-  const where = box ? ` The grid spans image pixels x ${Math.round(box.x0)}–${Math.round(box.x1)}, y ${Math.round(box.y0)}–${Math.round(box.y1)}.` : '';
+  const where = box
+    ? ` The grid spans image pixels x ${Math.round(box.x0)}–${Math.round(box.x1)}, y ${Math.round(box.y0)}–${Math.round(box.y1)}.`
+    : '';
   return `This grid has ${rows} rows and ${cols} columns, so expect ${rows} row labels and ${cols} column labels.${where}`;
 }
 
@@ -42,7 +43,8 @@ export function labelsTool(): LlmTool {
   };
 }
 
-const cleanList = (v: unknown): string[] => (Array.isArray(v) ? v.map((s) => String(s ?? '').trim()).filter(Boolean) : []);
+const cleanList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.map((s) => String(s ?? '').trim()).filter(Boolean) : [];
 
 // The forced tool call → labels and warnings. Throws when there is no usable call.
 interface LabelsArgs {
@@ -56,7 +58,10 @@ interface LabelsMessage {
   tool_calls?: { function?: { name?: string; arguments?: unknown } }[];
 }
 
-export function parseLabelsAnswer(message: LabelsMessage | null | undefined, { rows, cols }: { rows?: number; cols?: number } = {}) {
+export function parseLabelsAnswer(
+  message: LabelsMessage | null | undefined,
+  { rows, cols }: { rows?: number; cols?: number } = {},
+) {
   const call = (message?.toolCalls || message?.tool_calls || []).find((c) => c.function?.name === 'set_labels');
   if (!call) throw new Error('The model did not return labels.');
   const raw = call.function?.arguments;
@@ -71,8 +76,10 @@ export function parseLabelsAnswer(message: LabelsMessage | null | undefined, { r
   const rowLabels = cleanList(args?.rowLabels);
   const colLabels = cleanList(args?.colLabels);
   const warnings: string[] = [];
-  if (rows && rowLabels.length && rowLabels.length !== rows) warnings.push(`${rowLabels.length} row labels for ${rows} rows`);
-  if (cols && colLabels.length && colLabels.length !== cols) warnings.push(`${colLabels.length} column labels for ${cols} columns`);
+  if (rows && rowLabels.length && rowLabels.length !== rows)
+    warnings.push(`${rowLabels.length} row labels for ${rows} rows`);
+  if (cols && colLabels.length && colLabels.length !== cols)
+    warnings.push(`${colLabels.length} column labels for ${cols} columns`);
   if (!rowLabels.length) warnings.push('no row labels');
   if (!colLabels.length) warnings.push('no column labels');
   const note = typeof args?.note === 'string' ? args.note.trim() : '';

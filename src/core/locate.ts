@@ -109,9 +109,15 @@ function noiseTol(img: PixelImage, x0: number, y0: number, x1: number, y1: numbe
   return Math.max(4, 2 * (dev[Math.floor(0.9 * (dev.length - 1))] || 0));
 }
 
-const differs = (bg: Rgb, tol: number): PixelTest => (rgb) => Math.max(Math.abs(rgb[0] - bg[0]), Math.abs(rgb[1] - bg[1]), Math.abs(rgb[2] - bg[2])) > tol;
+const differs =
+  (bg: Rgb, tol: number): PixelTest =>
+  (rgb) =>
+    Math.max(Math.abs(rgb[0] - bg[0]), Math.abs(rgb[1] - bg[1]), Math.abs(rgb[2] - bg[2])) > tol;
 // Gray and much darker (or lighter) than the page: lines and text.
-const stroke = (bg: Rgb): PixelTest => (rgb) => Math.max(...rgb) - Math.min(...rgb) < NEUTRAL && Math.abs(mean(rgb) - mean(bg)) > STRONG;
+const stroke =
+  (bg: Rgb): PixelTest =>
+  (rgb) =>
+    Math.max(...rgb) - Math.min(...rgb) < NEUTRAL && Math.abs(mean(rgb) - mean(bg)) > STRONG;
 
 // Runs of positions where profile[i] >= FILL, as [from, to] (inclusive, offset by `lo`).
 function runs(profile: number[], lo: number) {
@@ -239,7 +245,8 @@ function lineTools(img: PixelImage, wx0: number, wy0: number, wx1: number, wy1: 
         const sides = Math.min(off(at(a, p.i - 3)), off(at(a, p.j + 2)));
         for (let i = p.i - 1; i <= p.j; i++) {
           const rgb = at(a, i);
-          if (p.kind === 'blank' ? !pale(rgb) || (sides >= 2 * PALE && off(rgb) <= 0.6 * sides) : strong(rgb)) return true;
+          if (p.kind === 'blank' ? !pale(rgb) || (sides >= 2 * PALE && off(rgb) <= 0.6 * sides) : strong(rgb))
+            return true;
         }
         return false;
       }).length;
@@ -259,7 +266,16 @@ type LineTools = ReturnType<typeof lineTools>;
 // over [s0, s1); a blurred 2 px frame spans 3 to 5 such lines. `edge` is
 // the block's outermost line, `dir` points into the block, `end` is the
 // image size on this axis. Returns the new outermost line.
-function fitFrame(T: LineTools, horizontal: boolean, edge: number, dir: number, s0: number, s1: number, size: number, end: number) {
+function fitFrame(
+  T: LineTools,
+  horizontal: boolean,
+  edge: number,
+  dir: number,
+  s0: number,
+  s1: number,
+  size: number,
+  end: number,
+) {
   const L = T.line(horizontal, s0, s1);
   const frameLine = (a: number) => a >= 0 && a < end && L.share(a, T.strong) >= FILL;
   for (let o = 1; o <= 4; o++) {
@@ -299,13 +315,30 @@ export function snapBlock(img: PixelImage, box: Box, options: { margin?: number 
   const wx1 = clamp(Math.round(box.x1 + w * margin + 10), wx0 + 1, img.width);
   const wy0 = clamp(Math.round(box.y0 - h * margin - 10), 0, img.height - 1);
   const wy1 = clamp(Math.round(box.y1 + h * margin + 10), wy0 + 1, img.height);
-  const T = lineTools(img, wx0, wy0, wx1, wy1, { x0: box.x0 + 0.2 * w, y0: box.y0 + 0.2 * h, x1: box.x1 - 0.2 * w, y1: box.y1 - 0.2 * h });
+  const T = lineTools(img, wx0, wy0, wx1, wy1, {
+    x0: box.x0 + 0.2 * w,
+    y0: box.y0 + 0.2 * h,
+    x1: box.x1 - 0.2 * w,
+    y1: box.y1 - 0.2 * h,
+  });
   const { ink, faint, pale, strong } = T;
 
   // Extent along one axis, from the share of ink in a band of the other.
   // `edges` is the block's extent on the other axis once known: grown
   // lines are then read over all of it, not only the band.
-  const extent = (horizontal: boolean, lo: number, hi: number, bandLo: number, bandHi: number, inLo: number, inHi: number, core: PixelTest = ink, edges: [number, number] | null = null, inner: number[] = [], boxLen = 0): [number, number] | null => {
+  const extent = (
+    horizontal: boolean,
+    lo: number,
+    hi: number,
+    bandLo: number,
+    bandHi: number,
+    inLo: number,
+    inHi: number,
+    core: PixelTest = ink,
+    edges: [number, number] | null = null,
+    inner: number[] = [],
+    boxLen = 0,
+  ): [number, number] | null => {
     const B = T.line(horizontal, bandLo, bandHi);
     const S = edges ? T.line(horizontal, edges[0], edges[1], 400) : T.line(horizontal, bandLo, bandHi, 400);
     const fill = B.share;
@@ -321,7 +354,12 @@ export function snapBlock(img: PixelImage, box: Box, options: { margin?: number 
     const splits = keep.slice(1).map((run, i) => {
       let blank = 0;
       for (let a = keep[i][1] + 1; a < run[0]; a++) if (fill(a, pale) < FAINT_FILL) blank++;
-      return run[0] - keep[i][1] > 2 && blank >= 0.8 * (run[0] - keep[i][1] - 1) && frameEnd(keep[i][1], -1) && frameEnd(run[0], 1);
+      return (
+        run[0] - keep[i][1] > 2 &&
+        blank >= 0.8 * (run[0] - keep[i][1] - 1) &&
+        frameEnd(keep[i][1], -1) &&
+        frameEnd(run[0], 1)
+      );
     });
     // Every cell in its own frame (t18) splits everywhere, by gaps of one
     // width: one block.
@@ -336,7 +374,9 @@ export function snapBlock(img: PixelImage, box: Box, options: { margin?: number 
       const c = (inLo + inHi) / 2;
       const span = (p: [number, number][]) => [p[0][0], p[p.length - 1][1]];
       const overlap = (p: [number, number][]) => Math.min(span(p)[1], inHi) - Math.max(span(p)[0], inLo);
-      keep = parts.find((p) => span(p)[0] <= c && c <= span(p)[1]) || parts.reduce((a, p) => (overlap(p) > overlap(a) ? p : a));
+      keep =
+        parts.find((p) => span(p)[0] <= c && c <= span(p)[1]) ||
+        parts.reduce((a, p) => (overlap(p) > overlap(a) ? p : a));
     }
     // Grow over pale cells, and past the window when the box cut the block short.
     let from = keep[0][0];
@@ -354,7 +394,10 @@ export function snapBlock(img: PixelImage, box: Box, options: { margin?: number 
     // A line of pure-white cells inside a frame still touches the frame's
     // sides (`edges`: the block's ends on the other axis).
     const px = B.px;
-    const framed = (a: number) => !!edges && [edges[0], edges[0] + 1].some((b) => ink(px(a, b))) && [edges[1] - 1, edges[1] - 2].some((b) => ink(px(a, b)));
+    const framed = (a: number) =>
+      !!edges &&
+      [edges[0], edges[0] + 1].some((b) => ink(px(a, b))) &&
+      [edges[1] - 1, edges[1] - 2].some((b) => ink(px(a, b)));
     const blankLine = (a: number) => fill(a, pale) < FAINT_FILL;
     // A dark grid line between two rows of pale cells (or a line blurred
     // out of the grid) is crossed when cells that keep the grid follow it;
@@ -362,23 +405,30 @@ export function snapBlock(img: PixelImage, box: Box, options: { margin?: number 
     const bridge = (a: number, dir: number) => {
       let k = 0;
       let gray = false;
-      while (k < FRAME_LINE && inside(a + dir * k) && !grows(a + dir * k) && !blankLine(a + dir * k)) [(gray ||= S.share(a + dir * k, strong) >= FILL), k++];
+      while (k < FRAME_LINE && inside(a + dir * k) && !grows(a + dir * k) && !blankLine(a + dir * k))
+        [(gray ||= S.share(a + dir * k, strong) >= FILL), k++];
       if (!k || ![0, 1, 2].every((i) => grows(a + dir * (k + i)))) return 0;
       // Without grid lines seen in the cells, a gray line may be their
       // frame: crossed only into lines full of color across the whole
       // span (cells, not a colorbar beside them).
-      return bordered || !gray || [0, 1, 2, 3, 4].every((i) => inside(a + dir * (k + i)) && S.share(a + dir * (k + i), faint) >= SPAN_FILL) ? k : 0;
+      return bordered ||
+        !gray ||
+        [0, 1, 2, 3, 4].every((i) => inside(a + dir * (k + i)) && S.share(a + dir * (k + i), faint) >= SPAN_FILL)
+        ? k
+        : 0;
     };
     // A line of cells: enough cell color in long runs, the grid kept; or
     // a line inside the frame that is not the frame itself.
-    const grows = (a: number) => inside(a) && ((S.cellRuns(a) >= FAINT_FILL && S.keepsGrid(a, sep)) || (framed(a) && S.share(a, strong) < FILL));
+    const grows = (a: number) =>
+      inside(a) && ((S.cellRuns(a) >= FAINT_FILL && S.keepsGrid(a, sep)) || (framed(a) && S.share(a, strong) < FILL));
     // A block that already ends on its frame (a line of ink in one even
     // color, unlike cells) must not jump again, e.g. to a bracket beside
     // the heatmap. (A column of equally pale cells is even too, but no ink.)
     const even = (a: number) => {
       const lo = [255, 255, 255];
       const hi = [0, 0, 0];
-      for (let b = Math.round(bandLo); b < bandHi; b += B.step) px(a, b).forEach((v, i) => ((lo[i] = Math.min(lo[i], v)), (hi[i] = Math.max(hi[i], v))));
+      for (let b = Math.round(bandLo); b < bandHi; b += B.step)
+        px(a, b).forEach((v, i) => ((lo[i] = Math.min(lo[i], v)), (hi[i] = Math.max(hi[i], v))));
       return hi.every((v, i) => v - lo[i] < 40) && fill(a, ink) >= FILL;
     };
     // The edge line or one of the two inside it (an anti-aliased frame).
@@ -431,11 +481,13 @@ export function snapBlock(img: PixelImage, box: Box, options: { margin?: number 
     // cover the block's whole span (a colorbar beside the cells is
     // shorter) and keep its grid lines (a solid strip has none).
     // (The span's own white gaps between cells do not count against it.)
-    const cellLine = (a: number) => full(a) && (!edges || S.shareOff(a, faint, sep) >= SPAN_FILL) && S.keepsGrid(a, sep);
-    const cellsAt = (a: number, dir: number, blank: number) => [0, 1, 2].some((i) => {
-      for (let j = 0; j < Math.max(4, blank); j++) if (!cellLine(a + dir * (i + j))) return false;
-      return true;
-    });
+    const cellLine = (a: number) =>
+      full(a) && (!edges || S.shareOff(a, faint, sep) >= SPAN_FILL) && S.keepsGrid(a, sep);
+    const cellsAt = (a: number, dir: number, blank: number) =>
+      [0, 1, 2].some((i) => {
+        for (let j = 0; j < Math.max(4, blank); j++) if (!cellLine(a + dir * (i + j))) return false;
+        return true;
+      });
     // Cells set apart by white gaps, each with its own frame (t18) or
     // none (t16): the block's cells are runs of cell lines between gaps,
     // at an even pitch. A pale cell one pitch further on is taken in when
@@ -530,7 +582,8 @@ export function snapBlock(img: PixelImage, box: Box, options: { margin?: number 
     // and the rows again if the columns changed (the first pass read only
     // a band and may have run into a colorbar).
     const xs2 = extent(true, wx0, wx1, ...mid(ys), ...xsIn, core, ys, inner, w) || xs;
-    if (xs2[0] !== xs[0] || xs2[1] !== xs[1]) ys = extent(false, wy0, wy1, ...mid(xs2), ...ysIn, core, xs2, inner, h) || ys;
+    if (xs2[0] !== xs[0] || xs2[1] !== xs[1])
+      ys = extent(false, wy0, wy1, ...mid(xs2), ...ysIn, core, xs2, inner, h) || ys;
     xs = xs2;
     // Edges on the middle of a frame around the cells.
     const x0 = fitFrame(T, true, xs[0], 1, ys[0], ys[1], xs[1] - xs[0], img.width);
@@ -581,7 +634,8 @@ export function snapEdges(img: PixelImage, box: Box, { tol = null }: { tol?: num
     // bracket or labels further out).
     let best = null;
     for (let a = edge - dir * t; dir * (a - (edge + dir * t)) <= 0; a += dir) {
-      if (full(a - dir) || ![1, 2, 3].some((i) => blank(a - dir * i)) || ![0, 1, 2].every((i) => full(a + dir * i))) continue;
+      if (full(a - dir) || ![1, 2, 3].some((i) => blank(a - dir * i)) || ![0, 1, 2].every((i) => full(a + dir * i)))
+        continue;
       if (best === null || Math.abs(a - edge) < Math.abs(best - edge)) best = a;
     }
     return best === null ? edge : fitFrame(T, horizontal, best, dir, s0, s1, size, end);
@@ -597,16 +651,34 @@ export function snapEdges(img: PixelImage, box: Box, { tol = null }: { tol?: num
     const L = T.line(horizontal, s0 + 0.1 * (s1 - s0), s1 - 0.1 * (s1 - s0), 400);
     return [0, 1, 2].every((i) => L.share(Math.round(edge) - dir * i, T.faint) >= 0.5) ? v : null;
   };
-  const x0 = near(snap.x0, box.x0, tx) ?? cut(true, box.x0, 1, box.y0, box.y1, w, snap.x0 as number) ?? fit(true, box.x0, 1, box.y0, box.y1, tx, w);
-  const x1 = near(snap.x1, box.x1, tx) ?? cut(true, box.x1 - 1, -1, box.y0, box.y1, w, snap.x1 as number) ?? fit(true, box.x1 - 1, -1, box.y0, box.y1, tx, w) + 1;
-  const y0 = near(snap.y0, box.y0, ty) ?? cut(false, box.y0, 1, x0, x1, h, snap.y0 as number) ?? fit(false, box.y0, 1, x0, x1, ty, h);
-  const y1 = near(snap.y1, box.y1, ty) ?? cut(false, box.y1 - 1, -1, x0, x1, h, snap.y1 as number) ?? fit(false, box.y1 - 1, -1, x0, x1, ty, h) + 1;
+  const x0 =
+    near(snap.x0, box.x0, tx) ??
+    cut(true, box.x0, 1, box.y0, box.y1, w, snap.x0 as number) ??
+    fit(true, box.x0, 1, box.y0, box.y1, tx, w);
+  const x1 =
+    near(snap.x1, box.x1, tx) ??
+    cut(true, box.x1 - 1, -1, box.y0, box.y1, w, snap.x1 as number) ??
+    fit(true, box.x1 - 1, -1, box.y0, box.y1, tx, w) + 1;
+  const y0 =
+    near(snap.y0, box.y0, ty) ??
+    cut(false, box.y0, 1, x0, x1, h, snap.y0 as number) ??
+    fit(false, box.y0, 1, x0, x1, ty, h);
+  const y1 =
+    near(snap.y1, box.y1, ty) ??
+    cut(false, box.y1 - 1, -1, x0, x1, h, snap.y1 as number) ??
+    fit(false, box.y1 - 1, -1, x0, x1, ty, h) + 1;
   return { x0, y0, x1, y1 };
 }
 
 // Connected components (8-neighbour) of `mask(x, y)` inside a window, as
 // bounding boxes with pixel counts.
-function components(x0: number, y0: number, x1: number, y1: number, mask: (x: number, y: number) => boolean): Component[] {
+function components(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  mask: (x: number, y: number) => boolean,
+): Component[] {
   const W = x1 - x0;
   const H = y1 - y0;
   const on = new Uint8Array(W * H);
@@ -734,7 +806,9 @@ function followStrip(img: PixelImage, B: BarTools, seed: Box, vertical: boolean)
   // A frame line on both sides: gray and off the page (a 1 px light gray
   // outline blurs to 40 levels).
   const line = (rgb: Rgb) => B.pale(rgb) && Math.max(...rgb) - Math.min(...rgb) < NEUTRAL;
-  const sideFramed = (u: number) => [-1, 0, 1, 2, 3].some((i) => c0 - i >= 0 && line(px(u, c0 - i))) && [-2, -1, 0, 1, 2].some((i) => c1 + i < cEnd && line(px(u, c1 + i)));
+  const sideFramed = (u: number) =>
+    [-1, 0, 1, 2, 3].some((i) => c0 - i >= 0 && line(px(u, c0 - i))) &&
+    [-2, -1, 0, 1, 2].some((i) => c1 + i < cEnd && line(px(u, c1 + i)));
   const inside = (u: number) => u >= 0 && u < uEnd;
   const follow = (start: number, dir: number) => {
     let u = start;
@@ -875,7 +949,10 @@ const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 &
 // kind}] with kind 'smooth', 'binned' or 'categorical' (a group strip; a
 // bar of 4 bins or fewer looks the same), longest first. Gray-only
 // colormaps are missed, and a white end without a frame is cut off.
-export function findColorbars(img: PixelImage, { region = null, exclude = [] }: { region?: Box | null; exclude?: Box[] } = {}): BarCandidate[] {
+export function findColorbars(
+  img: PixelImage,
+  { region = null, exclude = [] }: { region?: Box | null; exclude?: Box[] } = {},
+): BarCandidate[] {
   region ??= { x0: 0, y0: 0, x1: img.width, y1: img.height };
   const B = barTools(img, region);
   const out: BarCandidate[] = [];
@@ -890,7 +967,8 @@ export function findColorbars(img: PixelImage, { region = null, exclude = [] }: 
     if (Math.min(w, h) < BAR_THICK || Math.max(w, h) < 1.5 * Math.min(w, h) || c.n < 0.5 * w * h) continue;
     if (out.some((b) => overlaps(b, c))) continue;
     const bar = followStrip(img, B, c, h >= w);
-    if (!bar || out.some((b) => overlaps(b, bar)) || grown.some((b) => overlaps(b, bar)) || dashed(img, B, bar)) continue;
+    if (!bar || out.some((b) => overlaps(b, bar)) || grown.some((b) => overlaps(b, bar)) || dashed(img, B, bar))
+      continue;
     const kind = stripKind(img, bar);
     if (kind) out.push({ ...bar, kind });
   }
@@ -915,7 +993,15 @@ function dashed(img: PixelImage, B: BarTools, bar: Bar) {
   for (let i = 0; i < offPage.length; ) {
     let j = i;
     while (j < offPage.length && offPage[j] === offPage[i]) j++;
-    if (!offPage[i] && j - i >= 2 && i >= 3 && offPage.slice(i - 3, i).every(Boolean) && offPage.slice(j, j + 3).length === 3 && offPage.slice(j, j + 3).every(Boolean)) gaps++;
+    if (
+      !offPage[i] &&
+      j - i >= 2 &&
+      i >= 3 &&
+      offPage.slice(i - 3, i).every(Boolean) &&
+      offPage.slice(j, j + 3).length === 3 &&
+      offPage.slice(j, j + 3).every(Boolean)
+    )
+      gaps++;
     i = j;
   }
   return on < 0.9 * (b - a) && gaps >= 3;
@@ -945,7 +1031,13 @@ function mergeFragments(img: PixelImage, B: BarTools, bars: BarCandidate[]): Bar
       let dark = false;
       for (let u = g0; u < g1; u++) if (B.strong(v ? readPixel(img, c, u) : readPixel(img, u, c))) dark = true;
       if (dark) continue;
-      const box = { x0: Math.min(p.x0, q.x0), y0: Math.min(p.y0, q.y0), x1: Math.max(p.x1, q.x1), y1: Math.max(p.y1, q.y1), vertical: v };
+      const box = {
+        x0: Math.min(p.x0, q.x0),
+        y0: Math.min(p.y0, q.y0),
+        x1: Math.max(p.x1, q.x1),
+        y1: Math.max(p.y1, q.y1),
+        vertical: v,
+      };
       const kind = stripKind(img, box);
       if (!kind) continue;
       out.splice(j, 1);
@@ -963,7 +1055,12 @@ export function snapStrip(img: PixelImage, box: Box): Box | null {
   const w = box.x1 - box.x0;
   const h = box.y1 - box.y0;
   if (!(w > 2 && h > 2)) return null;
-  const B = barTools(img, { x0: box.x0 - w * 0.25 - 10, y0: box.y0 - h * 0.25 - 10, x1: box.x1 + w * 0.25 + 10, y1: box.y1 + h * 0.25 + 10 });
+  const B = barTools(img, {
+    x0: box.x0 - w * 0.25 - 10,
+    y0: box.y0 - h * 0.25 - 10,
+    x1: box.x1 + w * 0.25 + 10,
+    y1: box.y1 + h * 0.25 + 10,
+  });
   const bar = followStrip(img, B, box, h >= w) || followStrip(img, B, box, h < w);
   return bar && { x0: bar.x0, y0: bar.y0, x1: bar.x1, y1: bar.y1 };
 }
@@ -983,15 +1080,26 @@ export function snapStripBox(img: PixelImage, box: Box) {
   const [b0, b1] = along(box);
   const thick = across(bar)[1] - across(bar)[0];
   const len = (b: Box) => along(b)[1] - along(b)[0];
-  for (const [a0, a1] of [[b0, along(bar)[0]], [along(bar)[1], b1]]) {
+  for (const [a0, a1] of [
+    [b0, along(bar)[0]],
+    [along(bar)[1], b1],
+  ]) {
     if (a1 - a0 < 2 * thick) continue;
     const piece = snapStrip(img, v ? { ...box, y0: a0, y1: a1 } : { ...box, x0: a0, x1: a1 });
-    if (!piece || Math.abs(across(piece)[0] - across(bar)[0]) > 3 || Math.abs(across(piece)[1] - across(bar)[1]) > 3) continue;
-    bar = { x0: Math.min(bar.x0, piece.x0), y0: Math.min(bar.y0, piece.y0), x1: Math.max(bar.x1, piece.x1), y1: Math.max(bar.y1, piece.y1) };
+    if (!piece || Math.abs(across(piece)[0] - across(bar)[0]) > 3 || Math.abs(across(piece)[1] - across(bar)[1]) > 3)
+      continue;
+    bar = {
+      x0: Math.min(bar.x0, piece.x0),
+      y0: Math.min(bar.y0, piece.y0),
+      x1: Math.max(bar.x1, piece.x1),
+      y1: Math.max(bar.y1, piece.y1),
+    };
   }
   const share = len(bar) / Math.max(1, b1 - b0);
   if (share >= 0.7) return { bar, share, extended: false };
-  const out = v ? { ...bar, y0: Math.min(bar.y0, Math.round(b0)), y1: Math.max(bar.y1, Math.round(b1)) } : { ...bar, x0: Math.min(bar.x0, Math.round(b0)), x1: Math.max(bar.x1, Math.round(b1)) };
+  const out = v
+    ? { ...bar, y0: Math.min(bar.y0, Math.round(b0)), y1: Math.max(bar.y1, Math.round(b1)) }
+    : { ...bar, x0: Math.min(bar.x0, Math.round(b0)), x1: Math.max(bar.x1, Math.round(b1)) };
   return { bar: out, share, extended: true };
 }
 
@@ -1058,7 +1166,11 @@ export interface TickLabelsResult {
 // (heatmap cells). Returns {side, marks: [{at, box}], score}: `at` is the
 // label's middle projected onto the strip's centre line, in reading order
 // (top to bottom for a vertical bar, left to right for a horizontal one).
-export function findTickLabels(img: PixelImage, bar: Box, { exclude = [] }: { exclude?: Box[] } = {}): TickLabelsResult {
+export function findTickLabels(
+  img: PixelImage,
+  bar: Box,
+  { exclude = [] }: { exclude?: Box[] } = {},
+): TickLabelsResult {
   const vertical = bar.y1 - bar.y0 >= bar.x1 - bar.x0;
   const len = vertical ? bar.y1 - bar.y0 : bar.x1 - bar.x0;
   const thick = vertical ? bar.x1 - bar.x0 : bar.y1 - bar.y0;
@@ -1086,7 +1198,15 @@ export function findTickLabels(img: PixelImage, bar: Box, { exclude = [] }: { ex
     }
     return out;
   };
-  let best: { side: string; score: number; marks?: never[]; on?: TickLabel[]; row?: TickLabel[]; charH?: number; ticks?: number[] } = { side: sides[0], marks: [], score: 0 };
+  let best: {
+    side: string;
+    score: number;
+    marks?: never[];
+    on?: TickLabel[];
+    row?: TickLabel[];
+    charH?: number;
+    ticks?: number[];
+  } = { side: sides[0], marks: [], score: 0 };
   for (const side of sides) {
     // Window beside the strip: `across` runs away from the strip, `along` with it.
     const far = side === 'right' || side === 'below';
@@ -1128,7 +1248,8 @@ export function findTickLabels(img: PixelImage, bar: Box, { exclude = [] }: { ex
     const charH = median(chars.map((c) => (vertical ? c.size : c.across)));
     // Lines along the strip (pieces of its frame, an axis line) are long
     // and thin: not text. t4's frame left two such boxes among the labels.
-    for (let i = chars.length - 1; i >= 0; i--) if (chars[i].size >= 2 * charH && chars[i].across <= 0.5 * charH) chars.splice(i, 1);
+    for (let i = chars.length - 1; i >= 0; i--)
+      if (chars[i].size >= 2 * charH && chars[i].across <= 0.5 * charH) chars.splice(i, 1);
     // A rotated title along a vertical bar: 3 or more characters stacked
     // along it a few pixels apart (the letters of a word turned on its
     // side); the characters of a number sit side by side across it.
@@ -1157,28 +1278,63 @@ export function findTickLabels(img: PixelImage, bar: Box, { exclude = [] }: { ex
     // "−1" and "−1.5") once joined through the glyphs of a rotated title
     // beside them.
     const lineH = 1.7 * charH;
-    const fits = (l: TickLabel, c: Pick<TickLabel, 'u0' | 'u1' | 'd0' | 'd1'>) => (vertical ? Math.max(l.u1, c.u1) - Math.min(l.u0, c.u0) : Math.max(l.d1, c.d1) - Math.min(l.d0, c.d0)) <= lineH;
+    const fits = (l: TickLabel, c: Pick<TickLabel, 'u0' | 'u1' | 'd0' | 'd1'>) =>
+      (vertical ? Math.max(l.u1, c.u1) - Math.min(l.u0, c.u0) : Math.max(l.d1, c.d1) - Math.min(l.d0, c.d0)) <= lineH;
     for (const c of chars) {
       // (an exponent sits a little higher than its number)
       const g = vertical
-        ? labels.find((l) => c.u0 < l.u1 + 0.2 * charH && l.u0 < c.u1 + 0.2 * charH && c.d0 <= l.d1 + 0.5 * charH && l.d0 <= c.d1 + 0.5 * charH && fits(l, c))
+        ? labels.find(
+            (l) =>
+              c.u0 < l.u1 + 0.2 * charH &&
+              l.u0 < c.u1 + 0.2 * charH &&
+              c.d0 <= l.d1 + 0.5 * charH &&
+              l.d0 <= c.d1 + 0.5 * charH &&
+              fits(l, c),
+          )
         : labels.find((l) => c.u0 <= l.u1 + Math.max(2, 0.6 * charH) && c.d0 < l.d1 && l.d0 < c.d1 && fits(l, c));
       if (g) {
-        [g.u0, g.u1, g.d0, g.d1] = [Math.min(g.u0, c.u0), Math.max(g.u1, c.u1), Math.min(g.d0, c.d0), Math.max(g.d1, c.d1)];
-        g.box = { x0: Math.min(g.box.x0, c.x0), y0: Math.min(g.box.y0, c.y0), x1: Math.max(g.box.x1, c.x1), y1: Math.max(g.box.y1, c.y1) };
+        [g.u0, g.u1, g.d0, g.d1] = [
+          Math.min(g.u0, c.u0),
+          Math.max(g.u1, c.u1),
+          Math.min(g.d0, c.d0),
+          Math.max(g.d1, c.d1),
+        ];
+        g.box = {
+          x0: Math.min(g.box.x0, c.x0),
+          y0: Math.min(g.box.y0, c.y0),
+          x1: Math.max(g.box.x1, c.x1),
+          y1: Math.max(g.box.y1, c.y1),
+        };
         g.n++;
-      } else labels.push({ u0: c.u0, u1: c.u1, d0: c.d0, d1: c.d1, n: 1, box: { x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1 } });
+      } else
+        labels.push({ u0: c.u0, u1: c.u1, d0: c.d0, d1: c.d1, n: 1, box: { x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1 } });
     }
     // Pieces of one label that met in the wrong order ("55." and "60").
     for (let i = 0; i < labels.length; i++)
       for (let j = i + 1; j < labels.length; j++) {
         const [a, c] = [labels[i], labels[j]];
         const join = vertical
-          ? c.u0 < a.u1 + 0.2 * charH && a.u0 < c.u1 + 0.2 * charH && c.d0 <= a.d1 + 0.5 * charH && a.d0 <= c.d1 + 0.5 * charH
-          : c.u0 <= a.u1 + Math.max(2, 0.6 * charH) && a.u0 <= c.u1 + Math.max(2, 0.6 * charH) && c.d0 < a.d1 && a.d0 < c.d1;
+          ? c.u0 < a.u1 + 0.2 * charH &&
+            a.u0 < c.u1 + 0.2 * charH &&
+            c.d0 <= a.d1 + 0.5 * charH &&
+            a.d0 <= c.d1 + 0.5 * charH
+          : c.u0 <= a.u1 + Math.max(2, 0.6 * charH) &&
+            a.u0 <= c.u1 + Math.max(2, 0.6 * charH) &&
+            c.d0 < a.d1 &&
+            a.d0 < c.d1;
         if (!join || !fits(a, c)) continue;
-        [a.u0, a.u1, a.d0, a.d1] = [Math.min(a.u0, c.u0), Math.max(a.u1, c.u1), Math.min(a.d0, c.d0), Math.max(a.d1, c.d1)];
-        a.box = { x0: Math.min(a.box.x0, c.box.x0), y0: Math.min(a.box.y0, c.box.y0), x1: Math.max(a.box.x1, c.box.x1), y1: Math.max(a.box.y1, c.box.y1) };
+        [a.u0, a.u1, a.d0, a.d1] = [
+          Math.min(a.u0, c.u0),
+          Math.max(a.u1, c.u1),
+          Math.min(a.d0, c.d0),
+          Math.max(a.d1, c.d1),
+        ];
+        a.box = {
+          x0: Math.min(a.box.x0, c.box.x0),
+          y0: Math.min(a.box.y0, c.box.y0),
+          x1: Math.max(a.box.x1, c.box.x1),
+          y1: Math.max(a.box.y1, c.box.y1),
+        };
         a.n += c.n;
         labels.splice(j, 1);
         j = i;
@@ -1192,7 +1348,14 @@ export function findTickLabels(img: PixelImage, bar: Box, { exclude = [] }: { ex
       const glyph = (l: TickLabel) => l.n <= 2;
       for (let i = 0; i < labels.length; ) {
         let j = i + 1;
-        while (j < labels.length && glyph(labels[j]) && glyph(labels[j - 1]) && labels[j].u0 - labels[j - 1].u1 < 0.35 * charH && Math.abs(labels[j].d0 - labels[j - 1].d0) < charH) j++;
+        while (
+          j < labels.length &&
+          glyph(labels[j]) &&
+          glyph(labels[j - 1]) &&
+          labels[j].u0 - labels[j - 1].u1 < 0.35 * charH &&
+          Math.abs(labels[j].d0 - labels[j - 1].d0) < charH
+        )
+          j++;
         if (j - i >= 3) for (let k = i; k < j; k++) title.add(labels[k]);
         i = j;
       }
@@ -1221,7 +1384,13 @@ export function findTickLabels(img: PixelImage, bar: Box, { exclude = [] }: { ex
     // Tick labels spread over most of the strip; the glyphs of a rotated
     // title beside it (t14's "(RLU 1×10^5)") bunch up in its middle.
     const spread = on.length >= 3 ? (mid(on[on.length - 1]) - mid(on[0])) / len : 1;
-    const score = (on.length >= 2 ? on.length : 0.5) * even * close * (on.length / (on.length + beyond)) * (spread < 0.5 ? 0.5 : 1) + onTicks;
+    const score =
+      (on.length >= 2 ? on.length : 0.5) *
+        even *
+        close *
+        (on.length / (on.length + beyond)) *
+        (spread < 0.5 ? 0.5 : 1) +
+      onTicks;
     if (score > best.score) best = { side, score, on, row, charH, ticks };
   }
   if (!best.on) return { side: best.side, marks: [], score: 0 };
@@ -1253,7 +1422,9 @@ export function binEdges(img: PixelImage, bar: Box, vertical: boolean) {
     out.push(a + (i + j + 3) / 2);
     i = j + 1;
   }
-  return out.filter((e, i) => !(Math.abs(e - (out[i - 1] ?? -Infinity)) < 12 || Math.abs((out[i + 1] ?? Infinity) - e) < 12));
+  return out.filter(
+    (e, i) => !(Math.abs(e - (out[i - 1] ?? -Infinity)) < 12 || Math.abs((out[i + 1] ?? Infinity) - e) < 12),
+  );
 }
 
 // The labels of the chosen side as marks, with what is not a tick label
@@ -1265,7 +1436,12 @@ export function binEdges(img: PixelImage, bar: Box, vertical: boolean) {
 // to it (`bar` in the result). Marks of an odd size are flagged with
 // `note` for the LLM. Returns {side, marks: [{at, box, note?}], score,
 // bar?}.
-function tickMarks(img: PixelImage, bar: Box, best: TickBest, { vertical, len, b0, b1 }: { vertical: boolean; len: number; b0: number; b1: number }): TickLabelsResult {
+function tickMarks(
+  img: PixelImage,
+  bar: Box,
+  best: TickBest,
+  { vertical, len, b0, b1 }: { vertical: boolean; len: number; b0: number; b1: number },
+): TickLabelsResult {
   const { charH } = best;
   const mid = (l: TickLabel) => (l.u0 + l.u1) / 2;
   let on = best.on;
@@ -1289,13 +1465,20 @@ function tickMarks(img: PixelImage, bar: Box, best: TickBest, { vertical, len, b
   let extended = null;
   if (on.length >= 3 && cv < 0.15) {
     // (t10's end is 5–11 levels off the white page)
-    const bg = background(img, Math.max(0, bar.x0 - 20), Math.max(0, bar.y0 - 20), Math.min(img.width, bar.x1 + 20), Math.min(img.height, bar.y1 + 20));
+    const bg = background(
+      img,
+      Math.max(0, bar.x0 - 20),
+      Math.max(0, bar.y0 - 20),
+      Math.min(img.width, bar.x1 + 20),
+      Math.min(img.height, bar.y1 + 20),
+    );
     const pale = differs(bg, 4);
     const c = Math.round(vertical ? (bar.x0 + bar.x1) / 2 : (bar.y0 + bar.y1) / 2);
     const offPage = (from: number, to: number) => {
       let n = 0;
       let t = 0;
-      for (let u = Math.round(from); u < to; u++, t++) if (pale(vertical ? readPixel(img, c, u) : readPixel(img, u, c))) n++;
+      for (let u = Math.round(from); u < to; u++, t++)
+        if (pale(vertical ? readPixel(img, c, u) : readPixel(img, u, c))) n++;
       return t > 0 && n >= 0.8 * t;
     };
     for (const l of best.row) {
@@ -1328,10 +1511,17 @@ function tickMarks(img: PixelImage, bar: Box, best: TickBest, { vertical, len, b
   const marks = on.map((l, i) => {
     const odd = on.length >= 3 && (sizes[i] > 3 * typical || l.n > 2 * glyphs + 2);
     const u = place(l, i);
-    return { at: vertical ? { x: m, y: u } : { x: u, y: m }, box: l.box, ...(odd ? { note: 'larger than the other labels (a title, or two labels joined?)' } : {}) };
+    return {
+      at: vertical ? { x: m, y: u } : { x: u, y: m },
+      box: l.box,
+      ...(odd ? { note: 'larger than the other labels (a title, or two labels joined?)' } : {}),
+    };
   });
   const out: TickLabelsResult = { side: best.side, marks, score: best.score };
-  if (extended) out.bar = vertical ? { ...bar, y0: extended.b0 ?? bar.y0, y1: extended.b1 ?? bar.y1 } : { ...bar, x0: extended.b0 ?? bar.x0, x1: extended.b1 ?? bar.x1 };
+  if (extended)
+    out.bar = vertical
+      ? { ...bar, y0: extended.b0 ?? bar.y0, y1: extended.b1 ?? bar.y1 }
+      : { ...bar, x0: extended.b0 ?? bar.x0, x1: extended.b1 ?? bar.x1 };
   return out;
 }
 
@@ -1346,7 +1536,8 @@ export function labelReach(img: PixelImage, cells: Box, side: string, reach: num
   const horizontal = side === 'left' || side === 'right';
   gap ??= Math.max(15, Math.round(0.02 * (horizontal ? cells.x1 - cells.x0 : cells.y1 - cells.y0)));
   const dir = side === 'left' || side === 'above' ? -1 : 1;
-  const start = side === 'left' ? cells.x0 - 1 : side === 'right' ? cells.x1 : side === 'above' ? cells.y0 - 1 : cells.y1;
+  const start =
+    side === 'left' ? cells.x0 - 1 : side === 'right' ? cells.x1 : side === 'above' ? cells.y0 - 1 : cells.y1;
   const [s0, s1] = horizontal ? [cells.y0, cells.y1] : [cells.x0, cells.x1];
   const end = horizontal ? img.width : img.height;
   // Background from the strip walked over, not the cells.
@@ -1358,7 +1549,8 @@ export function labelReach(img: PixelImage, cells: Box, side: string, reach: num
   const ink = differs(background(img, bx0, by0, bx1, by1), INK);
   const step = Math.max(1, Math.floor((s1 - s0) / 150));
   const blank = (a: number) => {
-    for (let b = Math.round(s0); b < s1; b += step) if (ink(horizontal ? readPixel(img, a, b) : readPixel(img, b, a))) return false;
+    for (let b = Math.round(s0); b < s1; b += step)
+      if (ink(horizontal ? readPixel(img, a, b) : readPixel(img, b, a))) return false;
     return true;
   };
   let last = start;

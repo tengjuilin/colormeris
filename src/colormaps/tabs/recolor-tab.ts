@@ -1,10 +1,10 @@
+import { rgbToHex } from '../../core/color.ts';
+import { colorAtT, refineColorbar, sampleColorbar } from '../../core/colorbar.ts';
+import { identifyColorbar, matchLevel } from '../../core/colormap-match.ts';
 import type { CmapViewerContext } from '../../types/index.ts';
 import { createFigureInput } from '../figure-input.ts';
 import { createMapPicker } from '../map-picker.ts';
 import { createIndexer, newColorAt, recolorPixels, regionMask, similarMask, tAtPixel } from '../recolor.ts';
-import { rgbToHex } from '../../core/color.ts';
-import { colorAtT, refineColorbar, sampleColorbar } from '../../core/colorbar.ts';
-import { identifyColorbar, matchLevel } from '../../core/colormap-match.ts';
 
 // The Recolor tab of the colormap viewer (colormaps.html): load a figure,
 // drag along its colorbar, pick another colormap, and the figure is redrawn
@@ -24,9 +24,16 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
 
   const d = el('section', { class: 'cmap-recolor', 'aria-labelledby': 'cmap-recolor-title', hidden: '' });
   d.append(el('h2', { id: 'cmap-recolor-title' }, 'Recolor a figure into another colormap'));
-  d.append(el('p', { class: 'muted' }, 'Give an image of a figure, drag along its colorbar, and pick a new colormap. Each pixel with a color of the bar gets the new map’s color at the same place. The image stays in your browser.'));
+  d.append(
+    el(
+      'p',
+      { class: 'muted' },
+      'Give an image of a figure, drag along its colorbar, and pick a new colormap. Each pixel with a color of the bar gets the new map’s color at the same place. The image stays in your browser.',
+    ),
+  );
 
-  const LOADED_HINT = 'Drag along the colorbar from one end to the other. The figure is then redrawn in the new colormap next to the original. Hover a color in either to see where it appears; press and hold one to see the other version in its place.';
+  const LOADED_HINT =
+    'Drag along the colorbar from one end to the other. The figure is then redrawn in the new colormap next to the original. Hover a color in either to see where it appears; press and hold one to see the other version in its place.';
   const EMPTY_HINT = 'Drop an image here, paste one (Ctrl/Cmd+V), or click to choose a file (PNG, JPEG, WebP or GIF).';
   const status = el('p', { class: 'cmap-id-status', 'aria-live': 'polite' });
   const oldNote = el('p', { class: 'cmap-rc-old', hidden: '' });
@@ -48,26 +55,51 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
       if (changed) render();
     },
   });
-  const mapField = field('New colormap', 'The colormap the figure is redrawn in. Type to search; leave empty to see them all.', picker.box, revLabel);
+  const mapField = field(
+    'New colormap',
+    'The colormap the figure is redrawn in. Type to search; leave empty to see them all.',
+    picker.box,
+    revLabel,
+  );
 
   const tol = el('input', { type: 'range', min: '2', max: '40', step: '1', value: String(TOLERANCE) });
   const tolOut = el('output', {}, String(TOLERANCE));
-  const tolField = field('Match within (ΔE)', 'Pixels farther than this from every colorbar color keep their color (background, text, axes). Raise it for noisy or JPEG images; lower it if white or gray parts change.', tol, tolOut);
+  const tolField = field(
+    'Match within (ΔE)',
+    'Pixels farther than this from every colorbar color keep their color (background, text, axes). Raise it for noisy or JPEG images; lower it if white or gray parts change.',
+    tol,
+    tolOut,
+  );
 
   const band = el('input', { type: 'range', min: '0.5', max: '10', step: '0.5', value: String(BAND * 100) });
   const bandOut = el('output', {}, pct(BAND));
-  const bandField = field('Similar within', 'On hover, pixels whose place on the colorbar is this close to the hovered one flash', band, bandOut);
+  const bandField = field(
+    'Similar within',
+    'On hover, pixels whose place on the colorbar is this close to the hovered one flash',
+    band,
+    bandOut,
+  );
 
   const flashBox = el('input', { type: 'checkbox', checked: '' });
   const flashLabel = el('label', { class: 'cmap-rc-check' });
   flashLabel.append(flashBox, ' Flash');
-  const flashField = field('Highlight', 'On: the pixels at the hovered value flash to their complementary color. Off: they stay as they are and the rest is veiled in white.', flashLabel);
+  const flashField = field(
+    'Highlight',
+    'On: the pixels at the hovered value flash to their complementary color. Off: they stay as they are and the rest is veiled in white.',
+    flashLabel,
+  );
 
   // Regions: rectangles dragged on the original. With none, the whole image.
   const drawBtn = el('button', { type: 'button', class: 'btn small', 'aria-pressed': 'false' }, 'Draw regions');
   const wholeBtn = el('button', { type: 'button', class: 'btn small', disabled: '' }, 'Whole image');
   const regionOut = el('output', { class: 'cmap-rc-region' }, 'Whole image');
-  const regionField = field('Recolor only in', 'Drag rectangles on the original to recolor only inside them, for example the plot and its colorbar, so a background with colors of the bar keeps its own. Whole image removes them.', drawBtn, wholeBtn, regionOut);
+  const regionField = field(
+    'Recolor only in',
+    'Drag rectangles on the original to recolor only inside them, for example the plot and its colorbar, so a background with colors of the bar keeps its own. Whole image removes them.',
+    drawBtn,
+    wholeBtn,
+    regionOut,
+  );
   let drawing = false;
   let region: any = null; // per-pixel 0/1 from the boxes, or null for the whole image
 
@@ -78,10 +110,28 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
 
   // ---- strips: the sampled bar over the new colors, both hoverable ----
   const strips = el('div', { class: 'cmap-rc-strips', hidden: '' });
-  const oldStrip = el('div', { class: 'cmap-id-strip cmap-rc-strip', role: 'slider', tabindex: '0', 'aria-label': 'Colors of the old colorbar. Hover or use the arrow keys to highlight a value.', 'aria-valuemin': '0', 'aria-valuemax': '100' });
-  const newStrip = el('div', { class: 'cmap-id-strip cmap-rc-strip', role: 'slider', tabindex: '0', 'aria-label': 'The new colors at the same places. Hover or use the arrow keys to highlight a value.', 'aria-valuemin': '0', 'aria-valuemax': '100' });
-  strips.append(el('span', { class: 'muted' }, 'Old colors, as sampled along the line'), oldStrip,
-    el('span', { class: 'muted' }, 'New colors'), newStrip);
+  const oldStrip = el('div', {
+    class: 'cmap-id-strip cmap-rc-strip',
+    role: 'slider',
+    tabindex: '0',
+    'aria-label': 'Colors of the old colorbar. Hover or use the arrow keys to highlight a value.',
+    'aria-valuemin': '0',
+    'aria-valuemax': '100',
+  });
+  const newStrip = el('div', {
+    class: 'cmap-id-strip cmap-rc-strip',
+    role: 'slider',
+    tabindex: '0',
+    'aria-label': 'The new colors at the same places. Hover or use the arrow keys to highlight a value.',
+    'aria-valuemin': '0',
+    'aria-valuemax': '100',
+  });
+  strips.append(
+    el('span', { class: 'muted' }, 'Old colors, as sampled along the line'),
+    oldStrip,
+    el('span', { class: 'muted' }, 'New colors'),
+    newStrip,
+  );
   const readout = el('p', { class: 'cmap-rc-readout muted', 'aria-live': 'polite' });
 
   // ---- the figure and its recolored copy side by side, each with the highlight on top ----
@@ -91,7 +141,11 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
   let samples: any = null; // the calibrated bar
   let flip = false; // the line was drawn from the old map's high end
   let index: any = null; // per-pixel t and ΔE
-  const out = el('canvas', { class: 'cmap-id-canvas cmap-rc-canvas', role: 'img', 'aria-label': 'Your figure, recolored. Hover a color to see where it is.' }); // the recolored image
+  const out = el('canvas', {
+    class: 'cmap-id-canvas cmap-rc-canvas',
+    role: 'img',
+    'aria-label': 'Your figure, recolored. Hover a color to see where it is.',
+  }); // the recolored image
   let outData: any = null; // its RGBA bytes, for the highlight's colors
   let outImage: any = null; // the same as ImageData, to put back after a peek
   let peek: any = null; // { canvas pressed, x, y }: it shows the other version while held
@@ -107,7 +161,8 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
     el,
     state,
     tab: 'recolor',
-    label: 'Your figure. Drag along the colorbar from its low end to its high end, then hover a color to see where it is.',
+    label:
+      'Your figure. Drag along the colorbar from its low end to its high end, then hover a color to see where it is.',
     hints: {
       empty: EMPTY_HINT,
       loaded: LOADED_HINT,
@@ -137,10 +192,18 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
       oldNote.hidden = true;
       status.textContent = '';
       readout.textContent = '';
-      if (!keepImage) { overlay.hidden = true; origPanel.hidden = true; }
+      if (!keepImage) {
+        overlay.hidden = true;
+        origPanel.hidden = true;
+      }
     },
-    onLoad: () => { overlay.hidden = false; origPanel.hidden = false; },
-    onError: (msg: any) => { status.textContent = msg; },
+    onLoad: () => {
+      overlay.hidden = false;
+      origPanel.hidden = false;
+    },
+    onError: (msg: any) => {
+      status.textContent = msg;
+    },
     onLine: (a: any, b: any) => calibrate(a, b),
   });
   fig.canvas.classList.add('cmap-rc-canvas');
@@ -182,7 +245,9 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
     fig.canvas.classList.toggle('drawing', on);
     fig.hint.textContent = on
       ? 'Drag rectangles on the original around the parts to recolor. Press Draw regions again (or Esc) when done.'
-      : (fig.img ? LOADED_HINT : '');
+      : fig.img
+        ? LOADED_HINT
+        : '';
   }
 
   function regionLabel() {
@@ -216,14 +281,25 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
     let start = a;
     let end = b;
     let half = 2;
-    if (k) { ({ start, end } = k); half = k.halfWidth; }
+    if (k) {
+      ({ start, end } = k);
+      half = k.halfWidth;
+    }
     fig.line = { start, end };
     outPanel.hidden = true;
     fig.redraw();
     const s = sampleColorbar(img, start, end, half, 256);
-    if (s.length < 2) { status.textContent = 'That line is too short.'; return; }
+    if (s.length < 2) {
+      status.textContent = 'That line is too short.';
+      return;
+    }
     samples = s;
-    buildIndex(() => describeOld(s.map((x) => x.rgb), Boolean(k)));
+    buildIndex(() =>
+      describeOld(
+        s.map((x) => x.rgb),
+        Boolean(k),
+      ),
+    );
   }
 
   // Name the old map when it is a known one, and read the bar in its
@@ -238,9 +314,15 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
     oldNote.replaceChildren();
     oldNote.hidden = false;
     if (level === 'none') {
-      oldNote.append(`The old colors match no known colormap (best ΔE ${best ? best.score.toFixed(1) : '–'}), so the end where you started the line is taken as the low end.`);
+      oldNote.append(
+        `The old colors match no known colormap (best ΔE ${best ? best.score.toFixed(1) : '–'}), so the end where you started the line is taken as the low end.`,
+      );
     } else {
-      oldNote.append(level === 'exact' ? 'Old colormap: ' : 'Old colormap looks like ', el('code', {}, best.name), ` (ΔE ${best.score.toFixed(1)}).`);
+      oldNote.append(
+        level === 'exact' ? 'Old colormap: ' : 'Old colormap looks like ',
+        el('code', {}, best.name),
+        ` (ΔE ${best.score.toFixed(1)}).`,
+      );
       if (flip) oldNote.append(' The line runs from its high end, so it is read the other way.');
     }
     if (!snapped) oldNote.append(' The line could not be snapped to a colorbar; drag along the middle of the bar.');
@@ -254,7 +336,10 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
     status.textContent = 'Reading the colors…';
     const tick = () => {
       if (my !== job) return; // a newer calibration or another image
-      if (first) { first(); first = null; }
+      if (first) {
+        first();
+        first = null;
+      }
       const done = ix.step(CHUNK);
       if (done < 1) {
         status.textContent = `Reading the colors… ${pct(done)}`;
@@ -279,7 +364,10 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
   let renderFrame = 0;
   function render() {
     if (!index || renderFrame) return;
-    renderFrame = requestAnimationFrame(() => { renderFrame = 0; renderNow(); });
+    renderFrame = requestAnimationFrame(() => {
+      renderFrame = 0;
+      renderNow();
+    });
   }
 
   let stripKey: any = null; // what the strips show; they only change with it
@@ -301,7 +389,12 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
     const key = [samples, m.name, revBox.checked, flip];
     if (!stripKey || key.some((v, i) => v !== stripKey[i])) {
       stripKey = key;
-      oldStrip.replaceChildren(stripCanvas(samples.map((s: any) => roundRgb(s.rgb)), false));
+      oldStrip.replaceChildren(
+        stripCanvas(
+          samples.map((s: any) => roundRgb(s.rgb)),
+          false,
+        ),
+      );
       const opt = { reversed: revBox.checked, flip };
       const colors = Array.from({ length: 128 }, (_, i) => roundRgb(newColorAt(m, i / 127, opt)));
       newStrip.replaceChildren(stripCanvas(colors, m.kind === 'qualitative'));
@@ -321,7 +414,10 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
   function hover(t: any) {
     pending = t;
     if (frame) return;
-    const run = () => { frame = 0; if (pending != null) highlight(pending); };
+    const run = () => {
+      frame = 0;
+      if (pending != null) highlight(pending);
+    };
     frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(run) : setTimeout(run, 16);
   }
 
@@ -338,12 +434,16 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
     const n = mask.length;
     const calm = reduceMotion() || !flashBox.checked;
     overlayData ??= [];
-    [[overlay, fig.img!.data], [overlay2, outData]].forEach(([ov, shown], i) => {
+    [
+      [overlay, fig.img!.data],
+      [overlay2, outData],
+    ].forEach(([ov, shown], i) => {
       if (ov.width !== res.width || ov.height !== res.height) {
         ov.width = res.width;
         ov.height = res.height;
       }
-      if (!overlayData[i] || overlayData[i].width !== res.width || overlayData[i].height !== res.height) overlayData[i] = new ImageData(res.width, res.height);
+      if (!overlayData[i] || overlayData[i].width !== res.width || overlayData[i].height !== res.height)
+        overlayData[i] = new ImageData(res.width, res.height);
       const px = new Uint32Array(overlayData[i].data.buffer);
       // Little-endian RGBA as one word.
       const dim = (180 << 24) | (255 << 16) | (255 << 8) | 255; // white veil over the rest
@@ -354,8 +454,11 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
         // under it, which stands out whatever the map.
         const w = res.width;
         for (let j = 0; j < n; j++) {
-          if (!mask[j]) { px[j] = 0; continue; }
-          const o = ((((j / w) | 0) * step) * index.width + (j % w) * step) * 4;
+          if (!mask[j]) {
+            px[j] = 0;
+            continue;
+          }
+          const o = (((j / w) | 0) * step * index.width + (j % w) * step) * 4;
           px[j] = (255 << 24) | ((255 - shown[o + 2]) << 16) | ((255 - shown[o + 1]) << 8) | (255 - shown[o]);
         }
       }
@@ -365,12 +468,18 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
     });
     for (const s of [oldStrip, newStrip]) {
       const mk = s.querySelector('.cmap-rc-mark');
-      if (mk) { mk.hidden = false; mk.style.left = `${(t * 100).toFixed(2)}%`; }
+      if (mk) {
+        mk.hidden = false;
+        mk.style.left = `${(t * 100).toFixed(2)}%`;
+      }
       s.setAttribute('aria-valuenow', String(Math.round(t * 100)));
     }
     const c = roundRgb(colorAtT(samples, t));
     const sw = el('span', { class: 'cmap-sw', style: `background:${rgbToHex(c)}` });
-    readout.replaceChildren(sw, ` At ${pct(t)} of the bar: ${pct(res.count / (res.total || 1))} of the pixels${region ? ' in the regions' : ''} (±${pct(bandWidth())}).`);
+    readout.replaceChildren(
+      sw,
+      ` At ${pct(t)} of the bar: ${pct(res.count / (res.total || 1))} of the pixels${region ? ' in the regions' : ''} (±${pct(bandWidth())}).`,
+    );
   }
 
   function clearHighlight() {
@@ -434,21 +543,37 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
     };
     s.addEventListener('pointermove', (e: any) => hover(tOf(e)));
     s.addEventListener('pointerdown', (e: any) => highlight(tOf(e), true));
-    s.addEventListener('pointerleave', () => { if (document.activeElement !== s) clearHighlight(); });
+    s.addEventListener('pointerleave', () => {
+      if (document.activeElement !== s) clearHighlight();
+    });
     s.addEventListener('blur', clearHighlight);
     s.addEventListener('keydown', (e: any) => {
       const step = e.shiftKey ? 0.1 : 0.01;
       const now = hoverT ?? 0.5;
-      const next = ({ ArrowLeft: now - step, ArrowDown: now - step, ArrowRight: now + step, ArrowUp: now + step, Home: 0, End: 1 } as Record<string, number>)[e.key];
+      const next = (
+        {
+          ArrowLeft: now - step,
+          ArrowDown: now - step,
+          ArrowRight: now + step,
+          ArrowUp: now + step,
+          Home: 0,
+          End: 1,
+        } as Record<string, number>
+      )[e.key];
       if (next == null) return;
       e.preventDefault();
       highlight(next, true);
     });
   }
 
-  flashBox.addEventListener('change', () => { if (hoverT != null) highlight(hoverT, true); });
+  flashBox.addEventListener('change', () => {
+    if (hoverT != null) highlight(hoverT, true);
+  });
   revBox.addEventListener('change', render);
-  tol.addEventListener('input', () => { tolOut.textContent = tol.value; render(); });
+  tol.addEventListener('input', () => {
+    tolOut.textContent = tol.value;
+    render();
+  });
   band.addEventListener('input', () => {
     bandOut.textContent = pct(bandWidth());
     if (hoverT != null) highlight(hoverT, true);
@@ -457,7 +582,10 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
   download.addEventListener('click', () => {
     if (!index) return;
     out.toBlob((blob: any) => {
-      if (!blob) { status.textContent = 'Could not make the PNG.'; return; }
+      if (!blob) {
+        status.textContent = 'Could not make the PNG.';
+        return;
+      }
       const a = el('a', { href: URL.createObjectURL(blob), download: `${fig.name}-${mapLabel()}.png` });
       document.body.append(a);
       a.click();

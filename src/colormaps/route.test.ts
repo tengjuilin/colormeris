@@ -3,7 +3,6 @@ import { test } from 'vitest';
 import { cmapData } from '../core/colormap-library.ts';
 import { COMPARE_MAX, parseCompare, parseViewerRoute } from './route.ts';
 
-
 test('parseCompare keeps known names once, in order, up to the cap', () => {
   const names = ['viridis', 'jet', 'RdBu', 'gray'];
   assert.deepEqual(parseCompare('jet,VIRIDIS, rdbu ,jet,nope,', names), ['jet', 'viridis', 'RdBu']);
@@ -21,7 +20,11 @@ test('parseViewerRoute: tab from the hash, map and comparison from the query', (
   assert.deepEqual(parseViewerRoute('?map=JET', '#browse', names), { tab: 'browse', map: 'jet', compare: [] });
   assert.equal(parseViewerRoute('?map=nope', '', names).map, null);
   // Old shared links have only ?compare=, so they open the comparison.
-  assert.deepEqual(parseViewerRoute('?compare=jet,viridis', '', names), { tab: 'compare', map: null, compare: ['jet', 'viridis'] });
+  assert.deepEqual(parseViewerRoute('?compare=jet,viridis', '', names), {
+    tab: 'compare',
+    map: null,
+    compare: ['jet', 'viridis'],
+  });
   assert.equal(parseViewerRoute('?compare=jet&map=rdbu', '', names).tab, 'browse');
   assert.equal(parseViewerRoute('?compare=jet', '#Identify', names).tab, 'identify');
   assert.equal(parseViewerRoute('', '#cvd', names).tab, 'cvd');

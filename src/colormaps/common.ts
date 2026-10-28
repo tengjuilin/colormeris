@@ -18,7 +18,12 @@ export const RATING_COLS = [
   { key: 'readable', abbr: 'Read', label: 'Readable', sort: 'readable' },
 ];
 export const GLYPH: Record<string, string> = { yes: '✓', partly: '~', no: '✕' };
-export const PILL: Record<string, string> = { uniform: 'Uniform', cvdSafe: 'CVD', graySafe: 'Gray', readable: 'Readable' };
+export const PILL: Record<string, string> = {
+  uniform: 'Uniform',
+  cvdSafe: 'CVD',
+  graySafe: 'Gray',
+  readable: 'Readable',
+};
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export const clamp8 = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
@@ -53,7 +58,10 @@ export function anchorPopover(btn: HTMLElement, pop: HTMLElement) {
     const r = btn.getBoundingClientRect();
     const vw = document.documentElement.clientWidth;
     const vh = window.innerHeight;
-    if (!r.width || r.bottom < 0 || r.top > vh) { pop.hidePopover(); return; }
+    if (!r.width || r.bottom < 0 || r.top > vh) {
+      pop.hidePopover();
+      return;
+    }
     // Measure at the left edge with no height cap: placed near the right
     // edge, a fixed box shrinks to the space left and wraps every word.
     Object.assign(pop.style, { left: '0px', top: '0px', maxHeight: '' });
@@ -71,8 +79,12 @@ export function anchorPopover(btn: HTMLElement, pop: HTMLElement) {
     });
   };
   // Scrolls inside the popover itself don't move the button.
-  const onScroll = (e: Event) => { if (!pop.contains(e.target as Node)) place(); };
-  pop.addEventListener('beforetoggle', (e) => { if ((e as ToggleEvent).newState === 'open') place(); });
+  const onScroll = (e: Event) => {
+    if (!pop.contains(e.target as Node)) place();
+  };
+  pop.addEventListener('beforetoggle', (e) => {
+    if ((e as ToggleEvent).newState === 'open') place();
+  });
   pop.addEventListener('toggle', (e) => {
     const open = e.newState === 'open';
     btn.setAttribute('aria-expanded', String(open));
@@ -86,4 +98,3 @@ export function anchorPopover(btn: HTMLElement, pop: HTMLElement) {
     }
   });
 }
-

@@ -1,12 +1,20 @@
-import { test } from 'vitest';
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 import { rectCorners } from '../../core/grid.ts';
+import { cmap, makeImage, paintColorbar, setPixel, VIRIDISH } from '../../testing/helpers.ts';
 import type { Panel, Roi, RoiResult, RoiStats } from '../../types/index.ts';
-import { roiCsv } from '../project/project-files.ts';
 import { createPanel, createRoi } from '../project/project.ts';
-import { makeClassifier, metricValue, pixelArea, quantifyOutline, quantifyPanel, roiPanelProblem, roiTableModel, shortNumber } from './quantify.ts';
-import { VIRIDISH, cmap, makeImage, paintColorbar, setPixel } from '../../testing/helpers.ts';
-
+import { roiCsv } from '../project/project-files.ts';
+import {
+  makeClassifier,
+  metricValue,
+  pixelArea,
+  quantifyOutline,
+  quantifyPanel,
+  roiPanelProblem,
+  roiTableModel,
+  shortNumber,
+} from './quantify.ts';
 
 const close = (a: number, b: number, eps: number) => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b}`);
 
@@ -15,8 +23,12 @@ const close = (a: number, b: number, eps: number) => assert.ok(Math.abs(a - b) <
 function scene() {
   const img = makeImage(260, 240, [128, 128, 128, 255]);
   // Gray gradient photo so background is not a single color.
-  for (let y = 0; y < 200; y++) for (let x = 0; x < 200; x++) setPixel(img, x, y, [60 + (x % 50), 60 + (x % 50), 60 + (x % 50)]);
-  const values = [[20, 40], [60, 80]];
+  for (let y = 0; y < 200; y++)
+    for (let x = 0; x < 200; x++) setPixel(img, x, y, [60 + (x % 50), 60 + (x % 50), 60 + (x % 50)]);
+  const values = [
+    [20, 40],
+    [60, 80],
+  ];
   for (let r = 0; r < 2; r++) {
     for (let c = 0; c < 2; c++) {
       const color = cmap(VIRIDISH, values[r][c] / 100);
@@ -30,7 +42,10 @@ function scene() {
   panel.grid.cols = 2;
   panel.colorbar.start = { x: 225, y: 210 };
   panel.colorbar.end = { x: 225, y: 10 };
-  panel.colorbar.ticks = [{ x: 225, y: 210, value: 0 }, { x: 225, y: 10, value: 100 }];
+  panel.colorbar.ticks = [
+    { x: 225, y: 210, value: 0 },
+    { x: 225, y: 10, value: 100 },
+  ];
   return { img, panel, values };
 }
 
@@ -70,7 +85,9 @@ test('replicated square ROI measures each box', () => {
     close(r.stats.max, v, 1);
     assert.equal(r.stats.flaggedPx, 0);
   }
-  const csv = roiCsv([{ panel, result: res }]).trim().split('\n');
+  const csv = roiCsv([{ panel, result: res }])
+    .trim()
+    .split('\n');
   assert.equal(csv[0], 'panel,page,box,row,col,roi,shape,area_px,signal_px,flagged_px,sum,mean,mean_signal,max');
   assert.equal(csv.length, 5);
   assert.match(csv[1], /^k,1,R1 C1,1,1,liver,rect,1600,400,0,/);
@@ -94,7 +111,17 @@ test('scale bar calibration converts areas', () => {
 test('quantifyOutline counts off-colormap colors as flagged signal', () => {
   const { img, panel } = scene();
   for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) setPixel(img, x, y, [255, 0, 0]);
-  const s = quantifyOutline(img, [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }], makeClassifier(img, panel), null);
+  const s = quantifyOutline(
+    img,
+    [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+    ],
+    makeClassifier(img, panel),
+    null,
+  );
   assert.equal(s.areaPx, 100);
   assert.equal(s.flaggedPx, 100);
 });
@@ -105,14 +132,22 @@ test('results table helpers: metric values, short numbers, rows in reading order
   assert.deepEqual([0, 12.3456, 123456, 0.001, NaN].map(shortNumber), ['0', '12.35', '1.23e5', '1.00e-3', '']);
   const a = { id: 'a', name: 'A' } as Roi;
   const b = { id: 'b', name: 'B' } as Roi;
-  const panel = { rois: [a, b], grid: { rows: 1, cols: 2, rowLabels: [], colLabels: [], boxLabels: ['m1', 'm2'] } } as unknown as Panel;
+  const panel = {
+    rois: [a, b],
+    grid: { rows: 1, cols: 2, rowLabels: [], colLabels: [], boxLabels: ['m1', 'm2'] },
+  } as unknown as Panel;
   const stats = {} as RoiStats;
-  const result = { rows: [
-    { roi: a, row: 0, col: 1, stats },
-    { roi: b, row: null, col: null, stats },
-    { roi: a, row: 0, col: 0, stats },
-  ] } as unknown as RoiResult;
+  const result = {
+    rows: [
+      { roi: a, row: 0, col: 1, stats },
+      { roi: b, row: null, col: null, stats },
+      { roi: a, row: 0, col: 0, stats },
+    ],
+  } as unknown as RoiResult;
   const model = roiTableModel(panel, result);
-  assert.deepEqual(model.rows.map((r) => r.label), ['m1', 'm2', 'Image']);
+  assert.deepEqual(
+    model.rows.map((r) => r.label),
+    ['m1', 'm2', 'Image'],
+  );
   assert.deepEqual([...model.rows[2].cells.keys()], ['b']);
 });

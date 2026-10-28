@@ -1,5 +1,5 @@
-import { comboFromEvent, findHotkey, isMacPlatform } from '../settings/settings.ts';
 import type { HotkeyOptions, HotkeysMembers, ToolKind, WorkspaceContext } from '../../types/index.ts';
+import { comboFromEvent, findHotkey, isMacPlatform } from '../settings/settings.ts';
 
 const isMac = isMacPlatform(globalThis.navigator);
 
@@ -60,9 +60,11 @@ export function setupWorkspaceHotkeys(w: WorkspaceContext): HotkeysMembers {
     const last = app.project.source?.pageCount || 1;
     const target = Math.min(last, Math.max(1, (wantedPage ?? w.currentPage()) + step));
     wantedPage = target;
-    flipping = flipping.then(() => w.goToPage(target)).finally(() => {
-      if (wantedPage === target) wantedPage = null;
-    });
+    flipping = flipping
+      .then(() => w.goToPage(target))
+      .finally(() => {
+        if (wantedPage === target) wantedPage = null;
+      });
   }
   addHotkey('prevPage', () => flipPage(-1));
   addHotkey('nextPage', () => flipPage(1));
@@ -72,7 +74,11 @@ export function setupWorkspaceHotkeys(w: WorkspaceContext): HotkeysMembers {
     if (e.defaultPrevented || document.querySelector('dialog[open]')) return;
     if (w.tool().onKey?.(e)) return;
     const t = e.target;
-    const typing = t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && (t as HTMLInputElement).type !== 'checkbox' && (t as HTMLInputElement).type !== 'range';
+    const typing =
+      t instanceof HTMLElement &&
+      /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) &&
+      (t as HTMLInputElement).type !== 'checkbox' &&
+      (t as HTMLInputElement).type !== 'range';
     if (e.key === 'Escape') {
       if (typing) (t as HTMLElement).blur();
       else w.setMode(null);
@@ -80,7 +86,7 @@ export function setupWorkspaceHotkeys(w: WorkspaceContext): HotkeysMembers {
     }
     if (typing) return;
     // Actions of other tools may share the key, so look only at this tool's.
-    const h = hotkeys[findHotkey(w.ws.settings.hotkeys, comboFromEvent(e, isMac), w.tool().kind) ?? ""];
+    const h = hotkeys[findHotkey(w.ws.settings.hotkeys, comboFromEvent(e, isMac), w.tool().kind) ?? ''];
     if (!h || (!h.always && !app.sourceCanvas) || (h.tool && h.tool !== w.tool().kind)) return;
     // A hotkey that returns false did nothing, so the browser keeps the key
     // (Mod+C with no profile selected still copies selected text).

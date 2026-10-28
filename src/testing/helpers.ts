@@ -1,6 +1,7 @@
 // Synthetic image helpers for tests.
-import type { Corners, PixelImage, Point, Rgb } from '../types/index.ts';
+
 import { invertBilinear } from '../core/grid.ts';
+import type { Corners, PixelImage, Point, Rgb } from '../types/index.ts';
 
 export function makeImage(width: number, height: number, fill: number[] = [255, 255, 255, 255]): PixelImage {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -34,7 +35,13 @@ export const VIRIDISH: Rgb[] = [
 
 // Paint a heatmap of `matrix` (values s in [0,1]) inside a quadrilateral,
 // with 1px dark grid lines between cells unless `lines` is false.
-export function paintHeatmap(img: PixelImage, corners: Corners, matrix: number[][], stops: Rgb[], { lines = true }: { lines?: boolean } = {}) {
+export function paintHeatmap(
+  img: PixelImage,
+  corners: Corners,
+  matrix: number[][],
+  stops: Rgb[],
+  { lines = true }: { lines?: boolean } = {},
+) {
   const rows = matrix.length;
   const cols = matrix[0].length;
   const cellW = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y) / cols;
@@ -45,7 +52,8 @@ export function paintHeatmap(img: PixelImage, corners: Corners, matrix: number[]
       if (u < 0 || u >= 1 || v < 0 || v >= 1) continue;
       const fu = u * cols;
       const fv = v * rows;
-      const edge = lines && (Math.min(fu % 1, 1 - (fu % 1)) * cellW < 0.5 || Math.min(fv % 1, 1 - (fv % 1)) * cellH < 0.5);
+      const edge =
+        lines && (Math.min(fu % 1, 1 - (fu % 1)) * cellW < 0.5 || Math.min(fv % 1, 1 - (fv % 1)) * cellH < 0.5);
       const color = edge ? [30, 30, 30] : cmap(stops, matrix[Math.floor(fv)][Math.floor(fu)]);
       setPixel(img, x, y, color);
     }
@@ -74,7 +82,8 @@ export function paintDots(img: PixelImage, tl: Point, br: Point, matrix: number[
       const cy = tl.y + ((br.y - tl.y) * r) / (rows - 1);
       const rgb = cmap(stops, matrix[r][c]);
       for (let y = Math.floor(cy - R); y <= Math.ceil(cy + R); y++)
-        for (let x = Math.floor(cx - R); x <= Math.ceil(cx + R); x++) if ((x - cx) ** 2 + (y - cy) ** 2 <= R * R) setPixel(img, x, y, rgb);
+        for (let x = Math.floor(cx - R); x <= Math.ceil(cx + R); x++)
+          if ((x - cx) ** 2 + (y - cy) ** 2 <= R * R) setPixel(img, x, y, rgb);
     }
   }
 }
@@ -107,7 +116,12 @@ export function groupedFigure() {
   const Y0 = 50;
   const cellsX = (g: number, c: number) => X0 + 2 + g * 94 + c * 22; // 20 px of color, then a 2 px line
   const cellsY = (r: number) => Y0 + 2 + r * 20; // 18 px of color, then a 2 px line
-  const pale = [[244, 222, 222], [246, 230, 230], [242, 219, 219], [236, 203, 204]];
+  const pale = [
+    [244, 222, 222],
+    [246, 230, 230],
+    [242, 219, 219],
+    [236, 203, 204],
+  ];
   for (let g = 0; g < 8; g++)
     for (let c = 0; c < 4; c++)
       for (let r = 0; r < 12; r++) {
@@ -131,19 +145,25 @@ export function groupedFigure() {
   }
   for (let k = 0; k < 3; k++) {
     fillRect(img, X1 + 8, cellsY(4 * k) + 4, X1 + 10, cellsY(4 * k + 3) + 14, [0, 0, 0]);
-    for (let i = 0; i < 3; i++) fillRect(img, X1 + 16, cellsY(4 * k) + 20 + i * 14, X1 + 26, cellsY(4 * k) + 30 + i * 14, [20, 20, 20]);
+    for (let i = 0; i < 3; i++)
+      fillRect(img, X1 + 16, cellsY(4 * k) + 20 + i * 14, X1 + 26, cellsY(4 * k) + 30 + i * 14, [20, 20, 20]);
   }
   for (let i = 0; i < 4; i++) {
     outline(img, X0 - 26, Y0 + 2 + i * 14, X0 - 10, Y0 + 15 + i * 14);
     text(img, X0 - 90, Y0 + 3 + i * 14, 7);
     outline(img, X1 - 64 + i * 16, Y1 + 10, X1 - 48 + i * 16, Y1 + 26);
-    for (let j = 0; j < 4; j++) fillRect(img, X1 - 60 + i * 16, Y1 + 32 + j * 9, X1 - 52 + i * 16, Y1 + 39 + j * 9, [20, 20, 20]);
+    for (let j = 0; j < 4; j++)
+      fillRect(img, X1 - 60 + i * 16, Y1 + 32 + j * 9, X1 - 52 + i * 16, Y1 + 39 + j * 9, [20, 20, 20]);
   }
   // Colorbar: 240 × 20 px strip inside a 1 px frame, 8 px below the cells.
   const bar = { x0: X1 - 330, y0: Y1 + 10, x1: X1 - 90, y1: Y1 + 30 };
   for (let x = bar.x0; x < bar.x1; x++) {
     const s = (x - bar.x0) / (bar.x1 - bar.x0 - 1);
-    fillRect(img, x, bar.y0, x + 1, bar.y1, [Math.round(230 - 65 * s), Math.round(139 - 97 * s), Math.round(140 - 97 * s)]);
+    fillRect(img, x, bar.y0, x + 1, bar.y1, [
+      Math.round(230 - 65 * s),
+      Math.round(139 - 97 * s),
+      Math.round(140 - 97 * s),
+    ]);
   }
   outline(img, bar.x0 - 1, bar.y0 - 1, bar.x1 + 1, bar.y1 + 1, [20, 0, 0]);
   const ticks = [0.09, 0.36, 0.64, 0.91].map((t) => Math.round(bar.x0 + t * (bar.x1 - bar.x0)));

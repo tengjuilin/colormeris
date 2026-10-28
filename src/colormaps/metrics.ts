@@ -98,17 +98,33 @@ function labBound(a: Lab, b: Lab) {
 // Separations in the colormap itself, each CVD view and grayscale (ΔL*).
 // Indices are given as positions t in [0, 1] (or color numbers for
 // qualitative maps) so the viewer can point at the confused pair.
-export function separations(rgbs: Rgb[], { kind = 'continuous', cyclic = false, gap = 0.1 }: { kind?: string; cyclic?: boolean; gap?: number } = {}) {
+export function separations(
+  rgbs: Rgb[],
+  { kind = 'continuous', cyclic = false, gap = 0.1 }: { kind?: string; cyclic?: boolean; gap?: number } = {},
+) {
   const discrete = kind === 'qualitative';
   const pts = discrete ? rgbs : resample(rgbs, SAMPLES);
   const n = pts.length;
   const opts = { gap, cyclic, discrete };
-  const at = (s: { min: number; i: number; j: number } | null) => s && { min: s.min, t: discrete ? [s.i, s.j] : [s.i / (n - 1), s.j / (n - 1)] };
+  const at = (s: { min: number; i: number; j: number } | null) =>
+    s && { min: s.min, t: discrete ? [s.i, s.j] : [s.i / (n - 1), s.j / (n - 1)] };
   const out: Record<string, ReturnType<typeof at>> = { orig: at(minSeparation(pts.map(rgbToLab), labDist, opts)) };
   for (const type of CVD_TYPES) {
-    out[type] = at(minSeparation(pts.map((c) => rgbToLab(simulateCvd(c, type))), labDist, opts));
+    out[type] = at(
+      minSeparation(
+        pts.map((c) => rgbToLab(simulateCvd(c, type))),
+        labDist,
+        opts,
+      ),
+    );
   }
-  out.gray = at(minSeparation(pts.map((c) => rgbToLab(c)[0]), lDist, opts));
+  out.gray = at(
+    minSeparation(
+      pts.map((c) => rgbToLab(c)[0]),
+      lDist,
+      opts,
+    ),
+  );
   return out;
 }
 
@@ -129,10 +145,15 @@ const RATING = {
   readable: { flat: { yes: 0.05, partly: 0.2 }, ambiguous: { yes: 0.02, partly: 0.1 } },
 };
 
-const gradeLow = (v: number, { yes, partly }: { yes: number; partly: number }) => (v <= yes ? 'yes' : v <= partly ? 'partly' : 'no');
-const gradeHigh = (v: number, { yes, partly }: { yes: number; partly: number }) => (v >= yes ? 'yes' : v >= partly ? 'partly' : 'no');
-const gradeCvd = (ratio: number, min: number, { yes, partly }: { yes: { ratio: number; min: number }; partly: { ratio: number; min: number } }) =>
-  ratio >= yes.ratio && min >= yes.min ? 'yes' : ratio >= partly.ratio && min >= partly.min ? 'partly' : 'no';
+const gradeLow = (v: number, { yes, partly }: { yes: number; partly: number }) =>
+  v <= yes ? 'yes' : v <= partly ? 'partly' : 'no';
+const gradeHigh = (v: number, { yes, partly }: { yes: number; partly: number }) =>
+  v >= yes ? 'yes' : v >= partly ? 'partly' : 'no';
+const gradeCvd = (
+  ratio: number,
+  min: number,
+  { yes, partly }: { yes: { ratio: number; min: number }; partly: { ratio: number; min: number } },
+) => (ratio >= yes.ratio && min >= yes.min ? 'yes' : ratio >= partly.ratio && min >= partly.min ? 'partly' : 'no');
 
 // How well values can be read back from colors, as Colormeris does. A color
 // seen in a figure is off by a few ΔE (compression, print, blending), so a
@@ -166,14 +187,23 @@ function mergeSpans(spans: Span[]) {
 // same pairs, and the ΔE2000 of each pair is most of the viewer's start-up time.
 // `bound` is a lower bound on `dist` (dist itself for ΔL*); a pair is only
 // measured when the bound cannot decide, so the results are exact.
-function readScan<T>(feats: T[], dist: (a: T, b: T) => number, cyclic: boolean, gap = 0.1, bound: (a: T, b: T) => number = dist) {
+function readScan<T>(
+  feats: T[],
+  dist: (a: T, b: T) => number,
+  cyclic: boolean,
+  gap = 0.1,
+  bound: (a: T, b: T) => number = dist,
+) {
   const n = feats.length;
   // Differs by at least READ_DE (bound first: the usual case in a ramp).
   const apart = (a: T, b: T) => bound(a, b) >= READ_DE || dist(a, b) >= READ_DE;
   let levels = 1;
   let anchor = feats[0];
   for (let i = 1; i < n; i++) {
-    if (apart(anchor, feats[i])) { levels++; anchor = feats[i]; }
+    if (apart(anchor, feats[i])) {
+      levels++;
+      anchor = feats[i];
+    }
   }
   const w = Math.max(1, Math.round(FLAT_WINDOW * (n - 1)));
   const flatSpans: Span[] = [];
@@ -205,7 +235,9 @@ function readScan<T>(feats: T[], dist: (a: T, b: T) => number, cyclic: boolean, 
     }
   }
   const half = 0.5 / (m - 1);
-  const ambiguousSpans = mergeSpans(amb.flatMap((on, k): Span[] => (on ? [[Math.max(0, k / (m - 1) - half), Math.min(1, k / (m - 1) + half)]] : [])));
+  const ambiguousSpans = mergeSpans(
+    amb.flatMap((on, k): Span[] => (on ? [[Math.max(0, k / (m - 1) - half), Math.min(1, k / (m - 1) + half)]] : [])),
+  );
   return {
     view: {
       levels,
@@ -220,20 +252,40 @@ function readScan<T>(feats: T[], dist: (a: T, b: T) => number, cyclic: boolean, 
 
 // Features per view: Lab as seen and in each CVD view, L* in grayscale.
 function viewScans(rgbs: Rgb[], cyclic: boolean) {
-  const out: Record<string, ReturnType<typeof readScan<Lab>> | ReturnType<typeof readScan<number>>> = { orig: readScan(rgbs.map(rgbToLab), labDist, cyclic, 0.1, labBound) };
-  for (const type of CVD_TYPES) out[type] = readScan(rgbs.map((c) => rgbToLab(simulateCvd(c, type))), labDist, cyclic, 0.1, labBound);
-  out.gray = readScan(rgbs.map((c) => rgbToLab(c)[0]), lDist, cyclic);
+  const out: Record<string, ReturnType<typeof readScan<Lab>> | ReturnType<typeof readScan<number>>> = {
+    orig: readScan(rgbs.map(rgbToLab), labDist, cyclic, 0.1, labBound),
+  };
+  for (const type of CVD_TYPES)
+    out[type] = readScan(
+      rgbs.map((c) => rgbToLab(simulateCvd(c, type))),
+      labDist,
+      cyclic,
+      0.1,
+      labBound,
+    );
+  out.gray = readScan(
+    rgbs.map((c) => rgbToLab(c)[0]),
+    lDist,
+    cyclic,
+  );
   return out;
 }
 
-const pick = <K extends 'view' | 'sep'>(scans: ReturnType<typeof viewScans>, key: K) => Object.fromEntries(Object.entries(scans).map(([k, v]) => [k, v[key]]));
+const pick = <K extends 'view' | 'sep'>(scans: ReturnType<typeof viewScans>, key: K) =>
+  Object.fromEntries(Object.entries(scans).map(([k, v]) => [k, v[key]]));
 
-export function readability(rgbs: Rgb[], { kind = 'continuous', cyclic = false }: { kind?: string; cyclic?: boolean } = {}) {
+export function readability(
+  rgbs: Rgb[],
+  { kind = 'continuous', cyclic = false }: { kind?: string; cyclic?: boolean } = {},
+) {
   if (kind === 'qualitative' || rgbs.length < 2) return null;
   return pick(viewScans(rgbs, cyclic), 'view');
 }
 
-function gradeReadable({ flat, ambiguous }: { flat: number; ambiguous: number }, { flat: f, ambiguous: a }: typeof RATING.readable) {
+function gradeReadable(
+  { flat, ambiguous }: { flat: number; ambiguous: number },
+  { flat: f, ambiguous: a }: typeof RATING.readable,
+) {
   if (flat <= f.yes && ambiguous <= a.yes) return 'yes';
   if (flat <= f.partly && ambiguous <= a.partly) return 'partly';
   return 'no';
@@ -245,7 +297,10 @@ function gradeReadable({ flat, ambiguous }: { flat: number; ambiguous: number },
 //   cvdSafe    distinct values stay distinct in all three CVD views
 //   graySafe   distinct values stay distinct in grayscale (prints in black and white)
 //   readable   values can be read back from the colors as seen (null for qualitative maps)
-export function colormapMetrics(rgbs: Rgb[], { kind = 'continuous', cyclic = false }: { kind?: string; cyclic?: boolean } = {}) {
+export function colormapMetrics(
+  rgbs: Rgb[],
+  { kind = 'continuous', cyclic = false }: { kind?: string; cyclic?: boolean } = {},
+) {
   const discrete = kind === 'qualitative';
   // 64 samples: 8-bit rounding makes neighboring steps of 256 samples noisy.
   const steps = discrete ? [] : perceptualSteps(resample(rgbs, SAMPLES));
@@ -290,18 +345,34 @@ export function worstCvd(m: ColormapMetrics) {
 export function ratingNotes(m: ColormapMetrics, { qual = false }: { qual?: boolean } = {}) {
   const out: { key: string; label: string; rating: string; text: string }[] = [];
   if (!qual && m.rating.uniform) {
-    out.push({ key: 'uniform', label: 'Uniform', rating: m.rating.uniform,
-      text: `ΔE2000 steps vary by ${Math.round(m.stepStats.cv * 100)}% (CV ${m.stepStats.cv.toFixed(2)}).` });
+    out.push({
+      key: 'uniform',
+      label: 'Uniform',
+      rating: m.rating.uniform,
+      text: `ΔE2000 steps vary by ${Math.round(m.stepStats.cv * 100)}% (CV ${m.stepStats.cv.toFixed(2)}).`,
+    });
   }
-  out.push({ key: 'cvdSafe', label: 'CVD-safe', rating: m.rating.cvdSafe,
-    text: `The worst view (${worstCvd(m)}) keeps ${pct(m.cvdRatio)} of the separation (min ΔE ${m.cvdWorst.toFixed(1)}).` });
+  out.push({
+    key: 'cvdSafe',
+    label: 'CVD-safe',
+    rating: m.rating.cvdSafe,
+    text: `The worst view (${worstCvd(m)}) keeps ${pct(m.cvdRatio)} of the separation (min ΔE ${m.cvdWorst.toFixed(1)}).`,
+  });
   const g = m.separations.gray;
-  out.push({ key: 'graySafe', label: 'Grayscale-safe', rating: m.rating.graySafe,
-    text: `${qual ? 'Two colors differ' : 'Two values 10% apart differ'} by only ${g!.min.toFixed(1)} L*.` });
+  out.push({
+    key: 'graySafe',
+    label: 'Grayscale-safe',
+    rating: m.rating.graySafe,
+    text: `${qual ? 'Two colors differ' : 'Two values 10% apart differ'} by only ${g!.min.toFixed(1)} L*.`,
+  });
   if (m.readability && m.rating.readable) {
     const { orig } = m.readability;
-    out.push({ key: 'readable', label: 'Readable', rating: m.rating.readable,
-      text: `${pct(orig.flat)} of the map is flat, ${pct(orig.ambiguous)} has a look-alike color elsewhere, ${orig.levels} distinguishable levels.` });
+    out.push({
+      key: 'readable',
+      label: 'Readable',
+      rating: m.rating.readable,
+      text: `${pct(orig.flat)} of the map is flat, ${pct(orig.ambiguous)} has a look-alike color elsewhere, ${orig.levels} distinguishable levels.`,
+    });
   }
   return out;
 }

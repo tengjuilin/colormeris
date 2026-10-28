@@ -91,7 +91,12 @@ export function pointInPolygon(p: Point, poly: Point[]) {
 }
 
 // Calls fn(x, y) for every pixel whose centre lies inside the polygon.
-export function forEachPixelInPolygon(poly: Point[], width: number, height: number, fn: (x: number, y: number) => void) {
+export function forEachPixelInPolygon(
+  poly: Point[],
+  width: number,
+  height: number,
+  fn: (x: number, y: number) => void,
+) {
   let x0 = Infinity;
   let y0 = Infinity;
   let x1 = -Infinity;
@@ -166,7 +171,13 @@ export function geomToBox(shape: RoiShape, geom: RoiGeom, grid: Grid, row: numbe
 // ---------------------------------------------------------------- editing helpers
 
 // Image point → the region's own coordinates in copy (row, col).
-export function roiToLocal(roi: Pick<Roi, 'replicate' | 'offsets'>, grid: Grid, row: number, col: number, p: Point): Point {
+export function roiToLocal(
+  roi: Pick<Roi, 'replicate' | 'offsets'>,
+  grid: Grid,
+  row: number,
+  col: number,
+  p: Point,
+): Point {
   if (!roi.replicate) return { x: p.x, y: p.y };
   const q = toBox(grid, p, row, col);
   const o = boxOffset(roi, row, col);
@@ -174,7 +185,13 @@ export function roiToLocal(roi: Pick<Roi, 'replicate' | 'offsets'>, grid: Grid, 
 }
 
 // The region's own coordinates in copy (row, col) → image point.
-export function roiFromLocal(roi: Pick<Roi, 'replicate' | 'offsets'>, grid: Grid, row: number, col: number, q: Point): Point {
+export function roiFromLocal(
+  roi: Pick<Roi, 'replicate' | 'offsets'>,
+  grid: Grid,
+  row: number,
+  col: number,
+  q: Point,
+): Point {
   if (!roi.replicate) return { x: q.x, y: q.y };
   const o = boxOffset(roi, row, col);
   return fromBox(grid, { x: q.x + o.dx, y: q.y + o.dy }, row, col);
@@ -254,7 +271,10 @@ export function fitGeom(shape: RoiShape, geom: RoiGeom, lim: Box): RoiGeom {
   const cx = (b.x0 + b.x1) / 2;
   const cy = (b.y0 + b.y1) / 2;
   const scale = (p: Point) => ({ x: cx + (p.x - cx) * k, y: cy + (p.y - cy) * k });
-  const g: RoiGeom = shape === 'polygon' ? { points: (geom as PolygonGeom).points.map(scale) } : { ...geom, rx: (geom as ShapeGeom).rx * k, ry: (geom as ShapeGeom).ry * k };
+  const g: RoiGeom =
+    shape === 'polygon'
+      ? { points: (geom as PolygonGeom).points.map(scale) }
+      : { ...geom, rx: (geom as ShapeGeom).rx * k, ry: (geom as ShapeGeom).ry * k };
   const sb = { x0: cx - (cx - b.x0) * k, y0: cy - (cy - b.y0) * k, x1: cx + (b.x1 - cx) * k, y1: cy + (b.y1 - cy) * k };
   const { dx, dy } = clampShift(sb, 0, 0, lim);
   return translateGeom(shape, g, dx, dy);

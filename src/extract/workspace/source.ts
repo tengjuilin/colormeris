@@ -1,8 +1,16 @@
 import JSZip from 'jszip';
+import type {
+  DomEl,
+  GoToPageOptions,
+  PageImage,
+  SourceInfo,
+  SourceMembers,
+  ViewerApi,
+  WorkspaceContext,
+} from '../../types/index.ts';
 import { canvasImageData, fileKind, imageToCanvas, openPdf, renderPdfPage, sha256Hex } from '../pdf-loader.ts';
 import { createProject, rescalePanel } from '../project/project.ts';
 import { readProjectZip } from '../project/project-files.ts';
-import type { DomEl, GoToPageOptions, PageImage, SourceInfo, SourceMembers, ViewerApi, WorkspaceContext } from '../../types/index.ts';
 
 // The source file and its pages: opening PDFs, images and project zips
 // (file dialog, examples, drag and drop, paste), PDF pages, render
@@ -25,14 +33,27 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
         await openProjectZip(file);
         return;
       }
-      if (hasCalibration() && !confirm('Opening a new file starts a new project and discards the current calibration. Continue?')) return;
+      if (
+        hasCalibration() &&
+        !confirm('Opening a new file starts a new project and discards the current calibration. Continue?')
+      )
+        return;
       w.setMode(null);
       w.status(`Loading ${file.name}…`);
       const project = createProject(w.tool().kind);
       Object.assign(project.panels[0].settings, w.panelDefaults(w.tool().kind));
       project.activePanelId = project.panels[0].id;
       project.name = file.name.replace(/\.[^.]+$/, '');
-      project.source = { fileName: file.name, mime: file.type || null, page: 1, pageCount: 1, renderScale: 1, width: 0, height: 0, sha256: null };
+      project.source = {
+        fileName: file.name,
+        mime: file.type || null,
+        page: 1,
+        pageCount: 1,
+        renderScale: 1,
+        width: 0,
+        height: 0,
+        sha256: null,
+      };
       app.pdfDoc = null;
       let canvas: HTMLCanvasElement;
       if (kind === 'pdf') {
@@ -62,7 +83,9 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
   }
 
   function hasCalibration() {
-    return app.project.panels.some((p) => p.grid.corners || p.colorbar.start || p.colorbar.colormap || w.toolFor(p)?.hasCalibration?.(p));
+    return app.project.panels.some(
+      (p) => p.grid.corners || p.colorbar.start || p.colorbar.colormap || w.toolFor(p)?.hasCalibration?.(p),
+    );
   }
 
   // Display a page that is already in app.pages.
@@ -121,7 +144,8 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
     const el = $('zoom-level');
     const m = el.value.trim().match(/^(\d+(?:\.\d+)?)\s*(%|x|×)?$/i);
     const pct = m ? Number(m[1]) * (/x|×/i.test(m[2] || '') ? 100 : 1) : NaN;
-    if (pct > 0 && w.viewer.source) w.viewer.zoomBy(pct / 100 / (app.project.source!.renderScale || 1) / w.viewer.scale);
+    if (pct > 0 && w.viewer.source)
+      w.viewer.zoomBy(pct / 100 / (app.project.source!.renderScale || 1) / w.viewer.scale);
     el.value = '';
     showZoom(w.viewer);
   }
@@ -149,7 +173,9 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
       w.ensurePagePanel(page, leaving.tool === w.tool().kind ? leaving.settings : undefined);
       if (!keepActive || !w.pagePanels().some((p) => p.id === app.project.activePanelId)) {
         const remembered = app.lastActive.get(w.activeKey(page));
-        app.project.activePanelId = w.pagePanels().some((p) => p.id === remembered) ? remembered! : w.pagePanels()[0].id;
+        app.project.activePanelId = w.pagePanels().some((p) => p.id === remembered)
+          ? remembered!
+          : w.pagePanels()[0].id;
       }
       app.tableCell = null;
       app.hoverCell = null;
@@ -226,7 +252,8 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
       else if (origFile) {
         const canvas = await imageToCanvas(origFile);
         // An image re-decoded at a different size than recorded: scale the calibration.
-        if (src.width && canvas.width !== src.width) project.panels.forEach((p) => rescalePanel(p, canvas.width / src.width!));
+        if (src.width && canvas.width !== src.width)
+          project.panels.forEach((p) => rescalePanel(p, canvas.width / src.width!));
         app.pages.set(page, { canvas, imageData: canvasImageData(canvas) });
       } else throw new Error('The project zip contains no source image.');
     }
@@ -243,7 +270,9 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
       .map((t) => [t, project.panels.filter((p) => p.tool === t.kind && !w.isEmptyPanel(p)).length] as const)
       .filter(([, n]) => n)
       .map(([t, n]) => `${n} ${t.label || t.kind} panel${n === 1 ? '' : 's'}`);
-    w.toast(`Opened project with ${counts.join(' and ') || 'no calibrated panels'}${pageCount > 1 ? ` on ${pageCount} pages` : ''}.`);
+    w.toast(
+      `Opened project with ${counts.join(' and ') || 'no calibrated panels'}${pageCount > 1 ? ` on ${pageCount} pages` : ''}.`,
+    );
   }
 
   // File inputs, drag & drop, paste

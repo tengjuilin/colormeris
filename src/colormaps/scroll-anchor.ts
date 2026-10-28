@@ -1,12 +1,14 @@
 import type { CmapViewerContext } from '../types/index.ts';
+
 // Keep the reader's place in the colormap viewer when the window is resized.
 //
 // A resize reflows the list and can move the open detail between the
 // drawer and the list, so the page length changes and the content under
 // the reader would jump. We remember what is at the top of the visible
 // area (below the sticky bar) and put it back there after each resize.
-const ANCHORS = '.cmap-item > .cmap-row, .cmap-panel .cmap-detail > *, .cmap-section > summary, .cmap-sub > summary, '
-  + '.cmap-compare-head, .cmap-compare-body > *, .cmap-identify > *, .cmap-recolor > *, .cmap-cvd > *, .cmap-about';
+const ANCHORS =
+  '.cmap-item > .cmap-row, .cmap-panel .cmap-detail > *, .cmap-section > summary, .cmap-sub > summary, ' +
+  '.cmap-compare-head, .cmap-compare-body > *, .cmap-identify > *, .cmap-recolor > *, .cmap-cvd > *, .cmap-about';
 
 // ctx: { root, top (the sticky bar), state, detail }.
 export function keepPlaceOnResize(ctx: Pick<CmapViewerContext, 'root' | 'top' | 'state' | 'detail'>) {

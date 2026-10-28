@@ -1,7 +1,7 @@
-import type { CmapViewerContext } from '../../types/index.ts';
-import { citeFor } from '../references.ts';
 import { lightnessStats } from '../../core/cvd.ts';
+import type { CmapViewerContext } from '../../types/index.ts';
 import { VIEWS } from '../common.ts';
+import { citeFor } from '../references.ts';
 
 // The Browse tab of the colormap viewer: one row per map in folding
 // sections (five strips, rating columns, reverse / compare / details
@@ -44,16 +44,40 @@ function loadStripView(): string {
   try {
     const v = localStorage.getItem(VIEW_KEY);
     if (v && (v === 'all' || VIEWS.some((x: any) => x.key === v))) return v;
-  } catch { /* use the default */ }
+  } catch {
+    /* use the default */
+  }
   return 'all';
 }
 
 function saveStripView(v: any) {
-  try { localStorage.setItem(VIEW_KEY, v); } catch { /* not remembered */ }
+  try {
+    localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    /* not remembered */
+  }
 }
 
 export function setupCmapBrowse(ctx: CmapViewerContext) {
-  const { el, VIEWS, RATING_COLS, data, state, items, root, metrics, viewData, isRev, makeStrip, renderStrip, hideTip, ratingPills, ratingCells, refNumber, methodList } = ctx;
+  const {
+    el,
+    VIEWS,
+    RATING_COLS,
+    data,
+    state,
+    items,
+    root,
+    metrics,
+    viewData,
+    isRev,
+    makeStrip,
+    renderStrip,
+    hideTip,
+    ratingPills,
+    ratingCells,
+    refNumber,
+    methodList,
+  } = ctx;
   // ctx.compare and ctx.detail are set after this module; rows are built later.
   state.stripView = loadStripView();
   let uid = 0;
@@ -65,19 +89,24 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
   // and Compare work on every map. Ratings need the metrics, a few ms per
   // map: rows compute theirs when built, and the rest are computed while
   // the page is idle, so sorting and filtering by rating stay quick.
-  const rowObserver = 'IntersectionObserver' in window
-    ? new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (!e.isIntersecting) continue;
-        rowObserver!.unobserve(e.target);
-        buildRow((e.target as any)._entry);
-      }
-    }, { rootMargin: '400px 0px' })
-    : null;
+  const rowObserver =
+    'IntersectionObserver' in window
+      ? new IntersectionObserver(
+          (entries) => {
+            for (const e of entries) {
+              if (!e.isIntersecting) continue;
+              rowObserver!.unobserve(e.target);
+              buildRow((e.target as any)._entry);
+            }
+          },
+          { rootMargin: '400px 0px' },
+        )
+      : null;
 
   function precomputeMetrics() {
     const queue = data.maps.slice();
-    const idle = window.requestIdleCallback || ((f) => setTimeout(() => f({ timeRemaining: () => 8, didTimeout: false }), 50));
+    const idle =
+      window.requestIdleCallback || ((f) => setTimeout(() => f({ timeRemaining: () => 8, didTimeout: false }), 50));
     const step = (deadline: any) => {
       while (queue.length && deadline.timeRemaining() > 4) metrics(queue.shift()!);
       if (queue.length) idle(step);
@@ -93,7 +122,18 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
     item.append(row, panel);
     item.dataset.name = map.name.toLowerCase();
     // strips and the buttons are set by buildRow.
-    const entry: any = { map, item, row, panel, built: false, strips: [], button: null, cmpBtn: null, revBtn: null, order: items.length };
+    const entry: any = {
+      map,
+      item,
+      row,
+      panel,
+      built: false,
+      strips: [],
+      button: null,
+      cmpBtn: null,
+      revBtn: null,
+      order: items.length,
+    };
     item._entry = entry;
     if (rowObserver) rowObserver.observe(item);
     else buildRow(entry);
@@ -125,15 +165,22 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
     row.append(...ratingCells(map));
 
     const button = el('button', {
-      class: 'cmap-toggle cmap-open-btn', type: 'button', 'aria-expanded': String(state.open === map.name),
-      'aria-controls': panel.id, 'aria-label': `Details of ${map.name}`, title: 'Show plots and details',
+      class: 'cmap-toggle cmap-open-btn',
+      type: 'button',
+      'aria-expanded': String(state.open === map.name),
+      'aria-controls': panel.id,
+      'aria-label': `Details of ${map.name}`,
+      title: 'Show plots and details',
     });
-    button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    button.innerHTML =
+      '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     const cmpBtn = el('button', { class: 'cmap-toggle cmap-cmp', type: 'button', 'aria-pressed': 'false' });
-    cmpBtn.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-add" d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="i-on" d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    cmpBtn.innerHTML =
+      '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-add" d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="i-on" d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     // Reverse this map only, as in Compare.
     const revBtn = el('button', { class: 'cmap-toggle cmap-sm', type: 'button', 'data-act': 'rev' });
-    revBtn.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6h9l-2.5-2.5M13 10H4l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    revBtn.innerHTML =
+      '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6h9l-2.5-2.5M13 10H4l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     const actions = el('div', { class: 'cmap-actions' });
     actions.append(revBtn, cmpBtn, button);
     row.append(actions);
@@ -149,7 +196,9 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
     const toggleDetail = () => (state.open === map.name ? ctx.detail.close() : ctx.detail.open(map.name));
     button.addEventListener('click', toggleDetail);
     code.addEventListener('click', toggleDetail);
-    cmpBtn.addEventListener('click', () => ctx.compare.setCompared(map.name, cmpBtn.getAttribute('aria-pressed') !== 'true'));
+    cmpBtn.addEventListener('click', () =>
+      ctx.compare.setCompared(map.name, cmpBtn.getAttribute('aria-pressed') !== 'true'),
+    );
     return entry;
   }
 
@@ -172,10 +221,26 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
   }
 
   function methodButton() {
-    const btn = el('button', { type: 'button', class: 'cmap-help', 'aria-label': 'How the ratings work', title: 'How the ratings work', 'aria-expanded': 'false' }, '?');
+    const btn = el(
+      'button',
+      {
+        type: 'button',
+        class: 'cmap-help',
+        'aria-label': 'How the ratings work',
+        title: 'How the ratings work',
+        'aria-expanded': 'false',
+      },
+      '?',
+    );
     const pop = el('div', { id: 'cmap-pop-method', popover: '', class: 'cmap-pop cmap-pop-wide' });
     pop.append(el('div', { class: 'cmap-pop-title' }, 'How the ratings work'));
-    pop.append(el('p', {}, 'Yes (✓), partly (~) or no (✕). Rules of thumb tuned on the matplotlib maps, not standards. Hover a glyph for the numbers.'));
+    pop.append(
+      el(
+        'p',
+        {},
+        'Yes (✓), partly (~) or no (✕). Rules of thumb tuned on the matplotlib maps, not standards. Hover a glyph for the numbers.',
+      ),
+    );
     pop.append(methodList());
     const more = el('a', { href: '#cmap-about' }, 'Methods and references');
     more.addEventListener('click', () => pop.hidePopover());
@@ -204,13 +269,26 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
 
   function buildControls() {
     const bar = el('div', { class: 'cmap-controls' });
-    const search = el('input', { type: 'search', placeholder: 'Search colormaps…', 'aria-label': 'Search colormaps', class: 'cmap-search' });
+    const search = el('input', {
+      type: 'search',
+      placeholder: 'Search colormaps…',
+      'aria-label': 'Search colormaps',
+      class: 'cmap-search',
+    });
 
     // Which strips the rows show: all five (default) or one view, wider.
     const viewWrap = el('div', { class: 'cmap-viewsel' });
     const views = el('div', { class: 'cmap-tabs', role: 'group', 'aria-label': 'Strips to show' });
     const viewBtns = [['all', 'All 5'], ...VIEWS.map((v) => [v.key, v.short])].map(([k, t]) => {
-      const b = el('button', { type: 'button', 'data-view-key': k, title: k === 'all' ? 'Show all five views' : `Show only ${VIEWS.find((v) => v.key === k)!.label}` }, t);
+      const b = el(
+        'button',
+        {
+          type: 'button',
+          'data-view-key': k,
+          title: k === 'all' ? 'Show all five views' : `Show only ${VIEWS.find((v) => v.key === k)!.label}`,
+        },
+        t,
+      );
       b.addEventListener('click', () => setStripView(k));
       views.append(b);
       return b;
@@ -270,7 +348,10 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
       }
       sources[src.key] = el('input', { type: 'checkbox' });
       groups[fam].list.append(checkbox(sources[src.key], src.label, n));
-      sources[src.key].addEventListener('change', () => { syncFamilies(); applyFilter(); });
+      sources[src.key].addEventListener('change', () => {
+        syncFamilies();
+        applyFilter();
+      });
       if (fam) families[fam].keys.push(src.key);
     }
     filtPop.append(sourceRow);
@@ -283,16 +364,36 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
     }
     syncFamilyBoxes = syncFamilies;
     const presets = el('div', { class: 'cmap-pop-row' });
-    const allYes = el('button', { type: 'button', class: 'btn small', title: 'Tick all four ratings; the sources stay as they are' }, 'All ratings ✓');
+    const allYes = el(
+      'button',
+      { type: 'button', class: 'btn small', title: 'Tick all four ratings; the sources stay as they are' },
+      'All ratings ✓',
+    );
     const none = el('button', { type: 'button', class: 'btn small' }, 'Clear');
-    allYes.addEventListener('click', () => { for (const b of Object.values(boxes)) b.checked = true; applyFilter(); });
-    none.addEventListener('click', () => { clearFilters(); applyFilter(); });
+    allYes.addEventListener('click', () => {
+      for (const b of Object.values(boxes)) b.checked = true;
+      applyFilter();
+    });
+    none.addEventListener('click', () => {
+      clearFilters();
+      applyFilter();
+    });
     presets.append(allYes, none);
     filtPop.append(presets);
     popovers.push([filtBtn, filtPop]);
 
     // Less used: direction and the full list of sort orders.
-    const moreBtn = el('button', { type: 'button', class: 'btn small', 'aria-label': 'More options', title: 'More options', 'aria-expanded': 'false' }, '⋯');
+    const moreBtn = el(
+      'button',
+      {
+        type: 'button',
+        class: 'btn small',
+        'aria-label': 'More options',
+        title: 'More options',
+        'aria-expanded': 'false',
+      },
+      '⋯',
+    );
     const morePop = el('div', { id: 'cmap-pop-more', popover: '', class: 'cmap-pop' });
     const revLabel = el('label', { class: 'check' });
     const rev = el('input', { type: 'checkbox' });
@@ -358,16 +459,19 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
   // Sorting only reorders rows inside each sub-heading box; sections stay put.
   const SORT_KEYS: Record<string, (a: any, b: any) => number> = {
     name: (a: any, b: any) => a.map.name.toLowerCase().localeCompare(b.map.name.toLowerCase()),
-    uniform: (a: any, b: any) => Number(metrics(a.map).rating.uniform == null) - Number(metrics(b.map).rating.uniform == null)
-      || metrics(a.map).stepStats.cv - metrics(b.map).stepStats.cv,
-    cvd: (a: any, b: any) => metrics(b.map).cvdRatio - metrics(a.map).cvdRatio || metrics(b.map).cvdWorst - metrics(a.map).cvdWorst,
-    gray: (a: any, b: any) => (metrics(b.map).separations.gray?.min ?? -1) - (metrics(a.map).separations.gray?.min ?? -1),
+    uniform: (a: any, b: any) =>
+      Number(metrics(a.map).rating.uniform == null) - Number(metrics(b.map).rating.uniform == null) ||
+      metrics(a.map).stepStats.cv - metrics(b.map).stepStats.cv,
+    cvd: (a: any, b: any) =>
+      metrics(b.map).cvdRatio - metrics(a.map).cvdRatio || metrics(b.map).cvdWorst - metrics(a.map).cvdWorst,
+    gray: (a: any, b: any) =>
+      (metrics(b.map).separations.gray?.min ?? -1) - (metrics(a.map).separations.gray?.min ?? -1),
     linear: (a: any, b: any) => linearity(b) - linearity(a),
     readable: (a: any, b: any) => {
       const ra = metrics(a.map).readability;
       const rb = metrics(b.map).readability;
       if (!ra || !rb) return Number(ra == null) - Number(rb == null); // qualitative last
-      return (ra.orig.flat + ra.orig.ambiguous) - (rb.orig.flat + rb.orig.ambiguous) || rb.orig.levels - ra.orig.levels;
+      return ra.orig.flat + ra.orig.ambiguous - (rb.orig.flat + rb.orig.ambiguous) || rb.orig.levels - ra.orig.levels;
     },
   };
 
@@ -410,8 +514,9 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
     const srcs = Object.keys(ui.sources).filter((k) => ui.sources[k].checked);
     for (const entry of items) {
       // Only rating filters need the metrics; a search must not compute them all.
-      const fails = (on.length > 0 && on.some(([, , , key]) => metrics(entry.map).rating[key] !== 'yes'))
-        || (srcs.length > 0 && !srcs.includes(entry.map.source));
+      const fails =
+        (on.length > 0 && on.some(([, , , key]) => metrics(entry.map).rating[key] !== 'yes')) ||
+        (srcs.length > 0 && !srcs.includes(entry.map.source));
       entry.item.hidden = (q !== '' && !entry.item.dataset.name!.includes(q)) || fails;
     }
     for (const sub of root.querySelectorAll<any>('.cmap-browse .cmap-sub')) {
@@ -452,9 +557,15 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
       applyFilter();
     }
     const sec = entry.item.closest<any>('.cmap-section');
-    if (sec && !sec.open) { sec.open = true; sec._userOpen = true; }
+    if (sec && !sec.open) {
+      sec.open = true;
+      sec._userOpen = true;
+    }
     const sub = entry.item.closest<any>('.cmap-sub');
-    if (sub && !sub.open) { sub.open = true; sub._userOpen = true; }
+    if (sub && !sub.open) {
+      sub.open = true;
+      sub._userOpen = true;
+    }
     ctx.detail.open(name);
     // Above 820px only the page pane scrolls; scrollIntoView would also
     // scroll the overflow-hidden document and push the top bar away.
@@ -470,58 +581,78 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
 
   // ---- the tab ----
 
-const ui = buildControls();
-const header = headerRow(true);
-const browse = el('div', { class: 'cmap-browse' });
-const sections: any[] = [];
-for (const [group, title, open] of SECTIONS) {
-  const maps = data.maps.filter((m) => m.group === group);
-  if (!maps.length) continue;
-  const sec = el('details', { class: 'cmap-section', id: `cmap-sec-${group}` });
-  sec.open = open;
-  const sum = el('summary');
-  const count = el('span', { class: 'cmap-count' }, String(maps.length));
-  sum.append(el('h2', {}, title), count);
-  sec.append(sum);
-  Object.assign(sec, { _userOpen: open, _count: count, _total: maps.length });
-  // Remember what the user chose, to restore it when a search is cleared.
-  sum.addEventListener('click', () => { if (!filtering()) sec._userOpen = !sec.open; });
-  const subs: string[] = [];
-  for (const m of maps) if (!subs.includes(m.sub)) subs.push(m.sub);
-  for (const sub of subs) {
-    const box = el('details', { class: 'cmap-sub' });
-    const rows = maps.filter((x) => x.sub === sub);
-    // Matplotlib's sub-headings start open, and in Sequential only its
-    // perceptually uniform ones; the others are a click away.
-    box._userOpen = box.open = group === 'sequential' ? /perceptually uniform/.test(sub) : rows.some((m) => m.source === 'matplotlib');
-    box.addEventListener('toggle', () => { if (!filtering()) box._userOpen = box.open; });
-    const subSum = el('summary');
-    const subCount = el('span', { class: 'cmap-count' }, String(rows.length));
-    subSum.append(el('h3', {}, sub), subCount);
-    Object.assign(box, { _count: subCount, _total: rows.length });
-    box.append(subSum);
-    for (const m of rows) box.append(makeRow(m));
-    sec.append(box);
+  const ui = buildControls();
+  const header = headerRow(true);
+  const browse = el('div', { class: 'cmap-browse' });
+  const sections: any[] = [];
+  for (const [group, title, open] of SECTIONS) {
+    const maps = data.maps.filter((m) => m.group === group);
+    if (!maps.length) continue;
+    const sec = el('details', { class: 'cmap-section', id: `cmap-sec-${group}` });
+    sec.open = open;
+    const sum = el('summary');
+    const count = el('span', { class: 'cmap-count' }, String(maps.length));
+    sum.append(el('h2', {}, title), count);
+    sec.append(sum);
+    Object.assign(sec, { _userOpen: open, _count: count, _total: maps.length });
+    // Remember what the user chose, to restore it when a search is cleared.
+    sum.addEventListener('click', () => {
+      if (!filtering()) sec._userOpen = !sec.open;
+    });
+    const subs: string[] = [];
+    for (const m of maps) if (!subs.includes(m.sub)) subs.push(m.sub);
+    for (const sub of subs) {
+      const box = el('details', { class: 'cmap-sub' });
+      const rows = maps.filter((x) => x.sub === sub);
+      // Matplotlib's sub-headings start open, and in Sequential only its
+      // perceptually uniform ones; the others are a click away.
+      box._userOpen = box.open =
+        group === 'sequential' ? /perceptually uniform/.test(sub) : rows.some((m) => m.source === 'matplotlib');
+      box.addEventListener('toggle', () => {
+        if (!filtering()) box._userOpen = box.open;
+      });
+      const subSum = el('summary');
+      const subCount = el('span', { class: 'cmap-count' }, String(rows.length));
+      subSum.append(el('h3', {}, sub), subCount);
+      Object.assign(box, { _count: subCount, _total: rows.length });
+      box.append(subSum);
+      for (const m of rows) box.append(makeRow(m));
+      sec.append(box);
+    }
+    sections.push(sec);
+    browse.append(sec);
   }
-  sections.push(sec);
-  browse.append(sec);
-}
-// Expand all opens every section and sub-heading, and becomes Collapse all.
-const folds = () => [...sections, ...browse.querySelectorAll('.cmap-sub')].filter((d) => !d.hidden);
-const foldBtn = el('button', { type: 'button', class: 'btn small' }, 'Expand all');
-const syncFoldBtn = () => { foldBtn.textContent = folds().every((d) => d.open) ? 'Collapse all' : 'Expand all'; };
-foldBtn.addEventListener('click', () => {
-  const open = foldBtn.textContent === 'Expand all';
-  for (const d of folds()) d.open = d._userOpen = open;
-  syncFoldBtn();
-});
-browse.addEventListener('toggle', syncFoldBtn, true);
-ui.bar.insertBefore(foldBtn, ui.bar.querySelector('#cmap-pop-filters'));
-const empty = el('p', { class: 'muted', hidden: '' }, 'No colormap matches your search.');
-browse.append(empty);
+  // Expand all opens every section and sub-heading, and becomes Collapse all.
+  const folds = () => [...sections, ...browse.querySelectorAll('.cmap-sub')].filter((d) => !d.hidden);
+  const foldBtn = el('button', { type: 'button', class: 'btn small' }, 'Expand all');
+  const syncFoldBtn = () => {
+    foldBtn.textContent = folds().every((d) => d.open) ? 'Collapse all' : 'Expand all';
+  };
+  foldBtn.addEventListener('click', () => {
+    const open = foldBtn.textContent === 'Expand all';
+    for (const d of folds()) d.open = d._userOpen = open;
+    syncFoldBtn();
+  });
+  browse.addEventListener('toggle', syncFoldBtn, true);
+  ui.bar.insertBefore(foldBtn, ui.bar.querySelector('#cmap-pop-filters'));
+  const empty = el('p', { class: 'muted', hidden: '' }, 'No colormap matches your search.');
+  browse.append(empty);
 
   // Native popovers are placed once both they and their buttons are in the page.
-  const anchorPopovers = () => { for (const [btn, pop] of popovers) ctx.anchorPopover(btn, pop); };
+  const anchorPopovers = () => {
+    for (const [btn, pop] of popovers) ctx.anchorPopover(btn, pop);
+  };
 
-  return { bar: ui.bar, header, list: browse, sections, headerRow, applyStripView, showRow, anchorPopovers, precomputeMetrics, buildRow };
+  return {
+    bar: ui.bar,
+    header,
+    list: browse,
+    sections,
+    headerRow,
+    applyStripView,
+    showRow,
+    anchorPopovers,
+    precomputeMetrics,
+    buildRow,
+  };
 }

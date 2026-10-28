@@ -1,15 +1,35 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import type { ChatContentPart, ChatMessage } from '../types/index.ts';
-import { createRetryGuard, finishCheck, llmTools, parsePages, progressNote, pruneImages, toolResultText, validateRunnerTool } from './llm.ts';
+import {
+  createRetryGuard,
+  finishCheck,
+  llmTools,
+  parsePages,
+  progressNote,
+  pruneImages,
+  toolResultText,
+  validateRunnerTool,
+} from './llm.ts';
 import { normalizeArgs, validateAction } from './schema.ts';
-
 
 const parts = (m: ChatMessage) => m.content as ChatContentPart[];
 
 test('pruneImages keeps the newest images and moves its cut in steps', () => {
-  const img = (n: number): ChatMessage => ({ role: 'user', content: [{ type: 'text', text: `i${n}` }, { type: 'image_url', imageUrl: { url: `data:${n}` } }] });
-  const msgs: ChatMessage[] = [{ role: 'system', content: 'x' }, img(1), { role: 'tool', toolCallId: 'a', content: '{}' }, img(2), img(3)];
+  const img = (n: number): ChatMessage => ({
+    role: 'user',
+    content: [
+      { type: 'text', text: `i${n}` },
+      { type: 'image_url', imageUrl: { url: `data:${n}` } },
+    ],
+  });
+  const msgs: ChatMessage[] = [
+    { role: 'system', content: 'x' },
+    img(1),
+    { role: 'tool', toolCallId: 'a', content: '{}' },
+    img(2),
+    img(3),
+  ];
   const out = pruneImages(msgs, 2, 1);
   assert.equal(parts(out[1])[1].type, 'text');
   assert.equal(parts(out[3])[1].type, 'image_url');
@@ -19,7 +39,8 @@ test('pruneImages keeps the newest images and moves its cut in steps', () => {
   // Cache stability: between two cuts the same old messages are rewritten, so
   // the request prefix does not change from step to step.
   const many = Array.from({ length: 12 }, (_, i) => img(i));
-  const kept = (n: number) => pruneImages(many.slice(0, n), 3, 4).filter((m) => parts(m)[1].type === 'image_url').length;
+  const kept = (n: number) =>
+    pruneImages(many.slice(0, n), 3, 4).filter((m) => parts(m)[1].type === 'image_url').length;
   assert.deepEqual([3, 4, 6, 7, 8, 11, 12].map(kept), [3, 4, 6, 3, 4, 3, 4]);
   const a = pruneImages(many.slice(0, 8), 3, 4);
   const b = pruneImages(many.slice(0, 9), 3, 4);
@@ -35,7 +56,12 @@ test('parsePages reads ranges and clamps to the page count', () => {
 test('LLM tools have unique names; runner tool arguments are checked', () => {
   const names = llmTools().map((t) => t.function.name);
   assert.equal(new Set(names).size, names.length);
-  assert.ok(names.includes('view_page') && names.includes('set_grid') && !names.includes('answer_question') && !names.includes('decide'));
+  assert.ok(
+    names.includes('view_page') &&
+      names.includes('set_grid') &&
+      !names.includes('answer_question') &&
+      !names.includes('decide'),
+  );
   assert.deepEqual(validateRunnerTool('view_pages_overview', { from: 1, to: 3 }), []);
   assert.ok(validateRunnerTool('view_pages_overview', { from: 1 }).length);
   assert.match(toolResultText('x'.repeat(20), 5), /cut 15 characters/);
@@ -63,7 +89,11 @@ test('normalizeArgs forgives nulls and at+t on add_tick', () => {
   assert.match(r.notes[0], /used at/);
   assert.deepEqual(validateAction('add_tick', r.args), []);
   assert.match(validateAction('add_tick', { value: 3 })[0], /"at": \{"x": 606/);
-  assert.deepEqual(normalizeArgs('set_review', { status: null }).args, { status: null }, 'null kept where it is a value');
+  assert.deepEqual(
+    normalizeArgs('set_review', { status: null }).args,
+    { status: null },
+    'null kept where it is a value',
+  );
 });
 
 test('finishCheck refuses to stop after the first heatmap', () => {
@@ -78,7 +108,13 @@ test('finishCheck refuses to stop after the first heatmap', () => {
   assert.match(list?.message as string, /page 3: Fig 2b; page 5: no panels/);
   assert.equal(finishCheck({ ...base, viewedPages: new Set([3, 5]), checked: true, refusals: 1 }), null);
   const partial = [{ ...panels[0], ready: false }];
-  assert.match(finishCheck({ ...base, panels: partial, viewedPages: new Set([3, 5]) })?.message as string, /only partly calibrated/);
+  assert.match(
+    finishCheck({ ...base, panels: partial, viewedPages: new Set([3, 5]) })?.message as string,
+    /only partly calibrated/,
+  );
   assert.equal(finishCheck({ ...base, viewedPages: new Set(), refusals: 3 }), null, 'a stuck model can still end');
-  assert.match(progressNote({ pages: [3, 5], viewedPages: new Set([3]), panels, currentPage: 3 }), /Page 3 panels: Fig 2b\. .*not looked at yet: 5/);
+  assert.match(
+    progressNote({ pages: [3, 5], viewedPages: new Set([3]), panels, currentPage: 3 }),
+    /Page 3 panels: Fig 2b\. .*not looked at yet: 5/,
+  );
 });

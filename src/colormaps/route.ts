@@ -1,4 +1,3 @@
-
 // Pure: the colormap viewer's URL (colormaps.html). Which tab is open
 // (#browse, #compare, …), which map shows its details (?map=) and which
 // maps are compared (?compare=). Tested in tests/colormaps/route.test.js.
@@ -29,9 +28,13 @@ export const VIEWER_TABS = ['browse', 'compare', 'identify', 'recolor', 'cvd'];
 export function parseViewerRoute(search: string | null | undefined, hash: string | null | undefined, names: string[]) {
   const params = new URLSearchParams(search || '');
   const compare = parseCompare(params.get('compare'), names);
-  const want = String(params.get('map') ?? '').trim().toLowerCase();
-  const map = want ? names.find((n) => n.toLowerCase() === want) ?? null : null;
-  const h = String(hash || '').replace(/^#/, '').toLowerCase();
+  const want = String(params.get('map') ?? '')
+    .trim()
+    .toLowerCase();
+  const map = want ? (names.find((n) => n.toLowerCase() === want) ?? null) : null;
+  const h = String(hash || '')
+    .replace(/^#/, '')
+    .toLowerCase();
   let tab = VIEWER_TABS.includes(h) ? h : null;
   if (!h) tab = compare.length && !map ? 'compare' : 'browse';
   return { tab, map, compare };

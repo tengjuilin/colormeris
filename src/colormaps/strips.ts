@@ -1,5 +1,5 @@
-import type { CmapViewerContext, ColormapEntry, Rgb } from '../types/index.ts';
 import { rgbToHex } from '../core/color.ts';
+import type { CmapViewerContext, ColormapEntry, Rgb } from '../types/index.ts';
 
 // Colormap strips (one canvas pixel per color, built when near the
 // viewport), the shared tooltip, and hover / click / keyboard probing of
@@ -17,7 +17,12 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
   // filter restyled them all.
   function stripCanvas(colors: Rgb[], qualitative: boolean) {
     const n = Math.max(1, colors.length);
-    const canvas = el('canvas', { class: qualitative ? 'cmap-paint qual' : 'cmap-paint', width: String(n), height: '1', 'aria-hidden': 'true' });
+    const canvas = el('canvas', {
+      class: qualitative ? 'cmap-paint qual' : 'cmap-paint',
+      width: String(n),
+      height: '1',
+      'aria-hidden': 'true',
+    });
     const img = new ImageData(n, 1);
     colors.forEach((c, i) => img.data.set([c[0], c[1], c[2], 255], i * 4));
     canvas.getContext('2d')!.putImageData(img, 0, 0);
@@ -32,18 +37,27 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
   }
 
   // Build strips only when they come near the viewport: 87 maps x 5 strips.
-  const observer = 'IntersectionObserver' in window
-    ? new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (!e.isIntersecting) continue;
-        observer!.unobserve(e.target);
-        renderStrip(e.target as StripEl);
-      }
-    }, { rootMargin: '400px 0px' })
-    : null;
+  const observer =
+    'IntersectionObserver' in window
+      ? new IntersectionObserver(
+          (entries) => {
+            for (const e of entries) {
+              if (!e.isIntersecting) continue;
+              observer!.unobserve(e.target);
+              renderStrip(e.target as StripEl);
+            }
+          },
+          { rootMargin: '400px 0px' },
+        )
+      : null;
 
   // `eager` renders at once: the comparison panel rebuilds its few strips often.
-  function makeStrip(map: ColormapEntry, view: { key: string; label: string }, eager = false, reversed: boolean | undefined = undefined) {
+  function makeStrip(
+    map: ColormapEntry,
+    view: { key: string; label: string },
+    eager = false,
+    reversed: boolean | undefined = undefined,
+  ) {
     const strip = el('div', {
       class: 'cmap-strip',
       tabindex: '0',
@@ -76,7 +90,12 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
     const c = colors[i];
     const hex = rgbToHex(c);
     const pos = map.kind === 'qualitative' ? `color ${i + 1} of ${n}` : `t = ${(n > 1 ? i / (n - 1) : 0).toFixed(3)}`;
-    return { hex, c, text: [hex, `rgb(${c[0]}, ${c[1]}, ${c[2]})`, pos, `L* = ${Ls[i].toFixed(1)}`], title: `${map.name} · ${viewLabel}` };
+    return {
+      hex,
+      c,
+      text: [hex, `rgb(${c[0]}, ${c[1]}, ${c[2]})`, pos, `L* = ${Ls[i].toFixed(1)}`],
+      title: `${map.name} · ${viewLabel}`,
+    };
   }
 
   function placeTip(x: number, y: number) {
@@ -111,7 +130,9 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
   function flashCopied() {
     tipCopied.hidden = false;
     clearTimeout(copiedTimer);
-    copiedTimer = setTimeout(() => { tipCopied.hidden = true; }, 1200);
+    copiedTimer = setTimeout(() => {
+      tipCopied.hidden = true;
+    }, 1200);
   }
 
   // ---- strip interaction (delegated) ----
@@ -140,7 +161,10 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
 
   root.addEventListener('pointermove', (e) => {
     const strip = (e.target as Element).closest?.('.cmap-strip') as StripEl | null;
-    if (!strip || !strip._cm.rendered) { if (!(e.target as Element).closest?.('.cmap-plot')) hideTip(); return; }
+    if (!strip || !strip._cm.rendered) {
+      if (!(e.target as Element).closest?.('.cmap-plot')) hideTip();
+      return;
+    }
     probe(strip, indexAt(strip, e.clientX), e.clientX, e.clientY);
   });
   root.addEventListener('pointerleave', hideTip);
@@ -171,8 +195,10 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
     else if (e.key === 'ArrowLeft') i -= e.shiftKey ? 10 : 1;
     else if (e.key === 'Home') i = 0;
     else if (e.key === 'End') i = n - 1;
-    else if ((e.key === 'Enter' || e.key === 'c') && strip._cm.lastHex) { copy(strip._cm.lastHex); return; }
-    else return;
+    else if ((e.key === 'Enter' || e.key === 'c') && strip._cm.lastHex) {
+      copy(strip._cm.lastHex);
+      return;
+    } else return;
     e.preventDefault();
     i = Math.max(0, Math.min(n - 1, i));
     const r = strip.getBoundingClientRect();

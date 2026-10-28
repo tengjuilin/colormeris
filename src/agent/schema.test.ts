@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import type { Decision, ResultJson } from '../types/index.ts';
 import { rectCorners } from '../core/grid.ts';
 import { createProject, parseProject, serializeProject } from '../extract/project/project.ts';
+import type { Decision, ResultJson } from '../types/index.ts';
 import { AGENT_ACTIONS, openQuestions, stateSnapshot, toolDefinitions, validateAction } from './schema.ts';
-
 
 test('every action has a description and an object schema', () => {
   for (const def of toolDefinitions()) {
@@ -50,16 +49,35 @@ test('questions: grid size after detection, tick order, answered ones drop out',
   assert.equal(grid.evidence.uncertain, true);
   assert.ok(qs.some((q) => q.type === 'confirm_tick_order'));
 
-  const after = openQuestions({ panels: project.panels, results: {}, detections, decisions: [{ questionId: grid.id, applied: true } as Decision] });
+  const after = openQuestions({
+    panels: project.panels,
+    results: {},
+    detections,
+    decisions: [{ questionId: grid.id, applied: true } as Decision],
+  });
   assert.ok(!after.some((q) => q.type === 'confirm_grid_size'));
-  const escalated = openQuestions({ panels: project.panels, results: {}, detections, decisions: [{ questionId: grid.id, applied: false } as Decision] });
+  const escalated = openQuestions({
+    panels: project.panels,
+    results: {},
+    detections,
+    decisions: [{ questionId: grid.id, applied: false } as Decision],
+  });
   assert.ok(escalated.some((q) => q.type === 'confirm_grid_size'));
 });
 
 test('state snapshot is plain JSON with readiness', () => {
   const project = createProject();
   const p = project.panels[0];
-  const s = stateSnapshot({ project, tool: 'heatmap', mode: null, activePanelId: p.id, problems: { [p.id]: 'Set the heatmap grid corners.' }, canUndo: false, canRedo: false, openQuestions: 0 });
+  const s = stateSnapshot({
+    project,
+    tool: 'heatmap',
+    mode: null,
+    activePanelId: p.id,
+    problems: { [p.id]: 'Set the heatmap grid corners.' },
+    canUndo: false,
+    canRedo: false,
+    openQuestions: 0,
+  });
   assert.equal(s.panels[0].ready, false);
   assert.equal(s.panels[0].grid, null);
   assert.deepEqual(JSON.parse(JSON.stringify(s)), s);
@@ -75,9 +93,19 @@ test('flagged cells: one question each when few, one panel question when many', 
     maxDeltaE: 10,
     flagged: Array.from({ length: n }, (_, i) => ({ row: 0, col: i, deltaE: 20 + i, rgb: [0, 0, 0] })),
   });
-  const few = openQuestions({ panels: [p], results: { [p.id]: res(2) } as unknown as Record<string, ResultJson>, detections: {}, decisions: [] });
+  const few = openQuestions({
+    panels: [p],
+    results: { [p.id]: res(2) } as unknown as Record<string, ResultJson>,
+    detections: {},
+    decisions: [],
+  });
   assert.equal(few.filter((q) => q.type === 'classify_flagged').length, 2);
-  const many = openQuestions({ panels: [p], results: { [p.id]: res(5) } as unknown as Record<string, ResultJson>, detections: {}, decisions: [] });
+  const many = openQuestions({
+    panels: [p],
+    results: { [p.id]: res(5) } as unknown as Record<string, ResultJson>,
+    detections: {},
+    decisions: [],
+  });
   assert.equal(many.filter((q) => q.type === 'classify_flagged').length, 0);
   const one = many.find((q) => q.type === 'classify_flagged_cells')!;
   assert.equal(one.evidence.count, 5);
@@ -88,7 +116,13 @@ test('a reviewed panel gets no acceptance question until its values change', () 
   const project = createProject();
   const p = project.panels[0];
   const res = { values: [[1, 2]], rowLabels: ['R1'], colLabels: ['C1', 'C2'], maxDeltaE: 10, flagged: [] };
-  const ask = () => openQuestions({ panels: [p], results: { [p.id]: res } as unknown as Record<string, ResultJson>, detections: {}, decisions: [] }).filter((q) => q.type === 'confirm_extraction');
+  const ask = () =>
+    openQuestions({
+      panels: [p],
+      results: { [p.id]: res } as unknown as Record<string, ResultJson>,
+      detections: {},
+      decisions: [],
+    }).filter((q) => q.type === 'confirm_extraction');
   const [q] = ask();
   p.review = { status: 'rejected', resultHash: q.resultHash } as never;
   assert.equal(ask().length, 0);
@@ -98,7 +132,14 @@ test('a reviewed panel gets no acceptance question until its values change', () 
 
 test('panel reviews survive a project round trip', () => {
   const project = createProject();
-  project.panels[0].review = { status: 'rejected', by: 'human', confidence: 1, note: 'grid shifted', resultHash: 'abc', time: 't' };
+  project.panels[0].review = {
+    status: 'rejected',
+    by: 'human',
+    confidence: 1,
+    note: 'grid shifted',
+    resultHash: 'abc',
+    time: 't',
+  };
   const back = parseProject(JSON.parse(JSON.stringify(serializeProject(project))));
   assert.deepEqual(back.panels[0].review, project.panels[0].review);
   project.panels[0].review = null;

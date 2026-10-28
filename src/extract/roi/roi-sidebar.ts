@@ -35,7 +35,14 @@ export function setupRoiSidebar(rctx: RoiToolContext) {
   function renderRois(panel: Panel) {
     if (state.selectedId && !panel.rois.some((r) => r.id === state.selectedId)) state.selectedId = null;
     const list = $('roi-list');
-    const key = JSON.stringify([panel.id, state.selectedId, panel.rois.map((r) => [r.id, r.name, r.shape, r.replicate, Object.keys(r.offsets).length]), panel.grid.rows, panel.grid.cols, !!panel.grid.corners]);
+    const key = JSON.stringify([
+      panel.id,
+      state.selectedId,
+      panel.rois.map((r) => [r.id, r.name, r.shape, r.replicate, Object.keys(r.offsets).length]),
+      panel.grid.rows,
+      panel.grid.cols,
+      !!panel.grid.corners,
+    ]);
     if (key !== roiListKey) {
       roiListKey = key;
       list.replaceChildren(
@@ -52,7 +59,11 @@ export function setupRoiSidebar(rctx: RoiToolContext) {
           const meta = document.createElement('span');
           meta.className = 'chip-meta';
           meta.textContent = roi.replicate ? `×${copies}${nudged ? `, ${nudged} nudged` : ''}` : 'single';
-          btn.append(sw, Object.assign(document.createElement('span'), { className: 'chip-label', textContent: roi.name }), meta);
+          btn.append(
+            sw,
+            Object.assign(document.createElement('span'), { className: 'chip-label', textContent: roi.name }),
+            meta,
+          );
           btn.title = `${SHAPE_NAMES[roi.shape]}${roi.replicate ? ' copied into every box' : ''}`;
           btn.addEventListener('click', () => {
             state.selectedId = roi.id === state.selectedId ? null : roi.id;
@@ -109,7 +120,9 @@ export function setupRoiSidebar(rctx: RoiToolContext) {
     const signal = res.rows.reduce((s, r) => s + r.stats.signalPx, 0);
     $('roi-result-summary').textContent =
       `${panel.rois.length} region${panel.rois.length === 1 ? '' : 's'} · ${res.rows.length} measurement${res.rows.length === 1 ? '' : 's'}${unit}` +
-      (flagged ? ` · ${((100 * flagged) / Math.max(1, signal)).toFixed(1)}% of signal pixels matched no colorbar color (ΔE > ${panel.settings.maxDeltaE}); cells over 10% are outlined` : '');
+      (flagged
+        ? ` · ${((100 * flagged) / Math.max(1, signal)).toFixed(1)}% of signal pixels matched no colorbar color (ΔE > ${panel.settings.maxDeltaE}); cells over 10% are outlined`
+        : '');
     const model = roiTableModel(panel, res);
     const thead = document.createElement('thead');
     const hr = document.createElement('tr');
@@ -154,11 +167,16 @@ export function setupRoiSidebar(rctx: RoiToolContext) {
     const model = roiTableModel(panel, res);
     const lines = [[METRIC_NAMES[state.metric], ...model.rois.map((r) => r.name)].join('\t')];
     for (const row of model.rows) {
-      lines.push([row.label, ...model.rois.map((roi) => {
-        const r = row.cells.get(roi.id);
-        const v = r ? metricValue(r.stats, state.metric) : null;
-        return v === null ? '' : formatNumber(v);
-      })].join('\t'));
+      lines.push(
+        [
+          row.label,
+          ...model.rois.map((roi) => {
+            const r = row.cells.get(roi.id);
+            const v = r ? metricValue(r.stats, state.metric) : null;
+            return v === null ? '' : formatNumber(v);
+          }),
+        ].join('\t'),
+      );
     }
     try {
       await navigator.clipboard.writeText(lines.join('\n'));
@@ -198,7 +216,8 @@ export function setupRoiSidebar(rctx: RoiToolContext) {
   $('roi-dl-csv').addEventListener('click', () => {
     const p = ws.activePanel();
     const r = ws.resultFor(p) as RoiResult;
-    if (!r.error) ws.download(new Blob([roiCsv([{ panel: p, result: r }])], { type: 'text/csv' }), ws.csvName(p, '_rois'));
+    if (!r.error)
+      ws.download(new Blob([roiCsv([{ panel: p, result: r }])], { type: 'text/csv' }), ws.csvName(p, '_rois'));
   });
   $('roi-copy-tsv').addEventListener('click', copyTsv);
   $('roi-result-table').addEventListener('pointerover', (e) => {
@@ -213,4 +232,3 @@ export function setupRoiSidebar(rctx: RoiToolContext) {
 
   return { renderSidebar };
 }
-

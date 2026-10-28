@@ -131,16 +131,35 @@ For each page:
 // Agent actions the LLM may call in this mode. The app counts rows and
 // columns; the LLM may only correct a count with correct_grid_size (with a
 // reason), not set a grid itself: locate_heatmap places grids.
-export const DECISION_LLM_ACTIONS = ['go_to_page', 'select_panel', 'rename_panel', 'remove_panel', 'set_labels', 'set_colorbar', 'add_tick', 'remove_tick', 'set_colorbar_scale', 'undo'];
+export const DECISION_LLM_ACTIONS = [
+  'go_to_page',
+  'select_panel',
+  'rename_panel',
+  'remove_panel',
+  'set_labels',
+  'set_colorbar',
+  'add_tick',
+  'remove_tick',
+  'set_colorbar_scale',
+  'undo',
+];
 
 const panelId: JsonSchema = { type: 'string', description: 'Panel to act on. Defaults to the active panel.' };
-const roughBox = (description: string): JsonSchema => ({ type: 'object', properties: { x0: { type: 'number' }, y0: { type: 'number' }, x1: { type: 'number' }, y1: { type: 'number' } }, required: ['x0', 'y0', 'x1', 'y1'], description });
+const roughBox = (description: string): JsonSchema => ({
+  type: 'object',
+  properties: { x0: { type: 'number' }, y0: { type: 'number' }, x1: { type: 'number' }, y1: { type: 'number' } },
+  required: ['x0', 'y0', 'x1', 'y1'],
+  description,
+});
 const DECISION_QUESTION: JsonSchema = {
   type: 'object',
   properties: {
     type: { enum: ['noul', 'choice', 'score', 'box'] },
     instructions: { type: 'string', description: 'The question, or for box a description of the one target to find.' },
-    criteria: { description: 'noul: {true, false} descriptions; choice: {option: description}; score: ordered list of levels; box: none.' },
+    criteria: {
+      description:
+        'noul: {true, false} descriptions; choice: {option: description}; score: ordered list of levels; box: none.',
+    },
   },
   required: ['type', 'instructions'],
 };
@@ -148,20 +167,28 @@ const DECISION_QUESTION: JsonSchema = {
 // Tools handled by agent/decision-tools.js (plus view_page, view_pages_overview and finish).
 export const DECISION_TOOLS: Record<string, ActionSpec> = {
   locate_heatmap: {
-    description: 'Find one heatmap with the decision model and calibrate a panel for it: the grid on its cells (rows and columns counted by the app) and its colorbar. Uses a new panel unless panelId is given or the active panel is still empty. Returns the placement and an image with numbered tick-label boxes, or lettered colorbar candidates when it cannot tell which colorbar is this heatmap\'s.',
+    description:
+      "Find one heatmap with the decision model and calibrate a panel for it: the grid on its cells (rows and columns counted by the app) and its colorbar. Uses a new panel unless panelId is given or the active panel is still empty. Returns the placement and an image with numbered tick-label boxes, or lettered colorbar candidates when it cannot tell which colorbar is this heatmap's.",
     args: {
       type: 'object',
       properties: {
         name: { type: 'string', minLength: 1, description: 'Figure label, e.g. "Fig 2f". Becomes the panel name.' },
-        description: { type: 'string', minLength: 3, description: 'What singles this heatmap out on the page: panel letter, title, position, first row label.' },
+        description: {
+          type: 'string',
+          minLength: 3,
+          description: 'What singles this heatmap out on the page: panel letter, title, position, first row label.',
+        },
         panelId: { type: 'string', description: 'Re-locate this panel instead of using a new one.' },
-        box: roughBox('Only when a first locate found the wrong heatmap: the cells\' rough extent in page pixels, read from the page image\'s rulers. The decision model is not asked; each edge moves at most a few px onto the cells\' edge.'),
+        box: roughBox(
+          "Only when a first locate found the wrong heatmap: the cells' rough extent in page pixels, read from the page image's rulers. The decision model is not asked; each edge moves at most a few px onto the cells' edge.",
+        ),
       },
       required: ['name', 'description'],
     },
   },
   set_ticks: {
-    description: 'Set the colorbar ticks (replaces the panel\'s ticks), then check the extraction; returns the check and an image of the ticks. Give each tick by its numbered tick-label box (mark), or, when the boxes are missing or wrong, by its place along the colored strip (t). Ticks snap to tick marks. Unless you give a scale, the app picks one that fits: for a binned colorbar, and piecewise for evenly stepped labels at uneven places along a smooth bar.',
+    description:
+      "Set the colorbar ticks (replaces the panel's ticks), then check the extraction; returns the check and an image of the ticks. Give each tick by its numbered tick-label box (mark), or, when the boxes are missing or wrong, by its place along the colored strip (t). Ticks snap to tick marks. Unless you give a scale, the app picks one that fits: for a binned colorbar, and piecewise for evenly stepped labels at uneven places along a smooth bar.",
     args: {
       type: 'object',
       properties: {
@@ -173,45 +200,70 @@ export const DECISION_TOOLS: Record<string, ActionSpec> = {
             type: 'object',
             properties: {
               mark: { type: 'integer', minimum: 1, description: 'Number of the blue box.' },
-              t: { type: 'number', minimum: 0, maximum: 1, description: 'Instead of mark: where the label sits along the strip, 0 at its top end (vertical bar) or left end (horizontal bar), 1 at the other end.' },
-              value: { type: 'number', description: 'The printed label as a number, with any ×10^n multiplier applied.' },
+              t: {
+                type: 'number',
+                minimum: 0,
+                maximum: 1,
+                description:
+                  'Instead of mark: where the label sits along the strip, 0 at its top end (vertical bar) or left end (horizontal bar), 1 at the other end.',
+              },
+              value: {
+                type: 'number',
+                description: 'The printed label as a number, with any ×10^n multiplier applied.',
+              },
             },
             required: ['value'],
           },
         },
-        scale: { enum: SCALE_NAMES, description: 'Leave out unless the labels grow by constant factors (log10). piecewise: uneven tick values interpolated between neighbours.' },
+        scale: {
+          enum: SCALE_NAMES,
+          description:
+            'Leave out unless the labels grow by constant factors (log10). piecewise: uneven tick values interpolated between neighbours.',
+        },
       },
       required: ['ticks'],
     },
   },
   use_colorbar: {
-    description: 'Give a panel its colorbar: one of the lettered candidates from locate_heatmap (candidate), the colorbar of another panel with its ticks and scale (fromPanel: blocks sharing one colorbar), or a strip at a rough box in page pixels (box) when none was found. Returns numbered tick-label boxes for set_ticks (except with fromPanel, which checks the panel).',
+    description:
+      'Give a panel its colorbar: one of the lettered candidates from locate_heatmap (candidate), the colorbar of another panel with its ticks and scale (fromPanel: blocks sharing one colorbar), or a strip at a rough box in page pixels (box) when none was found. Returns numbered tick-label boxes for set_ticks (except with fromPanel, which checks the panel).',
     args: {
       type: 'object',
       properties: {
         panelId,
-        candidate: { type: 'string', minLength: 1, maxLength: 2, description: 'Letter of a colorbar candidate, e.g. "B".' },
+        candidate: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 2,
+          description: 'Letter of a colorbar candidate, e.g. "B".',
+        },
         fromPanel: { type: 'string', description: 'Id of a panel whose colorbar this heatmap shares.' },
-        box: roughBox('The colored strip\'s rough extent in page pixels, from the page rulers.'),
+        box: roughBox("The colored strip's rough extent in page pixels, from the page rulers."),
       },
     },
   },
   correct_grid_size: {
-    description: 'Correct the app\'s row and column count of a panel when the image shows it is wrong: magenta lines that merge or split cells, or a strip without cell borders. Count cell edges in the image; count labels only where there are no edges (one label can cover several replicate cells). With box (the cells\' rough extent from the page rulers) the grid\'s outer edges also move onto the cells (at most a few px each); without it the corners stay. Then checks the extraction.',
+    description:
+      "Correct the app's row and column count of a panel when the image shows it is wrong: magenta lines that merge or split cells, or a strip without cell borders. Count cell edges in the image; count labels only where there are no edges (one label can cover several replicate cells). With box (the cells' rough extent from the page rulers) the grid's outer edges also move onto the cells (at most a few px each); without it the corners stay. Then checks the extraction.",
     args: {
       type: 'object',
       properties: {
         panelId,
         rows: { type: 'integer', minimum: 1, maximum: 500 },
         cols: { type: 'integer', minimum: 1, maximum: 500 },
-        reason: { type: 'string', minLength: 3, description: 'What in the image shows the count, e.g. "3 replicate cells under each column label".' },
-        box: roughBox('Only when the outer grid lines miss the cells: the cells\' rough extent in page pixels.'),
+        reason: {
+          type: 'string',
+          minLength: 3,
+          description: 'What in the image shows the count, e.g. "3 replicate cells under each column label".',
+        },
+        box: roughBox("Only when the outer grid lines miss the cells: the cells' rough extent in page pixels."),
       },
       required: ['rows', 'cols', 'reason'],
     },
   },
   check_printed: {
-    description: 'Cross-check a calibrated panel against numbers printed in its cells: give 3–5 cells spread over the heatmap (with the lowest and highest printed numbers) and the numbers as printed. The app compares them with the values it extracted from the colors and says whether they agree; a disagreement that grows with the value or shifts all of them points at wrong tick values or colorbar ends. The colors stay the values.',
+    description:
+      'Cross-check a calibrated panel against numbers printed in its cells: give 3–5 cells spread over the heatmap (with the lowest and highest printed numbers) and the numbers as printed. The app compares them with the values it extracted from the colors and says whether they agree; a disagreement that grows with the value or shifts all of them points at wrong tick values or colorbar ends. The colors stay the values.',
     args: {
       type: 'object',
       properties: {
@@ -235,11 +287,13 @@ export const DECISION_TOOLS: Record<string, ActionSpec> = {
     },
   },
   check_panel: {
-    description: 'Check a panel again: whether it is ready, whether its tick values fit the scale, and how many cells are far from the colorbar\'s colors, off it or past its ends.',
+    description:
+      "Check a panel again: whether it is ready, whether its tick values fit the scale, and how many cells are far from the colorbar's colors, off it or past its ends.",
     args: { type: 'object', properties: { panelId } },
   },
   ask: {
-    description: 'Ask the decision model your own questions about one region of the current page (no rulers in its image). Box answers come back in page pixels. Use it rarely, for one heatmap at a time.',
+    description:
+      'Ask the decision model your own questions about one region of the current page (no rulers in its image). Box answers come back in page pixels. Use it rarely, for one heatmap at a time.',
     args: {
       type: 'object',
       properties: {
@@ -257,7 +311,8 @@ export const DECISION_TOOLS: Record<string, ActionSpec> = {
 export function cleanDecisionArgs(name: string, args: ActionArgs | null): ActionArgs | null {
   const drop = (o: ActionArgs): ActionArgs => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null));
   const out = args && typeof args === 'object' ? drop(args) : args;
-  if (name === 'set_ticks' && Array.isArray(out?.ticks)) out.ticks = out.ticks.map((k: unknown) => (k && typeof k === 'object' ? drop(k as ActionArgs) : k));
+  if (name === 'set_ticks' && Array.isArray(out?.ticks))
+    out.ticks = out.ticks.map((k: unknown) => (k && typeof k === 'object' ? drop(k as ActionArgs) : k));
   return out;
 }
 
@@ -268,8 +323,10 @@ export function validateDecisionTool(name: string, args: ActionArgs) {
     if (!qs.length || qs.length > 6) errs.push('args.questions: give 1 to 6 questions');
     for (const [id, q] of qs) {
       errs.push(...validate(DECISION_QUESTION, q, `args.questions.${id}`));
-      if (q.type === 'score' && !Array.isArray(q.criteria)) errs.push(`args.questions.${id}.criteria: a score needs a list of levels`);
-      if (q.type === 'choice' && (!q.criteria || typeof q.criteria !== 'object' || Array.isArray(q.criteria))) errs.push(`args.questions.${id}.criteria: a choice needs {option: description}`);
+      if (q.type === 'score' && !Array.isArray(q.criteria))
+        errs.push(`args.questions.${id}.criteria: a score needs a list of levels`);
+      if (q.type === 'choice' && (!q.criteria || typeof q.criteria !== 'object' || Array.isArray(q.criteria)))
+        errs.push(`args.questions.${id}.criteria: a choice needs {option: description}`);
     }
   }
   if (name === 'set_ticks' && !errs.length) {
@@ -277,7 +334,11 @@ export function validateDecisionTool(name: string, args: ActionArgs) {
       if ((k.mark === undefined) === (k.t === undefined)) errs.push(`args.ticks[${i}]: give exactly one of mark or t`);
     });
   }
-  if (name === 'use_colorbar' && !errs.length && ['candidate', 'fromPanel', 'box'].filter((k) => args[k] !== undefined).length !== 1) {
+  if (
+    name === 'use_colorbar' &&
+    !errs.length &&
+    ['candidate', 'fromPanel', 'box'].filter((k) => args[k] !== undefined).length !== 1
+  ) {
     errs.push('args: give exactly one of candidate, fromPanel or box');
   }
   return errs;
@@ -285,11 +346,16 @@ export function validateDecisionTool(name: string, args: ActionArgs) {
 
 // Tool definitions in the SDK's chat format.
 export function decisionLlmTools() {
-  const fn = (name: string, description: string, parameters: JsonSchema): LlmTool => ({ type: 'function', function: { name, description, parameters } });
+  const fn = (name: string, description: string, parameters: JsonSchema): LlmTool => ({
+    type: 'function',
+    function: { name, description, parameters },
+  });
   return [
     ...Object.entries(DECISION_TOOLS).map(([n, t]) => fn(n, t.description, t.args)),
     ...DECISION_LLM_ACTIONS.map((n) => fn(n, AGENT_ACTIONS[n].description, AGENT_ACTIONS[n].args)),
-    ...['view_page', 'view_pages_overview', 'finish'].map((n) => fn(n, RUNNER_TOOLS[n].description, RUNNER_TOOLS[n].args)),
+    ...['view_page', 'view_pages_overview', 'finish'].map((n) =>
+      fn(n, RUNNER_TOOLS[n].description, RUNNER_TOOLS[n].args),
+    ),
   ];
 }
 
@@ -299,23 +365,41 @@ export function decisionLlmTools() {
 const questions: Record<string, (description?: string) => Record<string, DecisionQuestion>> = {
   // On the whole page: roughly where the heatmap is.
   find: (description) => ({
-    present: { type: 'noul', instructions: `Is there a heatmap (a grid of colored cells) on this page matching: ${description}?` },
+    present: {
+      type: 'noul',
+      instructions: `Is there a heatmap (a grid of colored cells) on this page matching: ${description}?`,
+    },
     cells: { type: 'box', instructions: `the grid of colored cells of the heatmap described as: ${description}` },
   }),
   // On a crop around it: the cells alone.
   cells: () => ({
-    cells: { type: 'box', instructions: 'the rectangle of colored heatmap cells in the middle of the image (only the colored cells: not the row labels, column labels, title or colorbar)' },
+    cells: {
+      type: 'box',
+      instructions:
+        'the rectangle of colored heatmap cells in the middle of the image (only the colored cells: not the row labels, column labels, title or colorbar)',
+    },
   }),
   side: () => ({
     side: {
       type: 'choice',
-      instructions: 'Where is the colorbar (the strip of graded color with numbers that shows the color scale) of the heatmap in the middle of the image?',
-      criteria: { right: 'to the right of the cells', left: 'to the left of the cells', above: 'above the cells', below: 'below the cells', none: 'there is no colorbar' },
+      instructions:
+        'Where is the colorbar (the strip of graded color with numbers that shows the color scale) of the heatmap in the middle of the image?',
+      criteria: {
+        right: 'to the right of the cells',
+        left: 'to the left of the cells',
+        above: 'above the cells',
+        below: 'below the cells',
+        none: 'there is no colorbar',
+      },
     },
   }),
   // On the strip of page beside the cells, with the cells left out.
   bar: () => ({
-    bar: { type: 'box', instructions: 'the colorbar: the long narrow strip of graded color, from one end to the other (only the colored strip, not its tick labels or title)' },
+    bar: {
+      type: 'box',
+      instructions:
+        'the colorbar: the long narrow strip of graded color, from one end to the other (only the colored strip, not its tick labels or title)',
+    },
   }),
 };
 
@@ -326,10 +410,23 @@ const questions: Record<string, (description?: string) => Record<string, Decisio
 // away from its own heatmap. On example.pdf page 3, panel h's colorbar sits
 // 72 px left of panel i with its labels towards i. `reach` (a share of the
 // cells' size across the gap) is 0.25 here; nearCheck allows more.
-export function besideCheck(cells: Box, bar: Box, side: string, labelSide: string | null = null, reach: number | null = null) {
+export function besideCheck(
+  cells: Box,
+  bar: Box,
+  side: string,
+  labelSide: string | null = null,
+  reach: number | null = null,
+) {
   if (labelSide && labelSide !== side) return false;
   const vertical = side === 'left' || side === 'right';
-  const gap = side === 'right' ? bar.x0 - cells.x1 : side === 'left' ? cells.x0 - bar.x1 : side === 'below' ? bar.y0 - cells.y1 : cells.y0 - bar.y1;
+  const gap =
+    side === 'right'
+      ? bar.x0 - cells.x1
+      : side === 'left'
+        ? cells.x0 - bar.x1
+        : side === 'below'
+          ? bar.y0 - cells.y1
+          : cells.y0 - bar.y1;
   reach ??= Math.max(40, 0.25 * (vertical ? cells.x1 - cells.x0 : cells.y1 - cells.y0));
   const [a0, a1, c0, c1] = vertical ? [bar.y0, bar.y1, cells.y0, cells.y1] : [bar.x0, bar.x1, cells.x0, cells.x1];
   const overlap = Math.min(a1, c1) - Math.max(a0, c0);
@@ -350,8 +447,14 @@ export function nearCheck(cells: Box, bar: Box, side: string) {
 // Which side of the cells a strip lies on, and how far: the axis with the
 // larger gap wins for a strip off a corner. Null when they overlap.
 export function sideOf(cells: Box, bar: Box): { side: Side; gap: number } | null {
-  const dx: [Side, number] | null = bar.x0 >= cells.x1 - 2 ? ['right', bar.x0 - cells.x1] : bar.x1 <= cells.x0 + 2 ? ['left', cells.x0 - bar.x1] : null;
-  const dy: [Side, number] | null = bar.y0 >= cells.y1 - 2 ? ['below', bar.y0 - cells.y1] : bar.y1 <= cells.y0 + 2 ? ['above', cells.y0 - bar.y1] : null;
+  const dx: [Side, number] | null =
+    bar.x0 >= cells.x1 - 2 ? ['right', bar.x0 - cells.x1] : bar.x1 <= cells.x0 + 2 ? ['left', cells.x0 - bar.x1] : null;
+  const dy: [Side, number] | null =
+    bar.y0 >= cells.y1 - 2
+      ? ['below', bar.y0 - cells.y1]
+      : bar.y1 <= cells.y0 + 2
+        ? ['above', cells.y0 - bar.y1]
+        : null;
   const [side, gap] = !dx ? dy || [null, -1] : !dy ? dx : dx[1] >= dy[1] ? dx : dy;
   return side ? { side, gap } : null;
 }
@@ -375,12 +478,15 @@ export function flankInk(img: PixelImage, bar: Box, exclude: Box[] = [], across 
   const med = [0, 1, 2].map((c) => edge.map((p) => p[c]).sort((a, b) => a - b)[edge.length >> 1]);
   const skip = (x: number, y: number) => exclude.some((b) => x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1);
   // `across`: the bands beyond the strip's two ends instead of its sides.
-  const vertical = (bar.y1 - bar.y0 >= bar.x1 - bar.x0) !== across;
+  const vertical = bar.y1 - bar.y0 >= bar.x1 - bar.x0 !== across;
   const [a0, a1] = vertical ? [bar.y0, bar.y1] : [bar.x0, bar.x1];
   const ends = vertical ? [bar.x0, bar.x1] : [bar.y0, bar.y1];
   const lim = vertical ? img.width : img.height;
   let worst = 0;
-  for (const [from, dir] of [[ends[0], -1], [ends[1] - 1, 1]] as [number, number][]) {
+  for (const [from, dir] of [
+    [ends[0], -1],
+    [ends[1] - 1, 1],
+  ] as [number, number][]) {
     let ink = 0;
     let n = 0;
     for (let d = 4; d <= 10; d += 2) {
@@ -424,22 +530,26 @@ export function snapCells(img: PixelImage, rough: Box, boxed: Box) {
   const near = snapBlock(img, boxed);
   const wide = snapBlock(img, rough);
   let cells = near || wide;
-  if (near && wide && holds(wide, near) && area(near) < 0.6 * area(wide) && area(wide) < 1.5 * area(rough)) cells = wide;
-  if (near && wide && holds(near, wide) && area(near) > 1.5 * area(rough) && area(wide) <= 1.5 * area(rough)) cells = wide;
+  if (near && wide && holds(wide, near) && area(near) < 0.6 * area(wide) && area(wide) < 1.5 * area(rough))
+    cells = wide;
+  if (near && wide && holds(near, wide) && area(near) > 1.5 * area(rough) && area(wide) <= 1.5 * area(rough))
+    cells = wide;
   let edges = false;
   if (cells && shrunk(cells, boxed)) {
     // (Only a box whose edges found the cells' edges: at least 3 of them
     // moved. One that stayed put is the crop box with its white margin.)
     let alt = snapEdges(img, boxed);
-    if (alt && (['x0', 'y0', 'x1', 'y1'] as const).filter((k) => Math.abs(alt![k] - boxed[k]) >= 1).length < 3) alt = null;
+    if (alt && (['x0', 'y0', 'x1', 'y1'] as const).filter((k) => Math.abs(alt![k] - boxed[k]) >= 1).length < 3)
+      alt = null;
     const [q, qa] = [fitQuality(img, cells), alt && fitQuality(img, alt)];
     // It must add whole cells: each side it moves out by more than 3 px
     // gains half a cell or more (t10: 12 px of row labels past 42 px cells
     // fit as well and are no cells).
-    const cellsOnly = (b: Box) => (['x0', 'x1', 'y0', 'y1'] as const).every((k) => {
-      const out = k.endsWith('0') ? cells![k] - b[k] : b[k] - cells![k];
-      return out <= 3 || out >= 0.5 * (k[0] === 'x' ? q.colSize : q.rowSize);
-    });
+    const cellsOnly = (b: Box) =>
+      (['x0', 'x1', 'y0', 'y1'] as const).every((k) => {
+        const out = k.endsWith('0') ? cells![k] - b[k] : b[k] - cells![k];
+        return out <= 3 || out >= 0.5 * (k[0] === 'x' ? q.colSize : q.rowSize);
+      });
     if (qa && qa.min >= FAIR_FIT && qa.mean >= q.mean + 0.1 && cellsOnly(alt!)) [cells, edges] = [alt!, true];
   }
   return { cells, partial: !!cells && area(cells) < 0.3 * area(rough), edges };
@@ -450,7 +560,12 @@ export function snapCells(img: PixelImage, rough: Box, boxed: Box) {
 function shrunk(cells: Box, box: Box) {
   const w = box.x1 - box.x0;
   const h = box.y1 - box.y0;
-  const inward = Math.max((cells.x0 - box.x0) / w, (box.x1 - cells.x1) / w, (cells.y0 - box.y0) / h, (box.y1 - cells.y1) / h);
+  const inward = Math.max(
+    (cells.x0 - box.x0) / w,
+    (box.x1 - cells.x1) / w,
+    (cells.y0 - box.y0) / h,
+    (box.y1 - cells.y1) / h,
+  );
   return area(cells) < 0.85 * area(box) || inward > 0.08;
 }
 
@@ -458,7 +573,12 @@ function shrunk(cells: Box, box: Box) {
 // both axes): {min, mean, rowSize, colSize}.
 function fitQuality(img: PixelImage, b: Box) {
   const f = fitCellCounts(img, rectCorners({ x: b.x0, y: b.y0 }, { x: b.x1, y: b.y1 }));
-  return { min: Math.min(f.rowScore, f.colScore), mean: (f.rowScore + f.colScore) / 2, rowSize: f.rowSize, colSize: f.colSize };
+  return {
+    min: Math.min(f.rowScore, f.colScore),
+    mean: (f.rowScore + f.colScore) / 2,
+    rowSize: f.rowSize,
+    colSize: f.colSize,
+  };
 }
 
 // A colorbar candidate {bar, labelSide, labels} for a strip, or null.
@@ -468,11 +588,23 @@ function fitQuality(img: PixelImage, b: Box) {
 // past its ends (ink 0.95–1 there, 0–0.11 past a real colorbar's ends on
 // 14 figures). A strip from the pixels alone (`minLabels` 2) also needs
 // two tick labels; one the decision model boxed may have none found.
-export function stripCandidate(img: PixelImage, bar: Box | null | undefined, exclude: Box[] = [], groups: Box[] = [], minLabels = 0): StripInfo | null {
+export function stripCandidate(
+  img: PixelImage,
+  bar: Box | null | undefined,
+  exclude: Box[] = [],
+  groups: Box[] = [],
+  minLabels = 0,
+): StripInfo | null {
   if (!bar || exclude.some((c) => overlaps(c, bar)) || groups.some((g) => overlaps(g, bar))) return null;
   const labels = findTickLabels(img, bar, { exclude });
-  if (labels.marks.length < minLabels || flankInk(img, bar, exclude, true) > 0.5 || flankInk(img, bar, exclude) > 0.85) return null;
-  return { bar: { x0: bar.x0, y0: bar.y0, x1: bar.x1, y1: bar.y1 }, labelSide: labels.side, labels: labels.marks.length, labelsAt: labels.marks.map((m) => m.at) };
+  if (labels.marks.length < minLabels || flankInk(img, bar, exclude, true) > 0.5 || flankInk(img, bar, exclude) > 0.85)
+    return null;
+  return {
+    bar: { x0: bar.x0, y0: bar.y0, x1: bar.x1, y1: bar.y1 },
+    labelSide: labels.side,
+    labels: labels.marks.length,
+    labelsAt: labels.marks.map((m) => m.at),
+  };
 }
 
 // Colorbar candidates on the page from the pixels alone (findColorbars,
@@ -502,8 +634,12 @@ export function tickBoxesText(marks: { note?: string }[], { extended = false }: 
   return [
     `${n} tick-label box${n === 1 ? '' : 'es'} found, numbered ${n === 1 ? '1' : `1–${n}`} in reading order; there are no others. A printed tick label without a box goes to set_ticks as {t, value}.`,
     odd.length ? `Check: ${odd.join('; ')}.` : '',
-    extended ? 'The strip fades into the page at one end; the colorbar line was extended to the tick label just past it.' : '',
-  ].filter(Boolean).join(' ');
+    extended
+      ? 'The strip fades into the page at one end; the colorbar line was extended to the tick label just past it.'
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 const LETTERS = 'ABCDEFGHIJ';
@@ -521,8 +657,14 @@ const MAX_CANDIDATES = 6;
 // on a column's middle: t16's dashed outline under the cells and its 13
 // rotated column labels) is left out. Returns {bar, how: 'beside' |
 // 'near' | 'only'} or {list: [{letter, bar, side, gap, labels}]}.
-export function chooseColorbar(cells: Box, candidates: StripInfo[], grid: { rows: number; cols: number } | null = null) {
-  const placed = candidates.map((c) => ({ ...c, at: sideOf(cells, c.bar) })).filter((c) => c.at && !(grid && cellLabels(cells, c as PlacedStrip, grid))) as PlacedStrip[];
+export function chooseColorbar(
+  cells: Box,
+  candidates: StripInfo[],
+  grid: { rows: number; cols: number } | null = null,
+) {
+  const placed = candidates
+    .map((c) => ({ ...c, at: sideOf(cells, c.bar) }))
+    .filter((c) => c.at && !(grid && cellLabels(cells, c as PlacedStrip, grid))) as PlacedStrip[];
   // A strip as long as the cells, end to end, without two tick labels is
   // a group or label strip drawn along them (t9's "Group" strip above the
   // cells); it is never taken without the LLM. (A colorbar may be exactly
@@ -553,7 +695,13 @@ export function chooseColorbar(cells: Box, candidates: StripInfo[], grid: { rows
   const list = placed
     .sort((a, b) => labelled(a) - labelled(b) || a.at.gap - b.at.gap)
     .slice(0, MAX_CANDIDATES)
-    .map((c, i) => ({ letter: LETTERS[i], bar: c.bar, side: c.at.side, gap: Math.round(c.at.gap), labels: c.labels || 0 }));
+    .map((c, i) => ({
+      letter: LETTERS[i],
+      bar: c.bar,
+      side: c.at.side,
+      gap: Math.round(c.at.gap),
+      labels: c.labels || 0,
+    }));
   return { list };
 }
 
@@ -588,7 +736,12 @@ export function boxToPage(box: DecisionBox, frame: ViewFrame) {
 export function growBox(b: Box, f: number, px: number, width: number, height: number) {
   const w = b.x1 - b.x0;
   const h = b.y1 - b.y0;
-  return { x0: Math.max(0, b.x0 - w * f - px), y0: Math.max(0, b.y0 - h * f - px), x1: Math.min(width, b.x1 + w * f + px), y1: Math.min(height, b.y1 + h * f + px) };
+  return {
+    x0: Math.max(0, b.x0 - w * f - px),
+    y0: Math.max(0, b.y0 - h * f - px),
+    x1: Math.min(width, b.x1 + w * f + px),
+    y1: Math.min(height, b.y1 + h * f + px),
+  };
 }
 
 // The strip of page beside the cells where a colorbar on `side` must be,
@@ -599,10 +752,13 @@ export function besideBox(cells: Box, side: string, width: number, height: numbe
   const reachX = Math.max(80, 0.6 * w);
   const reachY = Math.max(80, 0.6 * h);
   const b =
-    side === 'right' ? { x0: cells.x1 + 1, y0: cells.y0 - 0.25 * h, x1: cells.x1 + reachX, y1: cells.y1 + 0.25 * h }
-    : side === 'left' ? { x0: cells.x0 - reachX, y0: cells.y0 - 0.25 * h, x1: cells.x0 - 1, y1: cells.y1 + 0.25 * h }
-    : side === 'above' ? { x0: cells.x0 - 0.25 * w, y0: cells.y0 - reachY, x1: cells.x1 + 0.25 * w, y1: cells.y0 - 1 }
-    : { x0: cells.x0 - 0.25 * w, y0: cells.y1 + 1, x1: cells.x1 + 0.25 * w, y1: cells.y1 + reachY };
+    side === 'right'
+      ? { x0: cells.x1 + 1, y0: cells.y0 - 0.25 * h, x1: cells.x1 + reachX, y1: cells.y1 + 0.25 * h }
+      : side === 'left'
+        ? { x0: cells.x0 - reachX, y0: cells.y0 - 0.25 * h, x1: cells.x0 - 1, y1: cells.y1 + 0.25 * h }
+        : side === 'above'
+          ? { x0: cells.x0 - 0.25 * w, y0: cells.y0 - reachY, x1: cells.x1 + 0.25 * w, y1: cells.y0 - 1 }
+          : { x0: cells.x0 - 0.25 * w, y0: cells.y1 + 1, x1: cells.x1 + 0.25 * w, y1: cells.y1 + reachY };
   return { x0: Math.max(0, b.x0), y0: Math.max(0, b.y0), x1: Math.min(width, b.x1), y1: Math.min(height, b.y1) };
 }
 
@@ -725,18 +881,35 @@ export function checkSummary({
   const c = { cells: 0, ok: 0, flagged: 0, clamped: 0, offMap: 0, empty: 0, open: 0, ...counts };
   const filled = c.cells - c.empty;
   const badTicks = misfit && misfit.miss > MISFIT;
-  if (badTicks) parts.push(`The tick values do not lie on a straight line along the bar; ${mark ? `box ${mark}` : 'one tick'} is ${Math.round(misfit!.miss * 100)}% of the range off. Check that value, or the scale (log10 for constant factors, piecewise for uneven steps).`);
+  if (badTicks)
+    parts.push(
+      `The tick values do not lie on a straight line along the bar; ${mark ? `box ${mark}` : 'one tick'} is ${Math.round(misfit!.miss * 100)}% of the range off. Check that value, or the scale (log10 for constant factors, piecewise for uneven steps).`,
+    );
   const many = c.flagged > 0.2 * filled;
   const offMany = c.offMap > 0.3 * filled;
-  if (filled) parts.push(`${c.flagged} of ${filled} cells are flagged as far from the colorbar's colors${many ? ' (many: the colorbar or grid may be wrong)' : ''}.`);
+  if (filled)
+    parts.push(
+      `${c.flagged} of ${filled} cells are flagged as far from the colorbar's colors${many ? ' (many: the colorbar or grid may be wrong)' : ''}.`,
+    );
   if (c.offMap) {
-    const why = Object.entries({ gray: 'gray', hue: 'another hue', far: 'far from every bar color' }).filter(([k]) => offMapReasons[k]).map(([k, w]) => `${offMapReasons[k]} ${w}`).join(', ');
-    parts.push(offMany
-      ? `${c.offMap} cells have colors that are not on this colorbar (${why}): it is likely not this heatmap's colorbar.`
-      : `${c.offMap} cells have colors that are not on the colorbar (${why}), such as gray "ND" cells or a diagonal: they are left empty. Mention it in finish.`);
+    const why = Object.entries({ gray: 'gray', hue: 'another hue', far: 'far from every bar color' })
+      .filter(([k]) => offMapReasons[k])
+      .map(([k, w]) => `${offMapReasons[k]} ${w}`)
+      .join(', ');
+    parts.push(
+      offMany
+        ? `${c.offMap} cells have colors that are not on this colorbar (${why}): it is likely not this heatmap's colorbar.`
+        : `${c.offMap} cells have colors that are not on the colorbar (${why}), such as gray "ND" cells or a diagonal: they are left empty. Mention it in finish.`,
+    );
   }
-  if (bins) parts.push(`The colorbar is binned (${bins} bins): each cell gets its bin's middle value${c.open ? `; ${c.open} cells are bounds (at most or at least an outer tick's value)` : ''}.`);
-  if (clampedShare > 0.2) parts.push(`${Math.round(clampedShare * 100)}% of the cells are paler or darker than the colorbar's end: their values are only bounds (the end's value). If the colorbar line misses part of the strip (a pale end), fix it with use_colorbar box; otherwise mention it in finish.`);
+  if (bins)
+    parts.push(
+      `The colorbar is binned (${bins} bins): each cell gets its bin's middle value${c.open ? `; ${c.open} cells are bounds (at most or at least an outer tick's value)` : ''}.`,
+    );
+  if (clampedShare > 0.2)
+    parts.push(
+      `${Math.round(clampedShare * 100)}% of the cells are paler or darker than the colorbar's end: their values are only bounds (the end's value). If the colorbar line misses part of the strip (a pale end), fix it with use_colorbar box; otherwise mention it in finish.`,
+    );
   else if (c.clamped) parts.push(`${c.clamped} cells are past an end of the colorbar and read as that end (bounds).`);
   const ok = !badTicks && !many && !offMany;
   return { ok, text: `${ok ? 'Check passed.' : 'Check failed.'} ${parts.join(' ')}` };
@@ -776,7 +949,9 @@ export function printedCheck(pairs: PrintedPair[], range: { min: number; max: nu
     }
     const d = f(p.value) - f(p.printed);
     const bound = p.open ? ` (a bound: the cell is ${p.open === 'below' ? 'below' : 'above'} the bar's end)` : '';
-    lines.push(`${where}: printed ${fmt(p.printed)}, extracted ${fmt(p.value)}${bound}, ${Math.round((100 * Math.abs(d)) / span)}% of the range off`);
+    lines.push(
+      `${where}: printed ${fmt(p.printed)}, extracted ${fmt(p.value)}${bound}, ${Math.round((100 * Math.abs(d)) / span)}% of the range off`,
+    );
     if (!p.open && Number.isFinite(f(p.printed))) used.push({ x: f(p.printed), d });
   }
   if (!used.length) return { ok: false, text: `No printed value could be compared. ${lines.join('; ')}.` };
@@ -797,12 +972,23 @@ export function printedCheck(pairs: PrintedPair[], range: { min: number; max: nu
     }
     const slope = sxx ? sxy / sxx : 1;
     const bias = used.reduce((a, u) => a + u.d, 0) / n;
-    if (sxx && Math.abs(slope - 1) > 0.1) systematic = `the extracted values grow ${slope > 1 ? 'faster' : 'slower'} than the printed ones (slope ${Math.round(slope * 100) / 100})`;
-    else if (Math.abs(bias) > PRINTED_TOL * span && used.every((u) => Math.sign(u.d) === Math.sign(bias))) systematic = `the extracted values are all ${bias > 0 ? 'higher' : 'lower'} by about ${fmt(Math.abs(log ? 10 ** bias : bias))}${log ? '×' : ''}`;
+    if (sxx && Math.abs(slope - 1) > 0.1)
+      systematic = `the extracted values grow ${slope > 1 ? 'faster' : 'slower'} than the printed ones (slope ${Math.round(slope * 100) / 100})`;
+    else if (Math.abs(bias) > PRINTED_TOL * span && used.every((u) => Math.sign(u.d) === Math.sign(bias)))
+      systematic = `the extracted values are all ${bias > 0 ? 'higher' : 'lower'} by about ${fmt(Math.abs(log ? 10 ** bias : bias))}${log ? '×' : ''}`;
   }
-  if (systematic) parts.push(`They disagree: ${systematic}. The colorbar's tick values, its ends or its scale are likely wrong: check set_ticks against the printed labels and the bar's ends in the image, fix them, and check again.`);
-  else if (off.length) parts.push(`${off.length} of ${used.length} differ by more than ${Math.round(PRINTED_TOL * 100)}% of the range: check those cells' numbers and the grid there (a misread number, or a grid line off its cell).`);
-  else parts.push(`They agree within ${Math.round(PRINTED_TOL * 100)}% of the range: the extraction matches the printed numbers.`);
+  if (systematic)
+    parts.push(
+      `They disagree: ${systematic}. The colorbar's tick values, its ends or its scale are likely wrong: check set_ticks against the printed labels and the bar's ends in the image, fix them, and check again.`,
+    );
+  else if (off.length)
+    parts.push(
+      `${off.length} of ${used.length} differ by more than ${Math.round(PRINTED_TOL * 100)}% of the range: check those cells' numbers and the grid there (a misread number, or a grid line off its cell).`,
+    );
+  else
+    parts.push(
+      `They agree within ${Math.round(PRINTED_TOL * 100)}% of the range: the extraction matches the printed numbers.`,
+    );
   return { ok: !systematic && !off.length, text: parts.join(' ') };
 }
 
@@ -833,7 +1019,14 @@ export function planCounts(
   size: { width: number; height: number } | null = null,
   page: Neighbours = {},
 ): CountPlan {
-  const out: CountPlan = { rows: det.rows, cols: det.cols, span: {}, alt: {}, unsure: { row: false, col: false }, notes: [] };
+  const out: CountPlan = {
+    rows: det.rows,
+    cols: det.cols,
+    span: {},
+    alt: {},
+    unsure: { row: false, col: false },
+    notes: [],
+  };
   // The fit's and the detection's fields are read by axis name ("rowScore", "colSize").
   const fnum = (k: string) => (fit as unknown as Record<string, number | undefined>)[k];
   const fstr = (k: string) => (fit as unknown as Record<string, string | undefined>)[k];
@@ -845,10 +1038,17 @@ export function planCounts(
     const [len, across] = axis === 'row' ? [size.height, size.width] : [size.width, size.height];
     // A cell's size along this axis: from the other axis' fair fit (cells
     // are about square), a panel lined up with this one, or any panel.
-    const ref = [(fnum(`${other}Score`) ?? 0) >= FAIR_FIT ? fnum(`${other}Size`) : null, page[`${axis}Cell`], page.cell].find((v) => v! > 0);
+    const ref = [
+      (fnum(`${other}Score`) ?? 0) >= FAIR_FIT ? fnum(`${other}Size`) : null,
+      page[`${axis}Cell`],
+      page.cell,
+    ].find((v) => v! > 0);
     return (!!ref && len <= 1.6 * ref) || across >= STRIP * len;
   };
-  for (const [axis, word] of [['row', 'row'], ['col', 'column']] as const) {
+  for (const [axis, word] of [
+    ['row', 'row'],
+    ['col', 'column'],
+  ] as const) {
     const key = `${axis}s` as const;
     const count = fnum(key)!;
     const score = fnum(`${axis}Score`) ?? 0;
@@ -861,17 +1061,27 @@ export function planCounts(
     // (t17 panel i: a first row 6–10 levels from the second). A panel
     // lined up with this one, else detectGridSize, settles it when it
     // counts that cell; the box then stays whole.
-    const whiteTie = /white end cell/.test(reason) && alt > count && (fnum(`${axis}AltScore`) ?? 0) >= 0.9 * score && score >= FAIR_FIT;
+    const whiteTie =
+      /white end cell/.test(reason) &&
+      alt > count &&
+      (fnum(`${axis}AltScore`) ?? 0) >= 0.9 * score &&
+      score >= FAIR_FIT;
     const settled = whiteTie && (lender ? lender.count === alt : detected === alt);
     if (settled) {
       out[key] = alt;
-      if (lender) out.notes.push(`The ${word} count ${alt} comes from panel ${lender.id}${lender.name ? ` "${lender.name}"` : ''}, whose ${axis === 'col' ? 'x' : 'y'} extent matches (an end ${word} is pale).`);
+      if (lender)
+        out.notes.push(
+          `The ${word} count ${alt} comes from panel ${lender.id}${lender.name ? ` "${lender.name}"` : ''}, whose ${axis === 'col' ? 'x' : 'y'} extent matches (an end ${word} is pale).`,
+        );
       continue;
     }
     if (score >= CLEAN_FIT) out[key] = count;
     else if (lender && !(lender.count === 1 && single(axis))) {
       out[key] = lender.count;
-      if (score < FAIR_FIT || count !== lender.count) out.notes.push(`The ${word} count ${lender.count} comes from panel ${lender.id}${lender.name ? ` "${lender.name}"` : ''}, whose ${axis === 'col' ? 'x' : 'y'} extent matches (the cells' own ${word} borders are unclear).`);
+      if (score < FAIR_FIT || count !== lender.count)
+        out.notes.push(
+          `The ${word} count ${lender.count} comes from panel ${lender.id}${lender.name ? ` "${lender.name}"` : ''}, whose ${axis === 'col' ? 'x' : 'y'} extent matches (the cells' own ${word} borders are unclear).`,
+        );
       continue;
     } else if (single(axis)) {
       out[key] = 1;
@@ -881,23 +1091,38 @@ export function planCounts(
       const fitsWell = detected === count && (fnum(`${axis}AltScore`) ?? 0) <= 0.6 * score;
       if (!fitsWell) {
         const others = [...new Set([alt, detected].filter((n) => n && n !== count))];
-        out.notes.push(`The app is unsure of the ${word} count: ${count}${others.length ? ` (else ${others.join(' or ')})` : ''}; check it in the image.`);
+        out.notes.push(
+          `The app is unsure of the ${word} count: ${count}${others.length ? ` (else ${others.join(' or ')})` : ''}; check it in the image.`,
+        );
         out.unsure[axis] = true;
       }
     } else if ((dnum(`${axis}Confidence`) ?? 0) < SURE_DETECT) {
-      out.notes.push(`The cells show no clear ${word} borders, so the app could not count the ${word}s (it put ${detected}): count them from the labels or cells and call correct_grid_size, unless a heatmap lined up with it is still to be located (the app then takes its count).`);
+      out.notes.push(
+        `The cells show no clear ${word} borders, so the app could not count the ${word}s (it put ${detected}): count them from the labels or cells and call correct_grid_size, unless a heatmap lined up with it is still to be located (the app then takes its count).`,
+      );
       out.unsure[axis] = true;
     }
     const white = /white end cell/.test(reason) && score >= FAIR_FIT;
-    if (score >= FAIR_FIT && out[key] === count && span && (span[0] > 0.03 || span[1] < 0.97) && (score >= CLEAN_FIT || white)) {
+    if (
+      score >= FAIR_FIT &&
+      out[key] === count &&
+      span &&
+      (span[0] > 0.03 || span[1] < 0.97) &&
+      (score >= CLEAN_FIT || white)
+    ) {
       out.span[axis] = span;
       if (white) {
         out.alt[axis] = alt;
         const end = span[0] > 0.03 ? 'first' : 'last';
-        out.notes.push(`The ${end} ${word} looks white and was left out of the grid: if it is a ${word} of cells, call correct_grid_size with ${key}: ${alt} (the app puts it back).`);
+        out.notes.push(
+          `The ${end} ${word} looks white and was left out of the grid: if it is a ${word} of cells, call correct_grid_size with ${key}: ${alt} (the app puts it back).`,
+        );
       }
     }
-    if (/every other border weak/.test(reason) && out[key] === count && alt) out.notes.push(`Every other ${word} border is faint (a dendrogram or tick marks across the cells?): if the cells are twice as big, use correct_grid_size with ${key}: ${alt}.`);
+    if (/every other border weak/.test(reason) && out[key] === count && alt)
+      out.notes.push(
+        `Every other ${word} border is faint (a dendrogram or tick marks across the cells?): if the cells are twice as big, use correct_grid_size with ${key}: ${alt}.`,
+      );
   }
   return out;
 }
@@ -937,7 +1162,12 @@ export function gridNeighbours(box: Box, panels: PlacedPanel[] = []) {
 // cells. Returns planCounts' result plus `cells`.
 export function planGrid(img: PixelImage, box: Box, panels: PlacedPanel[] = []) {
   const corners = rectCorners({ x: box.x0, y: box.y0 }, { x: box.x1, y: box.y1 });
-  const plan = planCounts(fitCellCounts(img, corners), detectGridSize(img, corners), { width: box.x1 - box.x0, height: box.y1 - box.y0 }, gridNeighbours(box, panels));
+  const plan = planCounts(
+    fitCellCounts(img, corners),
+    detectGridSize(img, corners),
+    { width: box.x1 - box.x0, height: box.y1 - box.y0 },
+    gridNeighbours(box, panels),
+  );
   return { ...plan, cells: plan.span.row || plan.span.col ? boxToSpan(box, plan.span) : box };
 }
 
@@ -953,8 +1183,15 @@ export function regridOthers(placed: PlacedPanel, panels: PlacedPanel[]) {
     const rows = p.unsure.row && n.row ? n.row.count : p.rows;
     const cols = p.unsure.col && n.col ? n.col.count : p.cols;
     if (rows === p.rows && cols === p.cols) continue;
-    const what = [rows !== p.rows && `${rows} rows`, cols !== p.cols && `${cols} columns`].filter(Boolean).join(' and ');
-    out.push({ id: p.id, rows, cols, note: `Panel ${p.id}${p.name ? ` "${p.name}"` : ''} now has ${what}, as this heatmap lined up with it.` });
+    const what = [rows !== p.rows && `${rows} rows`, cols !== p.cols && `${cols} columns`]
+      .filter(Boolean)
+      .join(' and ');
+    out.push({
+      id: p.id,
+      rows,
+      cols,
+      note: `Panel ${p.id}${p.name ? ` "${p.name}"` : ''} now has ${what}, as this heatmap lined up with it.`,
+    });
   }
   return out;
 }
@@ -981,7 +1218,14 @@ export function panelBrief(p: PanelSnapshot | null | undefined) {
     page: p.page,
     ready: p.ready,
     problem: p.problem,
-    grid: g ? { rows: g.rows, cols: g.cols, corners: g.corners, labels: `rows ${ends(g.rowLabels)}, columns ${ends(g.colLabels)}` } : null,
+    grid: g
+      ? {
+          rows: g.rows,
+          cols: g.cols,
+          corners: g.corners,
+          labels: `rows ${ends(g.rowLabels)}, columns ${ends(g.colLabels)}`,
+        }
+      : null,
     colorbar: { start: p.colorbar.start, end: p.colorbar.end, scale: p.colorbar.scale, ticks: p.colorbar.ticks },
   };
 }

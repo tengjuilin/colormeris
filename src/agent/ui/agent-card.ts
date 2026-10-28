@@ -1,5 +1,16 @@
 import { cellSamplePolygon } from '../../core/grid.ts';
-import type { AgentSettings, ColormerisApi, OpenRouterSdk, Panel, Question, RunEventData, RunEventType, RunUsage, SettingsUi, Workspace } from '../../types/index.ts';
+import type {
+  AgentSettings,
+  ColormerisApi,
+  OpenRouterSdk,
+  Panel,
+  Question,
+  RunEventData,
+  RunEventType,
+  RunUsage,
+  SettingsUi,
+  Workspace,
+} from '../../types/index.ts';
 import { DEFAULT_DECISION_MODEL } from '../decide.ts';
 import { DEFAULT_LABELS_MODEL } from '../labels.ts';
 import { DEFAULT_LLM, parsePages } from '../llm.ts';
@@ -30,7 +41,11 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
   $('agent-llm').value = agent().llm || DEFAULT_LLM;
   $('agent-labels').value = agent().labels || DEFAULT_LABELS_MODEL;
   $('agent-decision').value = agent().decision || DEFAULT_DECISION_MODEL;
-  for (const [id, key] of [['agent-llm', 'llm'], ['agent-labels', 'labels'], ['agent-decision', 'decision']] as [string, 'llm' | 'labels' | 'decision'][]) {
+  for (const [id, key] of [
+    ['agent-llm', 'llm'],
+    ['agent-labels', 'labels'],
+    ['agent-decision', 'decision'],
+  ] as [string, 'llm' | 'labels' | 'decision'][]) {
     $(id).addEventListener('change', () => {
       agent()[key] = $(id).value.trim();
       settingsUi.save();
@@ -41,7 +56,8 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
   // Mode toggle at the top right of the card.
   const mode = () => (agent().mode === 'decision' ? 'decision' : 'agent');
   function showMode() {
-    for (const b of document.querySelectorAll<HTMLElement>('#sec-agent [data-mode]')) ws.setPressed(b, b.dataset.mode === mode());
+    for (const b of document.querySelectorAll<HTMLElement>('#sec-agent [data-mode]'))
+      ws.setPressed(b, b.dataset.mode === mode());
     $('agent-decision-field').hidden = mode() !== 'decision';
   }
   for (const b of document.querySelectorAll<HTMLElement>('#sec-agent [data-mode]')) {
@@ -54,7 +70,10 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
   }
   showMode();
   $('agent-open-settings').addEventListener('click', () => settingsUi.open('agent'));
-  $('agent-pages').addEventListener('change', () => ($('agent-range-field').hidden = $('agent-pages').value !== 'range'));
+  $('agent-pages').addEventListener(
+    'change',
+    () => ($('agent-range-field').hidden = $('agent-pages').value !== 'range'),
+  );
 
   // ------------------------------------------------------------ SDK
 
@@ -80,7 +99,10 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
         collect({ inputModalities: 'image', supportedParameters: 'tools' }),
         collect({ inputModalities: 'image', outputModalities: 'decisions' }).catch(() => []),
       ]);
-      fill('agent-llm-list', llms.filter((m) => !m.id.endsWith(':batch')));
+      fill(
+        'agent-llm-list',
+        llms.filter((m) => !m.id.endsWith(':batch')),
+      );
       fill('agent-decision-list', deciders);
     } catch (err) {
       modelsLoaded = false;
@@ -128,14 +150,18 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
 
   const money = (v: number) => (v < 0.01 ? `$${v.toFixed(4)}` : `$${v.toFixed(2)}`);
   // Share of the prompt tokens read from the provider's cache.
-  const cacheNote = (u: RunUsage) => (u.promptTokens ? ` · ${Math.round((u.cachedTokens / u.promptTokens) * 100)}% cached` : '');
+  const cacheNote = (u: RunUsage) =>
+    u.promptTokens ? ` · ${Math.round((u.cachedTokens / u.promptTokens) * 100)}% cached` : '';
   const pct = (v: number | null | undefined) => (v === null || v === undefined ? '?' : `${Math.round(v * 100)}%`);
 
   // Who took a step: the Agent (the LLM), the Decision model, or the App (code).
   function log(cls: string, text: string, who = 'App') {
     const li = document.createElement('li');
     li.className = cls;
-    const tag = Object.assign(document.createElement('span'), { className: `who ${who.toLowerCase()}`, textContent: who });
+    const tag = Object.assign(document.createElement('span'), {
+      className: `who ${who.toLowerCase()}`,
+      textContent: who,
+    });
     li.append(tag, text);
     $('agent-log').hidden = false;
     $('agent-log').append(li);
@@ -143,11 +169,18 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
   }
 
   function answerText(a: unknown) {
-    return typeof a === 'string' ? a : a && typeof a === 'object' ? Object.entries(a as object).map(([k, v]) => `${k} ${v}`).join(', ') : String(a);
+    return typeof a === 'string'
+      ? a
+      : a && typeof a === 'object'
+        ? Object.entries(a as object)
+            .map(([k, v]) => `${k} ${v}`)
+            .join(', ')
+        : String(a);
   }
 
   // LLM cost plus the decision model's, with its number of requests.
-  const costNote = (u: RunUsage) => `${money(u.llmCost + u.decisionCost)}${u.decisions ? ` (${u.decisions} decisions, ${money(u.decisionCost)})` : ''}${cacheNote(u)}`;
+  const costNote = (u: RunUsage) =>
+    `${money(u.llmCost + u.decisionCost)}${u.decisions ? ` (${u.decisions} decisions, ${money(u.decisionCost)})` : ''}${cacheNote(u)}`;
 
   const elapsed = (ms: number) => {
     const t = Math.round(ms / 100) / 10;
@@ -157,7 +190,8 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
   let runStart = 0;
   let lastUsage: RunUsage | null = null;
   let timer: ReturnType<typeof setInterval> | undefined;
-  const statusLine = (prefix = '') => `${prefix}Step ${lastUsage?.steps ?? 0} · ${lastUsage ? costNote(lastUsage) : money(0)} · ${elapsed(Date.now() - runStart)}`;
+  const statusLine = (prefix = '') =>
+    `${prefix}Step ${lastUsage?.steps ?? 0} · ${lastUsage ? costNote(lastUsage) : money(0)} · ${elapsed(Date.now() - runStart)}`;
   let seenDecisions = 0;
 
   function onEvent(type: RunEventType, data: RunEventData) {
@@ -168,7 +202,12 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
     const decided = u.decisions > seenDecisions;
     seenDecisions = u.decisions;
     if (type === 'assistant') log('assistant', data.text as string, 'Agent');
-    else if (type === 'tool') log('tool', `${data.name}(${data.args && Object.keys(data.args).length ? JSON.stringify(data.args) : ''})`, 'Agent');
+    else if (type === 'tool')
+      log(
+        'tool',
+        `${data.name}(${data.args && Object.keys(data.args).length ? JSON.stringify(data.args) : ''})`,
+        'Agent',
+      );
     else if (type === 'result') log('result', data.text as string, decided ? 'Decision' : 'App');
     else if (type === 'tool-error') log('error', `${data.name}: ${data.error}`, 'App');
     else if (type === 'done') log('done', data.summary as string, 'Agent');
@@ -193,13 +232,19 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
     lastUsage = null;
     seenDecisions = 0;
     $('agent-status').textContent = statusLine();
-    timer = setInterval(() => { if (abort) $('agent-status').textContent = statusLine(); }, 100);
+    timer = setInterval(() => {
+      if (abort) $('agent-status').textContent = statusLine();
+    }, 100);
     $('agent-log').replaceChildren();
     $('agent-status').dataset.idle = '';
     updateButtons();
     const decision = mode() === 'decision';
     const decisionModel = $('agent-decision').value.trim() || DEFAULT_DECISION_MODEL;
-    log('tool', `${focus ? `Redoing ${panelName(focus.panelId)}` : 'Running'} with ${$('agent-llm').value.trim()}${decision ? ` and ${decisionModel}` : ''} on page${pages.length === 1 ? '' : 's'} ${pages.join(', ')}.`, 'App');
+    log(
+      'tool',
+      `${focus ? `Redoing ${panelName(focus.panelId)}` : 'Running'} with ${$('agent-llm').value.trim()}${decision ? ` and ${decisionModel}` : ''} on page${pages.length === 1 ? '' : 's'} ${pages.join(', ')}.`,
+      'App',
+    );
     try {
       const sdk = await loadSdk();
       const out = await runner.run({
@@ -279,20 +324,40 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
     row.append(button('Show', 'subtle', () => showPanel(q.panelId, q)));
     if (q.type === 'confirm_grid_size') {
       const init = (q.escalated!.answer || q.suggested) as { rows: number; cols: number };
-      const rows = Object.assign(document.createElement('input'), { type: 'number', min: 1, value: init.rows, className: 'num', title: 'Rows' });
-      const cols = Object.assign(document.createElement('input'), { type: 'number', min: 1, value: init.cols, className: 'num', title: 'Columns' });
-      row.append(rows, '×', cols, button('Apply', '', () => answer(q, { rows: Number(rows.value), cols: Number(cols.value) })));
+      const rows = Object.assign(document.createElement('input'), {
+        type: 'number',
+        min: 1,
+        value: init.rows,
+        className: 'num',
+        title: 'Rows',
+      });
+      const cols = Object.assign(document.createElement('input'), {
+        type: 'number',
+        min: 1,
+        value: init.cols,
+        className: 'num',
+        title: 'Columns',
+      });
+      row.append(
+        rows,
+        '×',
+        cols,
+        button('Apply', '', () => answer(q, { rows: Number(rows.value), cols: Number(cols.value) })),
+      );
     } else if (q.type === 'confirm_extraction') {
       // A review of the panel as it is now, so it also works after the
       // values changed since the question was asked.
       // Reject keeps the panel to fix or redo; Delete is the hard no.
       row.append(
         button('Accept', q.escalated!.answer === 'accept' ? 'active' : '', () => review(q.panelId, 'accepted')),
-        button('Reject', `danger${q.escalated!.answer === 'reject' ? ' active' : ''}`, () => review(q.panelId, 'rejected')),
+        button('Reject', `danger${q.escalated!.answer === 'reject' ? ' active' : ''}`, () =>
+          review(q.panelId, 'rejected'),
+        ),
         deleteButton(q.panelId),
       );
     } else {
-      for (const opt of q.answerSchema.enum as string[]) row.append(button(opt.replaceAll('_', ' '), opt === q.escalated!.answer ? 'active' : '', () => answer(q, opt)));
+      for (const opt of q.answerSchema.enum as string[])
+        row.append(button(opt.replaceAll('_', ' '), opt === q.escalated!.answer ? 'active' : '', () => answer(q, opt)));
     }
     li.append(head, hint, row);
     return li;
@@ -304,13 +369,23 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
     const head = document.createElement('div');
     const rv = panel.review!;
     head.textContent = `${panel.name} was rejected${rv.by ? ` by ${rv.by}` : ''}${rv.by !== 'human' && Number.isFinite(rv.confidence) ? ` (${pct(rv.confidence)} sure)` : ''}. Fix it by hand, or let the agent redo it.`;
-    const note = Object.assign(document.createElement('input'), { type: 'text', value: rv.note || '', placeholder: 'What is wrong? (optional, passed to the agent)', spellcheck: false });
+    const note = Object.assign(document.createElement('input'), {
+      type: 'text',
+      value: rv.note || '',
+      placeholder: 'What is wrong? (optional, passed to the agent)',
+      spellcheck: false,
+    });
     note.addEventListener('change', () => (panel.review!.note = note.value.trim()));
     const row = document.createElement('div');
     row.className = 'card-actions';
     const redo = button('Redo with agent', 'primary', () => start({ panelId: panel.id, note: note.value.trim() }));
     redo.disabled = !!abort || !hasKeyOrProxy();
-    row.append(button('Show', 'subtle', () => showPanel(panel.id)), redo, button('Accept anyway', '', () => review(panel.id, 'accepted')), deleteButton(panel.id));
+    row.append(
+      button('Show', 'subtle', () => showPanel(panel.id)),
+      redo,
+      button('Accept anyway', '', () => review(panel.id, 'accepted')),
+      deleteButton(panel.id),
+    );
     li.append(head, note, row);
     return li;
   }
@@ -322,7 +397,10 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
       const name = panelName(panelId);
       const r = await api.run('remove_panel', { panelId });
       if (!r.ok) ws.toast(r.error, true);
-      else ws.toast(`${name} ${(r.result as { cleared?: boolean }).cleared ? 'cleared' : 'deleted'}. Undo brings it back.`);
+      else
+        ws.toast(
+          `${name} ${(r.result as { cleared?: boolean }).cleared ? 'cleared' : 'deleted'}. Undo brings it back.`,
+        );
       renderReview();
     });
     b.disabled = !!abort;
@@ -341,7 +419,8 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
   async function showPanel(panelId: string, q: Question | null = null) {
     await api.run('select_panel', { panelId });
     const panel = app.project.panels.find((p) => p.id === panelId);
-    if (q?.type === 'classify_flagged' && panel?.grid.corners) ws.zoomToPoints(cellSamplePolygon(panel.grid, q.evidence.row as number, q.evidence.col as number));
+    if (q?.type === 'classify_flagged' && panel?.grid.corners)
+      ws.zoomToPoints(cellSamplePolygon(panel.grid, q.evidence.row as number, q.evidence.col as number));
     else if (panel?.grid.corners) ws.zoomToPoints(panel.grid.corners);
   }
 
@@ -354,7 +433,12 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
   async function review(panelId: string, status: string) {
     const r = await api.run('set_review', { panelId, status, source: 'human' });
     if (!r.ok) ws.toast(r.error, true);
-    else ws.toast(status === 'rejected' ? `${panelName(panelId)} rejected. Fix it or use Redo with agent.` : `${panelName(panelId)} accepted.`);
+    else
+      ws.toast(
+        status === 'rejected'
+          ? `${panelName(panelId)} rejected. Fix it or use Redo with agent.`
+          : `${panelName(panelId)} accepted.`,
+      );
     renderReview();
   }
 

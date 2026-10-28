@@ -1,15 +1,3 @@
-import { COLOR_DEFAULTS, defaultSettings } from '../settings/settings.ts';
-import { createProject } from '../project/project.ts';
-import { Viewer } from '../viewer.ts';
-import { setupWorkspaceColorbarCard } from './colorbar-card.ts';
-import { setupWorkspaceExport } from './export.ts';
-import { setupWorkspaceGridCard } from './grid-card.ts';
-import { setupWorkspaceHistory } from './history.ts';
-import { setupWorkspaceHotkeys } from './hotkeys.ts';
-import { setupWorkspaceInteract } from './interact.ts';
-import { setupWorkspaceOverlay } from './overlay.ts';
-import { setupWorkspacePanels } from './panels.ts';
-import { setupWorkspaceSource } from './source.ts';
 import type {
   AppState,
   ColorValue,
@@ -27,6 +15,18 @@ import type {
   WorkspaceContext,
   WorkspaceCore,
 } from '../../types/index.ts';
+import { createProject } from '../project/project.ts';
+import { COLOR_DEFAULTS, defaultSettings } from '../settings/settings.ts';
+import { Viewer } from '../viewer.ts';
+import { setupWorkspaceColorbarCard } from './colorbar-card.ts';
+import { setupWorkspaceExport } from './export.ts';
+import { setupWorkspaceGridCard } from './grid-card.ts';
+import { setupWorkspaceHistory } from './history.ts';
+import { setupWorkspaceHotkeys } from './hotkeys.ts';
+import { setupWorkspaceInteract } from './interact.ts';
+import { setupWorkspaceOverlay } from './overlay.ts';
+import { setupWorkspacePanels } from './panels.ts';
+import { setupWorkspaceSource } from './source.ts';
 
 // Shared workspace for the Colormeris tools (extract.html): source loading
 // and PDF pages, the zoomable viewer, panels, the grid and colorbar
@@ -80,382 +80,398 @@ import type {
 //   hotkeys.js        view tools and keyboard shortcuts
 // The script tags in extract.html load these before this file.
 export function createWorkspace(): Workspace {
-const $ = (id: string) => document.getElementById(id) as unknown as DomEl;
-const tools: Partial<Record<ToolKind, ToolHooks>> = {};
-let tool: ToolHooks = null as unknown as ToolHooks; // the active tool; set by setTool before anything reads it
-const toolFor = (panel: Panel) => tools[panel.tool] || tool;
+  const $ = (id: string) => document.getElementById(id) as unknown as DomEl;
+  const tools: Partial<Record<ToolKind, ToolHooks>> = {};
+  let tool: ToolHooks = null as unknown as ToolHooks; // the active tool; set by setTool before anything reads it
+  const toolFor = (panel: Panel) => tools[panel.tool] || tool;
 
-// Overlay colors come from the Settings dialog (settings.colors); `color`
-// reads them at draw time, so a change shows on the next redraw.
-const color = (id: string): ColorValue => ws.settings?.colors?.[id] ?? COLOR_DEFAULTS[id];
-const COLORS: OverlayColors = {
-  get grid() {
-    return color('grid') as string;
-  },
-  get bar() {
-    return color('bar') as string;
-  },
-  get flag() {
-    return color('flag') as string;
-  },
-  get highlight() {
-    return color('highlight') as string;
-  },
-  outline: 'rgba(0,0,0,0.65)',
-};
+  // Overlay colors come from the Settings dialog (settings.colors); `color`
+  // reads them at draw time, so a change shows on the next redraw.
+  const color = (id: string): ColorValue => ws.settings?.colors?.[id] ?? COLOR_DEFAULTS[id];
+  const COLORS: OverlayColors = {
+    get grid() {
+      return color('grid') as string;
+    },
+    get bar() {
+      return color('bar') as string;
+    },
+    get flag() {
+      return color('flag') as string;
+    },
+    get highlight() {
+      return color('highlight') as string;
+    },
+    outline: 'rgba(0,0,0,0.65)',
+  };
 
-const app: AppState = {
-  project: createProject(),
-  sourceCanvas: null,
-  imageData: null,
-  originalFile: null,
-  pdfDoc: null,
-  mode: null, // {type: 'grid' | 'colorbar' | 'tick', points: []}
-  cache: new Map(), // panel id → {key, result}
-  pages: new Map(), // page number → {canvas, imageData} of rendered pages
-  lastActive: new Map(), // `${tool}|${page}` → id of the panel last active there
-  history: [],
-  future: [],
-  drag: null,
-  hoverCell: null,
-  tableCell: null,
-  showOverlay: true,
-};
+  const app: AppState = {
+    project: createProject(),
+    sourceCanvas: null,
+    imageData: null,
+    originalFile: null,
+    pdfDoc: null,
+    mode: null, // {type: 'grid' | 'colorbar' | 'tick', points: []}
+    cache: new Map(), // panel id → {key, result}
+    pages: new Map(), // page number → {canvas, imageData} of rendered pages
+    lastActive: new Map(), // `${tool}|${page}` → id of the panel last active there
+    history: [],
+    future: [],
+    drag: null,
+    hoverCell: null,
+    tableCell: null,
+    showOverlay: true,
+  };
 
-let tickSeq = 1;
-const newTickId = () => `t${tickSeq++}`;
+  let tickSeq = 1;
+  const newTickId = () => `t${tickSeq++}`;
 
-const currentPage = () => app.project.source?.page || 1;
-// Panels belonging to the page on screen; only these are drawn and edited.
-const pagePanels = () => app.project.panels.filter((p) => p.page === currentPage() && p.tool === tool.kind);
-const activeKey = (page = currentPage()) => `${tool.kind}|${page}`;
-const activePanel = (): Panel => {
-  const here = pagePanels();
-  return here.find((p) => p.id === app.project.activePanelId) || here[0] || app.project.panels[0];
-};
+  const currentPage = () => app.project.source?.page || 1;
+  // Panels belonging to the page on screen; only these are drawn and edited.
+  const pagePanels = () => app.project.panels.filter((p) => p.page === currentPage() && p.tool === tool.kind);
+  const activeKey = (page = currentPage()) => `${tool.kind}|${page}`;
+  const activePanel = (): Panel => {
+    const here = pagePanels();
+    return here.find((p) => p.id === app.project.activePanelId) || here[0] || app.project.panels[0];
+  };
 
-// Extract a panel from the image of its own page.
-function resultFor(panel: Panel): PanelResult {
-  if (!app.sourceCanvas) return { error: 'Load a file first.' };
-  const image = app.pages.get(panel.page)?.imageData;
-  if (!image) return { error: `Page ${panel.page} is not rendered yet.` };
-  const t = toolFor(panel);
-  const key = JSON.stringify([panel.page, panel.tool, t.resultKey ? t.resultKey(panel) : [panel.grid, panel.colorbar, panel.settings]]);
-  const hit = app.cache.get(panel.id);
-  if (hit && hit.key === key) return hit.result;
-  const result = t.computeResult(panel, image);
-  app.cache.set(panel.id, { key, result });
-  return result;
-}
+  // Extract a panel from the image of its own page.
+  function resultFor(panel: Panel): PanelResult {
+    if (!app.sourceCanvas) return { error: 'Load a file first.' };
+    const image = app.pages.get(panel.page)?.imageData;
+    if (!image) return { error: `Page ${panel.page} is not rendered yet.` };
+    const t = toolFor(panel);
+    const key = JSON.stringify([
+      panel.page,
+      panel.tool,
+      t.resultKey ? t.resultKey(panel) : [panel.grid, panel.colorbar, panel.settings],
+    ]);
+    const hit = app.cache.get(panel.id);
+    if (hit && hit.key === key) return hit.result;
+    const result = t.computeResult(panel, image);
+    app.cache.set(panel.id, { key, result });
+    return result;
+  }
 
-// ---------------------------------------------------------------- modes
+  // ---------------------------------------------------------------- modes
 
-const MODE_TEXT: Record<string, string[]> = {
-  grid: ['Click the outer top-left corner of the grid.', 'Click the outer bottom-right corner.'],
-  colorbar: ['Click one end of the colorbar (middle of the bar).', 'Click the other end. Hold Alt to disable axis snapping.'],
-  tick: ['Click a labelled tick on the colorbar, then type its value. Press Done when finished.'],
-};
-const CENTER_TEXTS = ['Click the center of the top-left dot.', 'Click the center of the bottom-right dot.'];
-const modeTexts = (type: string): ModeTexts | undefined =>
-  tool.modeTexts?.[type] || (type === 'grid' && activePanel().grid.anchor === 'centers' && CENTER_TEXTS) || (type === 'grid' && tool.gridTexts) || MODE_TEXT[type];
+  const MODE_TEXT: Record<string, string[]> = {
+    grid: ['Click the outer top-left corner of the grid.', 'Click the outer bottom-right corner.'],
+    colorbar: [
+      'Click one end of the colorbar (middle of the bar).',
+      'Click the other end. Hold Alt to disable axis snapping.',
+    ],
+    tick: ['Click a labelled tick on the colorbar, then type its value. Press Done when finished.'],
+  };
+  const CENTER_TEXTS = ['Click the center of the top-left dot.', 'Click the center of the bottom-right dot.'];
+  const modeTexts = (type: string): ModeTexts | undefined =>
+    tool.modeTexts?.[type] ||
+    (type === 'grid' && activePanel().grid.anchor === 'centers' && CENTER_TEXTS) ||
+    (type === 'grid' && tool.gridTexts) ||
+    MODE_TEXT[type];
 
-function setMode(type: string | null) {
-  if (type && !app.sourceCanvas) return;
-  if (type === 'tick') {
-    const cb = activePanel().colorbar;
-    if (!cb.start || !cb.end) {
-      toast('Place the colorbar ends first.', true);
-      return;
+  function setMode(type: string | null) {
+    if (type && !app.sourceCanvas) return;
+    if (type === 'tick') {
+      const cb = activePanel().colorbar;
+      if (!cb.start || !cb.end) {
+        toast('Place the colorbar ends first.', true);
+        return;
+      }
     }
+    app.mode = type ? { type, points: [] } : null;
+    updateModebar();
+    setPressed($('grid-place'), type === 'grid');
+    setPressed($('bar-place'), type === 'colorbar');
+    setPressed($('tick-add'), type === 'tick');
+    tool.onModeChange?.(type);
+    viewer.requestDraw();
   }
-  app.mode = type ? { type, points: [] } : null;
-  updateModebar();
-  setPressed($('grid-place'), type === 'grid');
-  setPressed($('bar-place'), type === 'colorbar');
-  setPressed($('tick-add'), type === 'tick');
-  tool.onModeChange?.(type);
-  viewer.requestDraw();
-}
 
-function updateModebar() {
-  const m = app.mode;
-  $('modebar').hidden = !m;
-  if (!m) return;
-  const texts = modeTexts(m.type);
-  $('modebar-text').textContent = typeof texts === 'function' ? texts(m) : texts![Math.min(m.points.length, texts!.length - 1)];
-  $('mode-done').textContent = m.type === 'tick' || m.done ? 'Done' : 'Cancel';
-}
-
-// ---------------------------------------------------------------- sidebar rendering
-
-function setValue(el: DomEl, value: string | number) {
-  if (document.activeElement !== el && el.value !== String(value)) el.value = String(value);
-}
-
-const changeListeners: (() => void)[] = [];
-function changed({ light = false } = {}) {
-  viewer.requestDraw();
-  renderSidebar(light);
-  for (const fn of changeListeners) fn();
-}
-
-let helpLoaded: boolean | null = null;
-function renderSidebar(light = false) {
-  const loaded = !!app.sourceCanvas;
-  for (const t of Object.values(tools)) for (const id of t.sections || []) $(id).hidden = true;
-  for (const id of ['sec-panels', 'sec-grid', 'sec-colorbar', ...(tool.sections || [])]) $(id).hidden = !loaded;
-  $('empty-state').hidden = loaded;
-  // Open the help when nothing is loaded, close it once a file is; only on the change, so a manual toggle sticks.
-  if (helpLoaded !== loaded) {
-    helpLoaded = loaded;
-    const help = document.querySelector<HTMLDetailsElement>('details.help');
-    if (help) help.open = !loaded;
+  function updateModebar() {
+    const m = app.mode;
+    $('modebar').hidden = !m;
+    if (!m) return;
+    const texts = modeTexts(m.type);
+    $('modebar-text').textContent =
+      typeof texts === 'function' ? texts(m) : texts![Math.min(m.points.length, texts!.length - 1)];
+    $('mode-done').textContent = m.type === 'tick' || m.done ? 'Done' : 'Cancel';
   }
-  // The agent card needs a file; its tool (data-tool) still decides where it shows.
-  $('sec-agent').hidden = !loaded || $('sec-agent').dataset.tool !== tool.kind;
-  $('view-tools').hidden = !loaded;
-  $('btn-export-zip').disabled = !loaded;
-  $('btn-undo').disabled = !app.history.length;
-  $('btn-redo').disabled = !app.future.length;
-  if (!loaded) return;
 
-  const panel = activePanel();
-  if (!light) w.renderPanels(panel);
-  w.renderGridCard(panel);
-  w.renderColorbarCard(panel);
-  tool.renderSidebar?.(panel, light);
-}
+  // ---------------------------------------------------------------- sidebar rendering
 
-function setBadge(el: HTMLElement, text: string, ok: boolean) {
-  el.textContent = text;
-  el.className = `badge ${ok ? 'ok' : 'todo'}`;
-}
+  function setValue(el: DomEl, value: string | number) {
+    if (document.activeElement !== el && el.value !== String(value)) el.value = String(value);
+  }
 
-// Toggle buttons and chips: .active for the look, aria-pressed for screen readers.
-function setPressed(el: Element, on: boolean) {
-  el.classList.toggle('active', on);
-  el.setAttribute('aria-pressed', String(on));
-}
+  const changeListeners: (() => void)[] = [];
+  function changed({ light = false } = {}) {
+    viewer.requestDraw();
+    renderSidebar(light);
+    for (const fn of changeListeners) fn();
+  }
 
-// ---------------------------------------------------------------- misc UI
+  let helpLoaded: boolean | null = null;
+  function renderSidebar(light = false) {
+    const loaded = !!app.sourceCanvas;
+    for (const t of Object.values(tools)) for (const id of t.sections || []) $(id).hidden = true;
+    for (const id of ['sec-panels', 'sec-grid', 'sec-colorbar', ...(tool.sections || [])]) $(id).hidden = !loaded;
+    $('empty-state').hidden = loaded;
+    // Open the help when nothing is loaded, close it once a file is; only on the change, so a manual toggle sticks.
+    if (helpLoaded !== loaded) {
+      helpLoaded = loaded;
+      const help = document.querySelector<HTMLDetailsElement>('details.help');
+      if (help) help.open = !loaded;
+    }
+    // The agent card needs a file; its tool (data-tool) still decides where it shows.
+    $('sec-agent').hidden = !loaded || $('sec-agent').dataset.tool !== tool.kind;
+    $('view-tools').hidden = !loaded;
+    $('btn-export-zip').disabled = !loaded;
+    $('btn-undo').disabled = !app.history.length;
+    $('btn-redo').disabled = !app.future.length;
+    if (!loaded) return;
 
-let toastTimer: ReturnType<typeof setTimeout> | undefined;
-function toast(msg: string, isError = false) {
-  const el = $('toast');
-  el.textContent = msg;
-  el.classList.toggle('error', isError);
-  el.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), isError ? 5000 : 3000);
-}
+    const panel = activePanel();
+    if (!light) w.renderPanels(panel);
+    w.renderGridCard(panel);
+    w.renderColorbarCard(panel);
+    tool.renderSidebar?.(panel, light);
+  }
 
-function status(msg: string) {
-  $('status-msg').textContent = msg;
-}
+  function setBadge(el: HTMLElement, text: string, ok: boolean) {
+    el.textContent = text;
+    el.className = `badge ${ok ? 'ok' : 'todo'}`;
+  }
 
-function zoomToPoints(points: Point[]) {
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  const pad = 20;
-  viewer.zoomTo(Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad);
-}
+  // Toggle buttons and chips: .active for the look, aria-pressed for screen readers.
+  function setPressed(el: Element, on: boolean) {
+    el.classList.toggle('active', on);
+    el.setAttribute('aria-pressed', String(on));
+  }
 
-function bindNumber(id: string, apply: (panel: Panel, value: number) => void) {
-  const el = $(id);
-  el.addEventListener('focus', () => w.pushHistory());
-  el.addEventListener('input', () => {
-    const v = Number(el.value);
-    if (el.value === '' || !Number.isFinite(v)) return;
-    apply(activePanel(), v);
-    changed({ light: true });
-  });
-  el.addEventListener('change', () => changed());
-}
+  // ---------------------------------------------------------------- misc UI
 
-function bindText(id: string, apply: (panel: Panel, value: string) => void) {
-  const el = $(id);
-  el.addEventListener('focus', () => w.pushHistory());
-  el.addEventListener('input', () => {
-    apply(activePanel(), el.value);
-    changed({ light: true });
-  });
-  el.addEventListener('change', () => changed());
-}
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
+  function toast(msg: string, isError = false) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.toggle('error', isError);
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (el.hidden = true), isError ? 5000 : 3000);
+  }
 
-// Matching settings live in the Settings dialog (settings-dialog.js). They
-// are defaults for new panels and, when changed there, apply to every panel
-// of the tool. Panels keep their own copy, so a project zip reproduces its values.
-const panelDefaults = (kind: ToolKind): Partial<PanelSettings> => ({ ...ws.settings.matching[kind] });
-function applyMatching(kind: ToolKind, settings: Partial<PanelSettings>) {
-  const panels = app.project.panels.filter((p) => p.tool === kind);
-  const same = (p: Panel) => Object.entries(settings).every(([k, v]) => (p.settings as unknown as Record<string, unknown>)[k] === v);
-  if (!panels.length || panels.every(same)) return;
-  w.pushHistory();
-  for (const p of panels) Object.assign(p.settings, settings);
-  changed();
-}
+  function status(msg: string) {
+    $('status-msg').textContent = msg;
+  }
 
-// ---------------------------------------------------------------- tools
+  function zoomToPoints(points: Point[]) {
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const pad = 20;
+    viewer.zoomTo(Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad);
+  }
 
-function addTool(config: ToolHooks) {
-  tools[config.kind] = config;
-}
+  function bindNumber(id: string, apply: (panel: Panel, value: number) => void) {
+    const el = $(id);
+    el.addEventListener('focus', () => w.pushHistory());
+    el.addEventListener('input', () => {
+      const v = Number(el.value);
+      if (el.value === '' || !Number.isFinite(v)) return;
+      apply(activePanel(), v);
+      changed({ light: true });
+    });
+    el.addEventListener('change', () => changed());
+  }
 
-// Make another tool active. The loaded file, pages and all panels stay; the
-// tool shows its own panels on the current page (creating one if needed).
-function setTool(kind: ToolKind, { quiet = false }: { quiet?: boolean } = {}) {
-  if (!tools[kind] || tool?.kind === kind) return;
-  if (tool) {
-    setMode(null);
+  function bindText(id: string, apply: (panel: Panel, value: string) => void) {
+    const el = $(id);
+    el.addEventListener('focus', () => w.pushHistory());
+    el.addEventListener('input', () => {
+      apply(activePanel(), el.value);
+      changed({ light: true });
+    });
+    el.addEventListener('change', () => changed());
+  }
+
+  // Matching settings live in the Settings dialog (settings-dialog.js). They
+  // are defaults for new panels and, when changed there, apply to every panel
+  // of the tool. Panels keep their own copy, so a project zip reproduces its values.
+  const panelDefaults = (kind: ToolKind): Partial<PanelSettings> => ({ ...ws.settings.matching[kind] });
+  function applyMatching(kind: ToolKind, settings: Partial<PanelSettings>) {
+    const panels = app.project.panels.filter((p) => p.tool === kind);
+    const same = (p: Panel) =>
+      Object.entries(settings).every(([k, v]) => (p.settings as unknown as Record<string, unknown>)[k] === v);
+    if (!panels.length || panels.every(same)) return;
+    w.pushHistory();
+    for (const p of panels) Object.assign(p.settings, settings);
+    changed();
+  }
+
+  // ---------------------------------------------------------------- tools
+
+  function addTool(config: ToolHooks) {
+    tools[config.kind] = config;
+  }
+
+  // Make another tool active. The loaded file, pages and all panels stay; the
+  // tool shows its own panels on the current page (creating one if needed).
+  function setTool(kind: ToolKind, { quiet = false }: { quiet?: boolean } = {}) {
+    if (!tools[kind] || tool?.kind === kind) return;
+    if (tool) {
+      setMode(null);
+      if (app.sourceCanvas) {
+        app.lastActive.set(activeKey(), activePanel()?.id);
+        // Drop the old tool's untouched placeholder panels on this page.
+        const kept = app.project.panels.filter(
+          (p) => !(p.tool === tool.kind && p.page === currentPage() && w.isEmptyPanel(p)),
+        );
+        if (kept.length) app.project.panels = kept;
+      }
+    }
+    tool = tools[kind]!;
+    // data-tool may name several tools, e.g. "heatmap roi".
+    for (const el of document.querySelectorAll<HTMLElement>('[data-tool]'))
+      el.hidden = !el.dataset.tool!.split(' ').includes(kind);
+    for (const a of document.querySelectorAll<HTMLElement>('[data-tool-link]')) {
+      if (a.dataset.toolLink === kind) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    }
+    if (tool.title) document.title = tool.title;
+    // Keep the URL (#heatmap / #roi / #map) in step, e.g. when undo switches tools.
+    if (location.hash !== `#${kind}`) history.replaceState(null, '', `#${kind}`);
+    app.tableCell = null;
+    app.hoverCell = null;
     if (app.sourceCanvas) {
-      app.lastActive.set(activeKey(), activePanel()?.id);
-      // Drop the old tool's untouched placeholder panels on this page.
-      const kept = app.project.panels.filter((p) => !(p.tool === tool.kind && p.page === currentPage() && w.isEmptyPanel(p)));
-      if (kept.length) app.project.panels = kept;
+      w.ensurePagePanel(currentPage());
+      const remembered = app.lastActive.get(activeKey());
+      app.project.activePanelId = pagePanels().some((p) => p.id === remembered) ? remembered! : pagePanels()[0].id;
     }
+    if (!quiet) changed();
   }
-  tool = tools[kind]!;
-  // data-tool may name several tools, e.g. "heatmap roi".
-  for (const el of document.querySelectorAll<HTMLElement>('[data-tool]')) el.hidden = !el.dataset.tool!.split(' ').includes(kind);
-  for (const a of document.querySelectorAll<HTMLElement>('[data-tool-link]')) {
-    if (a.dataset.toolLink === kind) a.setAttribute('aria-current', 'page');
-    else a.removeAttribute('aria-current');
-  }
-  if (tool.title) document.title = tool.title;
-  // Keep the URL (#heatmap / #roi / #map) in step, e.g. when undo switches tools.
-  if (location.hash !== `#${kind}`) history.replaceState(null, '', `#${kind}`);
-  app.tableCell = null;
-  app.hoverCell = null;
-  if (app.sourceCanvas) {
-    w.ensurePagePanel(currentPage());
-    const remembered = app.lastActive.get(activeKey());
-    app.project.activePanelId = pagePanels().some((p) => p.id === remembered) ? remembered! : pagePanels()[0].id;
-  }
-  if (!quiet) changed();
-}
 
-// ---------------------------------------------------------------- modules
+  // ---------------------------------------------------------------- modules
 
-// Private context of the workspace modules; each setup adds its functions.
-const core: WorkspaceCore = {
-  $,
-  app,
-  tools,
-  COLORS,
-  color,
-  tool: () => tool,
-  toolFor,
-  newTickId,
-  currentPage,
-  pagePanels,
-  activeKey,
-  activePanel,
-  resultFor,
-  setMode,
-  updateModebar,
-  changed,
-  setValue,
-  setBadge,
-  setPressed,
-  toast,
-  status,
-  zoomToPoints,
-  bindNumber,
-  bindText,
-  panelDefaults,
-  setTool,
-  ws: null as unknown as Workspace, // the public object, set below
-viewer: null as unknown as ViewerApi, // set below
-};
-const w = core as WorkspaceContext;
+  // Private context of the workspace modules; each setup adds its functions.
+  const core: WorkspaceCore = {
+    $,
+    app,
+    tools,
+    COLORS,
+    color,
+    tool: () => tool,
+    toolFor,
+    newTickId,
+    currentPage,
+    pagePanels,
+    activeKey,
+    activePanel,
+    resultFor,
+    setMode,
+    updateModebar,
+    changed,
+    setValue,
+    setBadge,
+    setPressed,
+    toast,
+    status,
+    zoomToPoints,
+    bindNumber,
+    bindText,
+    panelDefaults,
+    setTool,
+    ws: null as unknown as Workspace, // the public object, set below
+    viewer: null as unknown as ViewerApi, // set below
+  };
+  const w = core as WorkspaceContext;
 
-// Callbacks look up w when called, as the modules below define them.
-const viewer = new Viewer($('viewer'), {
-  onClick: (p, e) => w.onClick(p, e),
-  hitTest: (p, tol) => w.hitTest(p, tol),
-  onHandleDrag: (handle, p, e) => w.onHandleDrag(handle, p, e),
-  onHandleDrop: (handle) => w.onHandleDrop(handle),
-  onHover: (p) => w.onHover(p),
-  drawOverlay: (ctx, v) => {
-    w.drawOverlay(ctx, v);
-    w.showZoom(v);
-  },
-  wantsLoupe: () => !!app.mode,
-  handlePoint: (handle, p) => w.handlePoint(handle, p),
-  wantsDrag: () => !!tool.wantsDrag?.(),
-  onDragStart: (p, e) => tool.onDragStart?.(p, e),
-  onDragMove: (p, e) => tool.onDragMove?.(p, e),
-  onDragEnd: (p, e) => tool.onDragEnd?.(p, e),
-});
-w.viewer = viewer;
+  // Callbacks look up w when called, as the modules below define them.
+  const viewer = new Viewer($('viewer'), {
+    onClick: (p, e) => w.onClick(p, e),
+    hitTest: (p, tol) => w.hitTest(p, tol),
+    onHandleDrag: (handle, p, e) => w.onHandleDrag(handle, p, e),
+    onHandleDrop: (handle) => w.onHandleDrop(handle),
+    onHover: (p) => w.onHover(p),
+    drawOverlay: (ctx, v) => {
+      w.drawOverlay(ctx, v);
+      w.showZoom(v);
+    },
+    wantsLoupe: () => !!app.mode,
+    handlePoint: (handle, p) => w.handlePoint(handle, p),
+    wantsDrag: () => !!tool.wantsDrag?.(),
+    onDragStart: (p, e) => tool.onDragStart?.(p, e),
+    onDragMove: (p, e) => tool.onDragMove?.(p, e),
+    onDragEnd: (p, e) => tool.onDragEnd?.(p, e),
+  });
+  w.viewer = viewer;
 
-for (const setup of [
-  setupWorkspaceHistory,
-  setupWorkspaceOverlay,
-  setupWorkspaceInteract,
-  setupWorkspaceGridCard,
-  setupWorkspaceColorbarCard,
-  setupWorkspacePanels,
-  setupWorkspaceSource,
-  setupWorkspaceExport,
-  setupWorkspaceHotkeys,
-]) Object.assign(w, setup(w));
+  for (const setup of [
+    setupWorkspaceHistory,
+    setupWorkspaceOverlay,
+    setupWorkspaceInteract,
+    setupWorkspaceGridCard,
+    setupWorkspaceColorbarCard,
+    setupWorkspacePanels,
+    setupWorkspaceSource,
+    setupWorkspaceExport,
+    setupWorkspaceHotkeys,
+  ])
+    Object.assign(w, setup(w));
 
-const ws: Workspace = {
-  addTool,
-  setTool,
-  tool: () => tool,
-  app,
-  $,
-  COLORS,
-  color,
-  viewer,
-  activePanel,
-  pagePanels,
-  currentPage,
-  commit: w.commit,
-  pushHistory: w.pushHistory,
-  changed,
-  setMode,
-  updateModebar,
-  resultFor,
-  toast,
-  status,
-  download: w.download,
-  csvName: w.csvName,
-  zoomToPoints,
-  bindNumber,
-  bindText,
-  setValue,
-  setBadge,
-  setPressed,
-  strokeDual: w.strokeDual,
-  polyPath: w.polyPath,
-  drawHandle: w.drawHandle,
-  snapAxis: w.snapAxis,
-  render: () => renderSidebar(),
-  // Used by the agent API (agent/api.js).
-  openFile: w.openFile,
-  goToPage: w.goToPage,
-  undo: w.undo,
-  redo: w.redo,
-  canUndo: () => app.history.length > 0,
-  canRedo: () => app.future.length > 0,
-  exportZip: w.exportZip,
-  newTickId,
-  removePanel: w.removePanel,
-  addHotkey: w.addHotkey,
-  applyMatching,
-  // App settings; replaced by settings-dialog.js with the stored ones.
-  settings: defaultSettings(),
-  zipExtras: [], // functions returning [{path, content}] added to project zips
-  onChange: (fn) => {
-  changeListeners.push(fn);
-},
-  reviewStatus: null, // (panel) → 'accepted' | 'rejected' | 'stale' | null, set by agent/api.js
-};
-w.ws = ws;
-return ws;
+  const ws: Workspace = {
+    addTool,
+    setTool,
+    tool: () => tool,
+    app,
+    $,
+    COLORS,
+    color,
+    viewer,
+    activePanel,
+    pagePanels,
+    currentPage,
+    commit: w.commit,
+    pushHistory: w.pushHistory,
+    changed,
+    setMode,
+    updateModebar,
+    resultFor,
+    toast,
+    status,
+    download: w.download,
+    csvName: w.csvName,
+    zoomToPoints,
+    bindNumber,
+    bindText,
+    setValue,
+    setBadge,
+    setPressed,
+    strokeDual: w.strokeDual,
+    polyPath: w.polyPath,
+    drawHandle: w.drawHandle,
+    snapAxis: w.snapAxis,
+    render: () => renderSidebar(),
+    // Used by the agent API (agent/api.js).
+    openFile: w.openFile,
+    goToPage: w.goToPage,
+    undo: w.undo,
+    redo: w.redo,
+    canUndo: () => app.history.length > 0,
+    canRedo: () => app.future.length > 0,
+    exportZip: w.exportZip,
+    newTickId,
+    removePanel: w.removePanel,
+    addHotkey: w.addHotkey,
+    applyMatching,
+    // App settings; replaced by settings-dialog.js with the stored ones.
+    settings: defaultSettings(),
+    zipExtras: [], // functions returning [{path, content}] added to project zips
+    onChange: (fn) => {
+      changeListeners.push(fn);
+    },
+    reviewStatus: null, // (panel) → 'accepted' | 'rejected' | 'stale' | null, set by agent/api.js
+  };
+  w.ws = ws;
+  return ws;
 }
 
 // Below 820px the document scrolls; above it only inner panes do. Widening

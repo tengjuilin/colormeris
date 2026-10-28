@@ -1,8 +1,32 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import type { Box, PanelSnapshot } from '../types/index.ts';
-import { DECISION_LLM_ACTIONS, barLine, besideBox, besideCheck, boxToPage, boxToSpan, checkSummary, chooseColorbar, cleanDecisionArgs, decisionLlmTools, decisionQuestions, flankInk, gridNeighbours, growBox, panelBrief, planCounts, printedCheck, regridOthers, scaleForBins, scaleForTicks, tFromTopLeft, tickBoxesText, tickMisfit, validateDecisionTool } from './decide.ts';
-
+import {
+  barLine,
+  besideBox,
+  besideCheck,
+  boxToPage,
+  boxToSpan,
+  checkSummary,
+  chooseColorbar,
+  cleanDecisionArgs,
+  DECISION_LLM_ACTIONS,
+  decisionLlmTools,
+  decisionQuestions,
+  flankInk,
+  gridNeighbours,
+  growBox,
+  panelBrief,
+  planCounts,
+  printedCheck,
+  regridOthers,
+  scaleForBins,
+  scaleForTicks,
+  tFromTopLeft,
+  tickBoxesText,
+  tickMisfit,
+  validateDecisionTool,
+} from './decide.ts';
 
 // chooseColorbar's two answers as one loose shape.
 const choose = (cells: Box, candidates: object[], grid?: { rows: number; cols: number }) =>
@@ -14,12 +38,20 @@ const choose = (cells: Box, candidates: object[], grid?: { rows: number; cols: n
 
 test('boxToPage maps box fractions of a crop back to page pixels', () => {
   // A 400 × 300 page region from (100, 200), drawn at 2× into 800 × 600.
-  const b = boxToPage({ left: 0.25, right: 0.75, top: 0.1, bottom: 0.5 }, { x0: 100, y0: 200, scale: 2, width: 800, height: 600 });
+  const b = boxToPage(
+    { left: 0.25, right: 0.75, top: 0.1, bottom: 0.5 },
+    { x0: 100, y0: 200, scale: 2, width: 800, height: 600 },
+  );
   assert.deepEqual(b, { x0: 200, y0: 230, x1: 400, y1: 350 });
 });
 
 test('growBox stays on the page', () => {
-  assert.deepEqual(growBox({ x0: 10, y0: 10, x1: 110, y1: 60 }, 0.25, 20, 140, 1000), { x0: 0, y0: 0, x1: 140, y1: 92.5 });
+  assert.deepEqual(growBox({ x0: 10, y0: 10, x1: 110, y1: 60 }, 0.25, 20, 140, 1000), {
+    x0: 0,
+    y0: 0,
+    x1: 140,
+    y1: 92.5,
+  });
 });
 
 test('besideBox leaves the cells out', () => {
@@ -46,7 +78,16 @@ test('tickMisfit finds a tick off the line of the others', () => {
   assert.equal(tickMisfit(ticks.slice(0, 2)), null);
 });
 
-const counts = (o: object = {}) => ({ cells: 100, ok: 100, flagged: 0, clamped: 0, offMap: 0, empty: 0, open: 0, ...o });
+const counts = (o: object = {}) => ({
+  cells: 100,
+  ok: 100,
+  flagged: 0,
+  clamped: 0,
+  offMap: 0,
+  empty: 0,
+  open: 0,
+  ...o,
+});
 
 test('checkSummary fails on bad ticks, many flags or a problem', () => {
   assert.ok(checkSummary({ counts: counts({ flagged: 1 }), misfit: { index: 0, miss: 0.01 } }).ok);
@@ -97,20 +138,37 @@ test('scaleForBins keeps a fitting line and picks piecewise for uneven ticks', (
 });
 
 test('decision tools validate their arguments', () => {
-  assert.deepEqual(validateDecisionTool('set_ticks', { ticks: [{ mark: 1, value: 3 }, { mark: 2, value: 1 }] }), []);
+  assert.deepEqual(
+    validateDecisionTool('set_ticks', {
+      ticks: [
+        { mark: 1, value: 3 },
+        { mark: 2, value: 1 },
+      ],
+    }),
+    [],
+  );
   assert.ok(validateDecisionTool('set_ticks', { ticks: [{ mark: 1, value: 3 }] }).length);
   assert.ok(validateDecisionTool('locate_heatmap', { name: 'Fig 1a' }).length);
-  assert.deepEqual(validateDecisionTool('ask', { questions: { q: { type: 'noul', instructions: 'Is it blue?' } } }), []);
-  assert.ok(validateDecisionTool('ask', { questions: { q: { type: 'score', instructions: 'How?', criteria: { a: 1 } } } }).length);
+  assert.deepEqual(
+    validateDecisionTool('ask', { questions: { q: { type: 'noul', instructions: 'Is it blue?' } } }),
+    [],
+  );
+  assert.ok(
+    validateDecisionTool('ask', { questions: { q: { type: 'score', instructions: 'How?', criteria: { a: 1 } } } })
+      .length,
+  );
   assert.ok(validateDecisionTool('ask', { questions: {} }).length);
 });
 
-test('the LLM can only correct the app\'s rows and columns, with a reason', () => {
+test("the LLM can only correct the app's rows and columns, with a reason", () => {
   const names = decisionLlmTools().map((t) => t.function.name);
   assert.ok(!names.includes('set_grid_size') && !names.includes('detect_grid_size'));
   assert.ok(names.includes('correct_grid_size'));
   assert.ok(validateDecisionTool('correct_grid_size', { rows: 32, cols: 9 }).length);
-  assert.deepEqual(validateDecisionTool('correct_grid_size', { rows: 32, cols: 9, reason: '3 replicate cells per label' }), []);
+  assert.deepEqual(
+    validateDecisionTool('correct_grid_size', { rows: 32, cols: 9, reason: '3 replicate cells per label' }),
+    [],
+  );
   assert.ok(names.includes('locate_heatmap') && names.includes('finish'));
   assert.ok(!DECISION_LLM_ACTIONS.includes('set_grid_size'));
 });
@@ -122,7 +180,7 @@ test('decision questions are about one heatmap each', () => {
   assert.equal(decisionQuestions.side().side.type, 'choice');
 });
 
-test('besideCheck keeps a colorbar next to the cells and drops a neighbour\'s', () => {
+test("besideCheck keeps a colorbar next to the cells and drops a neighbour's", () => {
   const g = { x0: 759, y0: 794, x1: 1046, y1: 962 };
   assert.ok(besideCheck(g, { x0: 1067, y0: 793, x1: 1094, y1: 963 }, 'right'));
   // Panel f's colorbar, 159 px to the left of panel g.
@@ -137,20 +195,63 @@ test('besideCheck keeps a colorbar next to the cells and drops a neighbour\'s', 
   assert.ok(!besideCheck(g, { x0: 1067, y0: 600, x1: 1094, y1: 820 }, 'right'));
 });
 
-test('locate_heatmap takes the LLM\'s rough box after a miss', () => {
-  assert.deepEqual(validateDecisionTool('locate_heatmap', { name: 'c', description: 'panel c', panelId: 'p2', box: { x0: 350, y0: 190, x1: 1830, y1: 730 } }), []);
+test("locate_heatmap takes the LLM's rough box after a miss", () => {
+  assert.deepEqual(
+    validateDecisionTool('locate_heatmap', {
+      name: 'c',
+      description: 'panel c',
+      panelId: 'p2',
+      box: { x0: 350, y0: 190, x1: 1830, y1: 730 },
+    }),
+    [],
+  );
   assert.ok(validateDecisionTool('locate_heatmap', { name: 'c', description: 'panel c', box: { x0: 350 } }).length);
 });
 
 test('set_ticks takes a box number or a place along the strip, not both', () => {
-  assert.deepEqual(validateDecisionTool('set_ticks', { ticks: [{ t: 0, value: 15 }, { mark: 2, value: 5 }] }), []);
-  assert.ok(validateDecisionTool('set_ticks', { ticks: [{ t: 0, mark: 1, value: 15 }, { mark: 2, value: 5 }] }).length);
+  assert.deepEqual(
+    validateDecisionTool('set_ticks', {
+      ticks: [
+        { t: 0, value: 15 },
+        { mark: 2, value: 5 },
+      ],
+    }),
+    [],
+  );
+  assert.ok(
+    validateDecisionTool('set_ticks', {
+      ticks: [
+        { t: 0, mark: 1, value: 15 },
+        { mark: 2, value: 5 },
+      ],
+    }).length,
+  );
   assert.ok(validateDecisionTool('set_ticks', { ticks: [{ value: 15 }, { mark: 2, value: 5 }] }).length);
   // A model's null for the other one means "not given".
-  const args = cleanDecisionArgs('set_ticks', { panelId: null, ticks: [{ mark: 1, t: null, value: 1 }, { mark: null, t: 1, value: 2 }] });
-  assert.deepEqual(args, { ticks: [{ mark: 1, value: 1 }, { t: 1, value: 2 }] });
+  const args = cleanDecisionArgs('set_ticks', {
+    panelId: null,
+    ticks: [
+      { mark: 1, t: null, value: 1 },
+      { mark: null, t: 1, value: 2 },
+    ],
+  });
+  assert.deepEqual(args, {
+    ticks: [
+      { mark: 1, value: 1 },
+      { t: 1, value: 2 },
+    ],
+  });
   assert.deepEqual(validateDecisionTool('set_ticks', args), []);
-  assert.deepEqual(validateDecisionTool('set_ticks', { ticks: [{ t: 0, value: 1 }, { t: 1, value: 2 }], scale: 'piecewise-log10' }), []);
+  assert.deepEqual(
+    validateDecisionTool('set_ticks', {
+      ticks: [
+        { t: 0, value: 1 },
+        { t: 1, value: 2 },
+      ],
+      scale: 'piecewise-log10',
+    }),
+    [],
+  );
 });
 
 test('tFromTopLeft measures from the top or left end whichever way the line runs', () => {
@@ -175,7 +276,13 @@ test('chooseColorbar: one beside wins, several or a far one go to the LLM', () =
   // test-10: the block above's colorbar also sits right of the main heatmap.
   const other = { bar: { x0: 1386, y0: 355, x1: 1438, y1: 685 }, labelSide: 'right', labels: 7 };
   const two = choose(cells, [own, other]);
-  assert.deepEqual(two.list.map((c) => [c.letter, c.gap]), [['A', 69], ['B', 265]]);
+  assert.deepEqual(
+    two.list.map((c) => [c.letter, c.gap]),
+    [
+      ['A', 69],
+      ['B', 265],
+    ],
+  );
   assert.equal(choose(cells, [own]).how, 'beside');
   // A strip far below a thin strip of cells: the LLM chooses.
   const strip = { x0: 135, y0: 52, x1: 1317, y1: 93 };
@@ -187,38 +294,97 @@ test('chooseColorbar: one beside wins, several or a far one go to the LLM', () =
   assert.equal(choose(d, [bar6]).how, 'near');
   // test-14: tick labels facing the cells.
   const c14 = { x0: 223, y0: 22, x1: 891, y1: 595 };
-  assert.equal(choose(c14, [{ bar: { x0: 1028, y0: 143, x1: 1073, y1: 626 }, labelSide: 'left', labels: 3 }]).how, 'near');
+  assert.equal(
+    choose(c14, [{ bar: { x0: 1028, y0: 143, x1: 1073, y1: 626 }, labelSide: 'left', labels: 3 }]).how,
+    'near',
+  );
   // test-1: one colorbar for blocks far from it.
   const ctrl = { x0: 299, y0: 101, x1: 394, y1: 421 };
-  assert.equal(choose(ctrl, [{ bar: { x0: 3020, y0: 97, x1: 3060, y1: 438 }, labelSide: 'right', labels: 4 }]).how, 'only');
+  assert.equal(
+    choose(ctrl, [{ bar: { x0: 3020, y0: 97, x1: 3060, y1: 438 }, labelSide: 'right', labels: 4 }]).how,
+    'only',
+  );
   assert.deepEqual(choose(ctrl, []), { list: [] });
 });
 
 test('planCounts follows the fit by its score and tells the LLM when unsure', () => {
   const det = { rows: 1, cols: 2, rowConfidence: 1.2, colConfidence: 1.4 };
-  const clean = planCounts({ rows: 12, cols: 28, rowScore: 0.89, colScore: 0.81, rowSpan: [0.005, 0.99], colSpan: [0, 1] }, det);
+  const clean = planCounts(
+    { rows: 12, cols: 28, rowScore: 0.89, colScore: 0.81, rowSpan: [0.005, 0.99], colSpan: [0, 1] },
+    det,
+  );
   assert.deepEqual([clean.rows, clean.cols, clean.notes, clean.span], [12, 28, [], {}]);
   // test-10's D block: fair fits are taken, with a note.
-  const fair = planCounts({ rows: 3, cols: 28, rowScore: 0.63, colScore: 0.56, colAlt: 12, rowSpan: [0, 1], colSpan: [0, 1] }, det);
+  const fair = planCounts(
+    { rows: 3, cols: 28, rowScore: 0.63, colScore: 0.56, colAlt: 12, rowSpan: [0, 1], colSpan: [0, 1] },
+    det,
+  );
   assert.deepEqual([fair.rows, fair.cols], [3, 28]);
   assert.match(fair.notes.join(' '), /unsure of the column count: 28 \(else 12 or 2\)/);
   // test-10's -log10(p) strip: no borders, detection unsure → the LLM counts.
-  const none = planCounts({ rows: 15, cols: 1, rowScore: 0, colScore: 0.24, rowReason: 'weak fit; 1 white end cell left out', colReason: 'weak borders', rowSpan: [0, 0.96], colSpan: [0, 1] }, det);
+  const none = planCounts(
+    {
+      rows: 15,
+      cols: 1,
+      rowScore: 0,
+      colScore: 0.24,
+      rowReason: 'weak fit; 1 white end cell left out',
+      colReason: 'weak borders',
+      rowSpan: [0, 0.96],
+      colSpan: [0, 1],
+    },
+    det,
+  );
   assert.deepEqual([none.rows, none.cols, none.span], [1, 2, {}]);
   assert.match(none.notes.join(' '), /no clear row borders.*no clear column borders/);
   // A confident detection stays.
-  assert.deepEqual(planCounts({ rows: 10, cols: 5, rowScore: 0.2, colScore: 0.9 }, { rows: 5, cols: 5, rowConfidence: 2.9 }).notes, []);
+  assert.deepEqual(
+    planCounts({ rows: 10, cols: 5, rowScore: 0.2, colScore: 0.9 }, { rows: 5, cols: 5, rowConfidence: 2.9 }).notes,
+    [],
+  );
   // A clean fit inside the box moves the corners; a white end row can come back.
-  const white = planCounts({ rows: 9, cols: 10, rowScore: 0.9, colScore: 0.9, rowAlt: 10, rowReason: 'clean; 1 white end cell left out', rowSpan: [0, 0.9], colSpan: [0.05, 1] }, det);
+  const white = planCounts(
+    {
+      rows: 9,
+      cols: 10,
+      rowScore: 0.9,
+      colScore: 0.9,
+      rowAlt: 10,
+      rowReason: 'clean; 1 white end cell left out',
+      rowSpan: [0, 0.9],
+      colSpan: [0.05, 1],
+    },
+    det,
+  );
   assert.deepEqual(white.span, { row: [0, 0.9], col: [0.05, 1] });
   assert.equal(white.alt.row, 10);
   assert.match(white.notes.join(' '), /last row looks white.*rows: 10/);
   assert.deepEqual(boxToSpan({ x0: 0, y0: 0, x1: 100, y1: 200 }, white.span), { x0: 5, y0: 0, x1: 100, y1: 180 });
-  assert.match(planCounts({ rows: 42, cols: 3, rowScore: 0.79, colScore: 0.9, rowAlt: 21, rowReason: 'every other border weak' }, det).notes.join(' '), /rows: 21/);
+  assert.match(
+    planCounts(
+      { rows: 42, cols: 3, rowScore: 0.79, colScore: 0.9, rowAlt: 21, rowReason: 'every other border weak' },
+      det,
+    ).notes.join(' '),
+    /rows: 21/,
+  );
 });
 
 test('panelBrief keeps a tool result short', () => {
-  const p = { id: 'p1', name: 'f', page: 1, ready: false, problem: 'x', grid: { rows: 60, cols: 2, corners: [], rowLabels: Array.from({ length: 60 }, (_, i) => `R${i + 1}`), colLabels: ['a', 'b'] }, colorbar: { start: null, end: null, scale: 'linear', ticks: [] } };
+  const p = {
+    id: 'p1',
+    name: 'f',
+    page: 1,
+    ready: false,
+    problem: 'x',
+    grid: {
+      rows: 60,
+      cols: 2,
+      corners: [],
+      rowLabels: Array.from({ length: 60 }, (_, i) => `R${i + 1}`),
+      colLabels: ['a', 'b'],
+    },
+    colorbar: { start: null, end: null, scale: 'linear', ticks: [] },
+  };
   const b = panelBrief(p as unknown as PanelSnapshot)!;
   assert.equal(b.grid!.labels, 'rows R1 … R60, columns a, b');
   assert.ok(JSON.stringify(b).length < 400);
@@ -247,7 +413,10 @@ test('planCounts counts an axis about one cell long as one cell', () => {
   const plan = planCounts(fit, { rows: 2, cols: 8, rowConfidence: 1, colConfidence: 1 }, { width: 841, height: 108 });
   assert.equal(plan.rows, 1);
   assert.doesNotMatch(plan.notes.join(' '), /row borders/);
-  assert.match(planCounts(fit, { rows: 2, cols: 8, rowConfidence: 1 }, { width: 841, height: 400 }).notes.join(' '), /no clear row borders/);
+  assert.match(
+    planCounts(fit, { rows: 2, cols: 8, rowConfidence: 1 }, { width: 841, height: 400 }).notes.join(' '),
+    /no clear row borders/,
+  );
 });
 
 test('chooseColorbar never takes a group strip along the cells, and ranks strips with numbers first', () => {
@@ -266,7 +435,13 @@ test('chooseColorbar never takes a group strip along the cells, and ranks strips
   assert.deepEqual(choose(avg, [row, far]), { bar: far.bar, how: 'only' });
   const short = { bar: { x0: 1680, y0: 440, x1: 1700, y1: 530 }, labelSide: 'right', labels: 0 };
   const pick = choose(avg, [short, far]);
-  assert.deepEqual(pick.list.map((c) => [c.letter, c.labels]), [['A', 4], ['B', 0]]);
+  assert.deepEqual(
+    pick.list.map((c) => [c.letter, c.labels]),
+    [
+      ['A', 4],
+      ['B', 0],
+    ],
+  );
   // Alone, an unlabelled strip is still taken (a gray colormap's labels may be missed).
   assert.equal(choose(cells, [{ ...real, labels: 0 }]).how, 'beside');
 });
@@ -294,34 +469,101 @@ test('planCounts takes a count from a panel lined up with the cells', () => {
 
 test('planCounts: a fair fit that detection agrees with needs no check', () => {
   // test-2: 5 × 5 at 0.50 / 0.62, the next best counts far worse, detection 5 × 5.
-  const fit = { rows: 5, cols: 5, rowScore: 0.5, colScore: 0.62, rowAlt: 2, colAlt: 10, rowAltScore: 0.18, colAltScore: 0.27, rowSpan: [0, 1], colSpan: [0, 1] };
+  const fit = {
+    rows: 5,
+    cols: 5,
+    rowScore: 0.5,
+    colScore: 0.62,
+    rowAlt: 2,
+    colAlt: 10,
+    rowAltScore: 0.18,
+    colAltScore: 0.27,
+    rowSpan: [0, 1],
+    colSpan: [0, 1],
+  };
   const plan = planCounts(fit, { rows: 5, cols: 5, rowConfidence: 1.9, colConfidence: 1.9 });
   assert.deepEqual(plan.notes, []);
-  assert.match(planCounts(fit, { rows: 2, cols: 5, rowConfidence: 1.9, colConfidence: 1.9 }).notes.join(' '), /unsure of the row count: 5 \(else 2\)/);
+  assert.match(
+    planCounts(fit, { rows: 2, cols: 5, rowConfidence: 1.9, colConfidence: 1.9 }).notes.join(' '),
+    /unsure of the row count: 5 \(else 2\)/,
+  );
 });
 
-test('regridOthers settles an earlier panel\'s unsure count from one lined up with it', () => {
-  const strip = { id: 'p6', name: 'p', cells: { x0: 135, y0: 52, x1: 1317, y1: 93 }, rows: 1, cols: 1, unsure: { row: false, col: true } };
-  const block = { id: 'p7', name: 'D', cells: { x0: 135, y0: 113, x1: 1317, y1: 240 }, rows: 3, cols: 28, unsure: { row: false, col: true } };
-  const main = { id: 'p8', name: 'main', cells: { x0: 136, y0: 262, x1: 1316, y1: 768 }, rows: 12, cols: 28, unsure: { row: false, col: false } };
-  assert.deepEqual(regridOthers(main, [strip, block]), [{ id: 'p6', rows: 1, cols: 28, note: 'Panel p6 "p" now has 28 columns, as this heatmap lined up with it.' }]);
+test("regridOthers settles an earlier panel's unsure count from one lined up with it", () => {
+  const strip = {
+    id: 'p6',
+    name: 'p',
+    cells: { x0: 135, y0: 52, x1: 1317, y1: 93 },
+    rows: 1,
+    cols: 1,
+    unsure: { row: false, col: true },
+  };
+  const block = {
+    id: 'p7',
+    name: 'D',
+    cells: { x0: 135, y0: 113, x1: 1317, y1: 240 },
+    rows: 3,
+    cols: 28,
+    unsure: { row: false, col: true },
+  };
+  const main = {
+    id: 'p8',
+    name: 'main',
+    cells: { x0: 136, y0: 262, x1: 1316, y1: 768 },
+    rows: 12,
+    cols: 28,
+    unsure: { row: false, col: false },
+  };
+  assert.deepEqual(regridOthers(main, [strip, block]), [
+    { id: 'p6', rows: 1, cols: 28, note: 'Panel p6 "p" now has 28 columns, as this heatmap lined up with it.' },
+  ]);
   assert.deepEqual(regridOthers({ ...main, unsure: { row: false, col: true } }, [strip]), []);
 });
 
 test('scaleForTicks picks piecewise for evenly stepped labels at uneven places', () => {
   // test-6: 5, 10, 15 at t 0.204, 0.493, 0.846 on a smooth bar.
-  const t6 = [{ t: 0.204, value: 5 }, { t: 0.493, value: 10 }, { t: 0.846, value: 15 }];
+  const t6 = [
+    { t: 0.204, value: 5 },
+    { t: 0.493, value: 10 },
+    { t: 0.846, value: 15 },
+  ];
   assert.equal(scaleForTicks(t6), 'piecewise');
   assert.equal(scaleForTicks(t6, 'piecewise'), null);
   // On a line: nothing to change; constant factors: log10.
-  assert.equal(scaleForTicks([{ t: 0, value: 0 }, { t: 0.5, value: 5 }, { t: 1, value: 10 }]), null);
-  assert.equal(scaleForTicks([{ t: 0, value: 1 }, { t: 0.5, value: 10 }, { t: 1, value: 100 }]), 'log10');
+  assert.equal(
+    scaleForTicks([
+      { t: 0, value: 0 },
+      { t: 0.5, value: 5 },
+      { t: 1, value: 10 },
+    ]),
+    null,
+  );
+  assert.equal(
+    scaleForTicks([
+      { t: 0, value: 1 },
+      { t: 0.5, value: 10 },
+      { t: 1, value: 100 },
+    ]),
+    'log10',
+  );
   // A misread label (6 for 5) breaks the even steps: the check must fail.
-  assert.equal(scaleForTicks([{ t: 0, value: 0 }, { t: 1 / 3, value: 6 }, { t: 2 / 3, value: 10 }, { t: 1, value: 15 }]), null);
+  assert.equal(
+    scaleForTicks([
+      { t: 0, value: 0 },
+      { t: 1 / 3, value: 6 },
+      { t: 2 / 3, value: 10 },
+      { t: 1, value: 15 },
+    ]),
+    null,
+  );
 });
 
 test('tickBoxesText says how many boxes there are and which look odd', () => {
-  const marks: { note?: string }[] = [{}, { note: 'larger than the other labels (a title, or two labels joined?)' }, {}];
+  const marks: { note?: string }[] = [
+    {},
+    { note: 'larger than the other labels (a title, or two labels joined?)' },
+    {},
+  ];
   const text = tickBoxesText(marks, { extended: true });
   assert.match(text, /3 tick-label boxes found, numbered 1–3.*no others.*\{t, value\}/);
   assert.match(text, /box 2 is larger/);
@@ -332,7 +574,19 @@ test('tickBoxesText says how many boxes there are and which look odd', () => {
 test('planCounts settles a white end cell left out by a neighbour or detectGridSize', () => {
   // Test-17 panel i: the pale first row was left out (4 rows, alt 5 at the
   // same score); the panels beside it and detectGridSize have 5.
-  const fit = { rows: 4, cols: 15, rowScore: 0.8, colScore: 0.82, rowAlt: 5, rowAltScore: 0.8, rowReason: 'clean; 1 white end cell left out', rowSpan: [0.19, 0.98], colSpan: [0, 1], rowSize: 46, colSize: 45 };
+  const fit = {
+    rows: 4,
+    cols: 15,
+    rowScore: 0.8,
+    colScore: 0.82,
+    rowAlt: 5,
+    rowAltScore: 0.8,
+    rowReason: 'clean; 1 white end cell left out',
+    rowSpan: [0.19, 0.98],
+    colSpan: [0, 1],
+    rowSize: 46,
+    colSize: 45,
+  };
   const size = { width: 678, height: 230 };
   const lent = planCounts(fit, { rows: 5, cols: 15 }, size, { row: { count: 5, id: 'p3', name: 'e' } });
   assert.deepEqual([lent.rows, lent.span.row], [5, undefined]);
@@ -344,29 +598,69 @@ test('planCounts settles a white end cell left out by a neighbour or detectGridS
   assert.ok(cut.notes.some((n) => /looks white/.test(n)));
 });
 
-test('chooseColorbar leaves out a strip labelled with the cells\' own column labels', () => {
+test("chooseColorbar leaves out a strip labelled with the cells' own column labels", () => {
   // Test-16: a dashed outline under the cells, its "tick labels" the 13
   // rotated column labels; the real bar is on the right.
   const cells = { x0: 119, y0: 116, x1: 1144, y1: 502 };
   const pitch = (1144 - 119) / 13;
-  const outline = { bar: { x0: 104, y0: 508, x1: 1155, y1: 514 }, labelSide: 'below', labels: 13, labelsAt: Array.from({ length: 13 }, (_, i) => ({ x: 119 + (i + 0.5) * pitch + 3, y: 511 })) };
-  const bar = { bar: { x0: 1174, y0: 116, x1: 1216, y1: 501 }, labelSide: 'right', labels: 3, labelsAt: [{ x: 1195, y: 116 }, { x: 1195, y: 302 }, { x: 1195, y: 500 }] };
+  const outline = {
+    bar: { x0: 104, y0: 508, x1: 1155, y1: 514 },
+    labelSide: 'below',
+    labels: 13,
+    labelsAt: Array.from({ length: 13 }, (_, i) => ({ x: 119 + (i + 0.5) * pitch + 3, y: 511 })),
+  };
+  const bar = {
+    bar: { x0: 1174, y0: 116, x1: 1216, y1: 501 },
+    labelSide: 'right',
+    labels: 3,
+    labelsAt: [
+      { x: 1195, y: 116 },
+      { x: 1195, y: 302 },
+      { x: 1195, y: 500 },
+    ],
+  };
   assert.equal(choose(cells, [outline, bar]).bar, undefined);
   assert.deepEqual(choose(cells, [outline, bar], { rows: 5, cols: 13 }), { bar: bar.bar, how: 'beside' });
 });
 
 test('printedCheck agrees within 3% and names a systematic disagreement', () => {
   const range = { min: 60, max: 100 };
-  const near = printedCheck([{ row: 1, col: 1, printed: 62.2, value: 61.4 }, { row: 1, col: 3, printed: 90.6, value: 90.9 }, { row: 3, col: 4, printed: 91.4, value: 91.6 }], range);
+  const near = printedCheck(
+    [
+      { row: 1, col: 1, printed: 62.2, value: 61.4 },
+      { row: 1, col: 3, printed: 90.6, value: 90.9 },
+      { row: 3, col: 4, printed: 91.4, value: 91.6 },
+    ],
+    range,
+  );
   assert.ok(near.ok && /agree/.test(near.text), near.text);
   // Ticks read as 60–100 for a bar of 50–100: the values grow too slowly.
-  const slope = printedCheck([62, 75, 88, 99].map((v, i) => ({ row: 1, col: i + 1, printed: v, value: 60 + ((v - 50) / 50) * 40 })), range);
+  const slope = printedCheck(
+    [62, 75, 88, 99].map((v, i) => ({ row: 1, col: i + 1, printed: v, value: 60 + ((v - 50) / 50) * 40 })),
+    range,
+  );
   assert.ok(!slope.ok && /slope/.test(slope.text), slope.text);
-  const shifted = printedCheck([62, 75, 88].map((v, i) => ({ row: 2, col: i + 1, printed: v, value: v + 4 })), range);
+  const shifted = printedCheck(
+    [62, 75, 88].map((v, i) => ({ row: 2, col: i + 1, printed: v, value: v + 4 })),
+    range,
+  );
   assert.ok(!shifted.ok && /all higher/.test(shifted.text), shifted.text);
-  const one = printedCheck([{ row: 1, col: 1, printed: 70, value: 70.2 }, { row: 1, col: 2, printed: 80, value: 86 }, { row: 1, col: 3, printed: 90, value: 90.1 }], range);
+  const one = printedCheck(
+    [
+      { row: 1, col: 1, printed: 70, value: 70.2 },
+      { row: 1, col: 2, printed: 80, value: 86 },
+      { row: 1, col: 3, printed: 90, value: 90.1 },
+    ],
+    range,
+  );
   assert.ok(!one.ok && /1 of 3 differ/.test(one.text), one.text);
-  const bound = printedCheck([{ row: 1, col: 1, printed: 55, value: 60, open: 'below' }, { row: 1, col: 2, printed: 80, value: 80 }], range);
+  const bound = printedCheck(
+    [
+      { row: 1, col: 1, printed: 55, value: 60, open: 'below' },
+      { row: 1, col: 2, printed: 80, value: 80 },
+    ],
+    range,
+  );
   assert.ok(bound.ok && /a bound/.test(bound.text), bound.text);
 });
 

@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
-import { buildProjectZip, panelFileBases, safeFileName } from '../project/project-files.ts';
-import { canvasToPngBlob } from '../pdf-loader.ts';
 import type { ExportMembers, Panel, WorkspaceContext } from '../../types/index.ts';
+import { canvasToPngBlob } from '../pdf-loader.ts';
+import { buildProjectZip, panelFileBases, safeFileName } from '../project/project-files.ts';
 
 // Downloads: CSV names and the project zip with every tool's data files.
 //
@@ -42,7 +42,11 @@ export function setupWorkspaceExport(w: WorkspaceContext): ExportMembers {
       const files = Object.values(w.tools).flatMap((t) => {
         const idx = app.project.panels.map((p, i) => (p.tool === t.kind ? i : -1)).filter((i) => i >= 0);
         if (!idx.length || !t.panelFiles) return [];
-        return t.panelFiles(idx.map((i) => app.project.panels[i]), idx.map((i) => results[i]), idx.map((i) => bases[i]));
+        return t.panelFiles(
+          idx.map((i) => app.project.panels[i]),
+          idx.map((i) => results[i]),
+          idx.map((i) => bases[i]),
+        );
       });
       for (const extra of w.ws.zipExtras) files.push(...extra());
       const blob = await buildProjectZip(JSZip, {
@@ -53,7 +57,10 @@ export function setupWorkspaceExport(w: WorkspaceContext): ExportMembers {
       });
       download(blob, `colormeris-${safeFileName(app.project.name)}.zip`);
       w.status('');
-      if (incomplete) w.toast(`${incomplete} panel${incomplete === 1 ? ' is' : 's are'} not fully calibrated; saved calibration without data.`);
+      if (incomplete)
+        w.toast(
+          `${incomplete} panel${incomplete === 1 ? ' is' : 's are'} not fully calibrated; saved calibration without data.`,
+        );
     } catch (err) {
       console.error(err);
       w.status('');

@@ -23,7 +23,10 @@ export function loadOpenRouterSdk(): Promise<OpenRouterSdk> {
   return sdkPromise;
 }
 
-export function makeOpenRouterClient(sdk: OpenRouterSdk, { key, base }: { key?: string; base?: string } = {}): ChatClient {
+export function makeOpenRouterClient(
+  sdk: OpenRouterSdk,
+  { key, base }: { key?: string; base?: string } = {},
+): ChatClient {
   return new sdk.OpenRouter({
     // Behind a proxy the key can be empty; the proxy replaces this header.
     apiKey: key || 'proxy',
@@ -64,7 +67,9 @@ export function makeDecisionClient({ key, base }: { key?: string; base?: string 
     }
     const json = await res.json().catch(() => ({}) as Record<string, any>); // TODO(types): untyped JSON from the API
     if (!res.ok || !json.answers) {
-      const err: DecisionError = new Error(`Decision model: ${json.error?.message || res.statusText || 'no answers'} (${res.status})`);
+      const err: DecisionError = new Error(
+        `Decision model: ${json.error?.message || res.statusText || 'no answers'} (${res.status})`,
+      );
       err.status = res.status;
       throw err;
     }

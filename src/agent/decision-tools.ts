@@ -1,15 +1,47 @@
-import { findTickLabels, labelReach, snapEdges, snapStrip, snapStripBox } from '../core/locate.ts';
 import { projectT } from '../core/colorbar.ts';
+import { findTickLabels, labelReach, snapEdges, snapStrip, snapStripBox } from '../core/locate.ts';
 import { ticksWithT } from '../extract/project/project.ts';
 import type {
-  ActionArgs, Box, ColormerisApi, DecideFn, DecisionQuestion, DecisionImagePart, DecisionTools, HeatmapResult, Panel, PixelImage, Point, RenderedView, RunUsage, ToolCallResult,
+  ActionArgs,
+  Box,
+  ColormerisApi,
+  DecideFn,
+  DecisionImagePart,
+  DecisionQuestion,
+  DecisionTools,
+  HeatmapResult,
+  Panel,
+  PixelImage,
+  Point,
+  RenderedView,
+  RunUsage,
+  ToolCallResult,
   Workspace,
 } from '../types/index.ts';
-import type { RenderViewFn } from './runner.ts';
 import {
-  DECISION_TOOLS, barLine, besideBox, boxToPage, checkSummary, chooseColorbar, cleanDecisionArgs, decisionQuestions, growBox, pageColorbars, planGrid, printedCheck,
-  regridOthers, scaleForBins, scaleForTicks, snapCells, stripCandidate, tFromTopLeft, tickBoxesText, tickMisfit, validateDecisionTool,
+  barLine,
+  besideBox,
+  boxToPage,
+  checkSummary,
+  chooseColorbar,
+  cleanDecisionArgs,
+  DECISION_TOOLS,
+  decisionQuestions,
+  growBox,
+  pageColorbars,
+  planGrid,
+  printedCheck,
+  regridOthers,
+  scaleForBins,
+  scaleForTicks,
+  snapCells,
+  stripCandidate,
+  tFromTopLeft,
+  tickBoxesText,
+  tickMisfit,
+  validateDecisionTool,
 } from './decide.ts';
+import type { RenderViewFn } from './runner.ts';
 
 // Tools of "agent decision" mode (prompt, schemas and the pure choices in
 // agent/decide.js). Each request to the decision model is about one
@@ -50,17 +82,29 @@ const imagePart = (url: string): DecisionImagePart => ({ type: 'image_url', imag
 const area = (b: Box) => (b.x1 - b.x0) * (b.y1 - b.y0);
 const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 const iou = (a: Box, b: Box) => {
-  const i = Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+  const i =
+    Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
   return i / (area(a) + area(b) - i);
 };
-const union = (bs: Box[]) => ({ x0: Math.min(...bs.map((b) => b.x0)), y0: Math.min(...bs.map((b) => b.y0)), x1: Math.max(...bs.map((b) => b.x1)), y1: Math.max(...bs.map((b) => b.y1)) });
+const union = (bs: Box[]) => ({
+  x0: Math.min(...bs.map((b) => b.x0)),
+  y0: Math.min(...bs.map((b) => b.y0)),
+  x1: Math.max(...bs.map((b) => b.x1)),
+  y1: Math.max(...bs.map((b) => b.y1)),
+});
 const orientation = (bar: Box) => (bar.y1 - bar.y0 >= bar.x1 - bar.x0 ? 'vertical' : 'horizontal');
 const CANDIDATE_COLOR = '#e8590c';
 
 export function createDecisionTools(
   ws: Workspace,
   api: ColormerisApi,
-  { renderView, decide, model, usage, signal }: { renderView: RenderViewFn; decide: DecideFn; model?: string; usage: RunUsage; signal?: AbortSignal },
+  {
+    renderView,
+    decide,
+    model,
+    usage,
+    signal,
+  }: { renderView: RenderViewFn; decide: DecideFn; model?: string; usage: RunUsage; signal?: AbortSignal },
 ): DecisionTools {
   const { app } = ws;
   // Per panel: tick-label boxes numbered from 1, the lettered colorbar
@@ -87,7 +131,8 @@ export function createDecisionTools(
 
   const page = () => app.pages.get(ws.currentPage())!;
   const size = () => ({ W: page().canvas.width, H: page().canvas.height });
-  const started = (p: Panel) => !!(p.grid.corners || p.colorbar.start || p.grid.rowLabels.length || p.grid.colLabels.length);
+  const started = (p: Panel) =>
+    !!(p.grid.corners || p.colorbar.start || p.grid.rowLabels.length || p.grid.colLabels.length);
   const must = (r: { ok: boolean; result?: unknown; error?: string }) => {
     if (!r.ok) throw new Error(r.error);
     return r.result;
@@ -99,11 +144,22 @@ export function createDecisionTools(
   };
   const clip = (b: Box): Box => {
     const { W, H } = size();
-    return { x0: Math.max(0, Math.min(b.x0, b.x1)), y0: Math.max(0, Math.min(b.y0, b.y1)), x1: Math.min(W, Math.max(b.x0, b.x1)), y1: Math.min(H, Math.max(b.y0, b.y1)) };
+    return {
+      x0: Math.max(0, Math.min(b.x0, b.x1)),
+      y0: Math.max(0, Math.min(b.y0, b.y1)),
+      x1: Math.min(W, Math.max(b.x0, b.x1)),
+      y1: Math.min(H, Math.max(b.y0, b.y1)),
+    };
   };
   // Cell boxes of every gridded panel on this page (the cells are no
   // colorbar and hold no tick labels).
-  const cellBoxes = (extra: Box[] = []) => [...ws.pagePanels().filter((p) => p.tool === 'heatmap' && p.grid.corners).map(gridBox), ...extra];
+  const cellBoxes = (extra: Box[] = []) => [
+    ...ws
+      .pagePanels()
+      .filter((p) => p.tool === 'heatmap' && p.grid.corners)
+      .map(gridBox),
+    ...extra,
+  ];
 
   // A named panel made active (switching page if needed), or the active one.
   async function usePanel(panelId?: string) {
@@ -139,14 +195,26 @@ export function createDecisionTools(
       const found = await askRegion(null, decisionQuestions.find(description), JEV.pageSide);
       const rough = boxToPage(found.answers.cells.box!, found.frame);
       const crop = await askRegion(growBox(rough, 0.25, 20, W, H), decisionQuestions.cells());
-      return { present: found.answers.present?.noul as number | undefined, rough, boxed: boxToPage(crop.answers.cells.box!, crop.frame) };
+      return {
+        present: found.answers.present?.noul as number | undefined,
+        rough,
+        boxed: boxToPage(crop.answers.cells.box!, crop.frame),
+      };
     })();
   }
   // `calls`: [{name, args}] of one LLM turn. Only locates on the page shown
   // (no page change in the turn, no panelId or box), two or more.
   function prefetch(calls: { name: string; args: ActionArgs | null }[]) {
     if (calls.some((c) => c.name === 'go_to_page' || c.name === 'select_panel')) return;
-    const locates = calls.filter((c) => c.name === 'locate_heatmap' && c.args && !c.args.box && !c.args.panelId && typeof c.args.description === 'string' && c.args.description.length >= 3);
+    const locates = calls.filter(
+      (c) =>
+        c.name === 'locate_heatmap' &&
+        c.args &&
+        !c.args.box &&
+        !c.args.panelId &&
+        typeof c.args.description === 'string' &&
+        c.args.description.length >= 3,
+    );
     if (locates.length < 2) return;
     for (const c of locates) {
       const args = c.args!;
@@ -166,13 +234,22 @@ export function createDecisionTools(
     pendingBoxes.delete(key);
     const { present, rough, boxed } = await (pending || jevBoxes(description));
     let { cells, partial, edges } = snapCells(img, rough, boxed);
-    if (edges) notes.push('The block snap stopped short of the decision model\'s box (pale cells?), so the grid is that box with its edges moved onto the cells: check the outer lines.');
-    if (partial) notes.push(`The snapped cells cover only ${Math.round((100 * area(cells!)) / area(rough))}% of where the decision model put the heatmap: if the grid holds only part of it, use correct_grid_size with box (its rough extent from the page rulers).`);
+    if (edges)
+      notes.push(
+        "The block snap stopped short of the decision model's box (pale cells?), so the grid is that box with its edges moved onto the cells: check the outer lines.",
+      );
+    if (partial)
+      notes.push(
+        `The snapped cells cover only ${Math.round((100 * area(cells!)) / area(rough))}% of where the decision model put the heatmap: if the grid holds only part of it, use correct_grid_size with box (its rough extent from the page rulers).`,
+      );
     if (!cells) {
       cells = boxed;
-      notes.push('The cells could not be snapped to a block of color; the grid follows the decision model\'s box and may be off.');
+      notes.push(
+        "The cells could not be snapped to a block of color; the grid follows the decision model's box and may be off.",
+      );
     }
-    if (Number.isFinite(present) && present! < 0.5) notes.push(`The decision model doubts this heatmap matches the description (${r1(present!)}): check the image.`);
+    if (Number.isFinite(present) && present! < 0.5)
+      notes.push(`The decision model doubts this heatmap matches the description (${r1(present!)}): check the image.`);
     return { cells, rough: partial ? rough : null };
   }
 
@@ -182,16 +259,27 @@ export function createDecisionTools(
   // counted cells when they include something else. Earlier panels whose
   // count was unsure take this one's when they line up with it.
   async function placeGrid(panel: Panel, box: Box) {
-    const setGrid = async (b: Box) => must(await api.run('set_grid', { panelId: panel.id, topLeft: { x: b.x0, y: b.y0 }, bottomRight: { x: b.x1, y: b.y1 } }));
+    const setGrid = async (b: Box) =>
+      must(
+        await api.run('set_grid', {
+          panelId: panel.id,
+          topLeft: { x: b.x0, y: b.y0 },
+          bottomRight: { x: b.x1, y: b.y1 },
+        }),
+      );
     const others = pageGrids().filter((g) => g.id !== panel.id);
     const plan = planGrid(page().imageData, box, others);
     await setGrid(plan.cells);
     trimmedByPanel.delete(panel.id);
     if (plan.cells !== box) trimmedByPanel.set(panel.id, { box, alt: plan.alt });
-    if (panel.grid.rows !== plan.rows || panel.grid.cols !== plan.cols) must(await api.run('set_grid_size', { panelId: panel.id, rows: plan.rows, cols: plan.cols }));
+    if (panel.grid.rows !== plan.rows || panel.grid.cols !== plan.cols)
+      must(await api.run('set_grid_size', { panelId: panel.id, rows: plan.rows, cols: plan.cols }));
     unsureByPanel.set(panel.id, plan.unsure);
     const notes = [...plan.notes];
-    for (const u of regridOthers({ id: panel.id, name: panel.name, cells: plan.cells, rows: plan.rows, cols: plan.cols, unsure: plan.unsure }, others)) {
+    for (const u of regridOthers(
+      { id: panel.id, name: panel.name, cells: plan.cells, rows: plan.rows, cols: plan.cols, unsure: plan.unsure },
+      others,
+    )) {
       must(await api.run('set_grid_size', { panelId: u.id, rows: u.rows, cols: u.cols }));
       unsureByPanel.set(u.id, { row: false, col: false });
       notes.push(u.note);
@@ -201,7 +289,17 @@ export function createDecisionTools(
 
   // Gridded heatmap panels of this page for planGrid.
   const pageGrids = () =>
-    ws.pagePanels().filter((p) => p.tool === 'heatmap' && p.grid.corners).map((p) => ({ id: p.id, name: p.name, cells: gridBox(p), rows: p.grid.rows, cols: p.grid.cols, unsure: unsureByPanel.get(p.id) }));
+    ws
+      .pagePanels()
+      .filter((p) => p.tool === 'heatmap' && p.grid.corners)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        cells: gridBox(p),
+        rows: p.grid.rows,
+        cols: p.grid.cols,
+        unsure: unsureByPanel.get(p.id),
+      }));
 
   // A label just past a pale end extends the strip to it (findTickLabels).
   async function applyBar(panel: Panel, strip: Box) {
@@ -210,7 +308,15 @@ export function createDecisionTools(
     const bar = found.bar || strip;
     must(await api.run('set_colorbar', { panelId: panel.id, ...barLine(strip) }));
     // The snap would cut the pale end off again.
-    if (found.bar) must(await api.run('set_colorbar', { panelId: panel.id, ...barLine(bar), halfWidth: panel.colorbar.halfWidth, snap: false }));
+    if (found.bar)
+      must(
+        await api.run('set_colorbar', {
+          panelId: panel.id,
+          ...barLine(bar),
+          halfWidth: panel.colorbar.halfWidth,
+          snap: false,
+        }),
+      );
     const marks = found.marks.map((m, i) => ({ ...m, label: String(i + 1) }));
     marksByPanel.set(panel.id, marks);
     candidatesByPanel.delete(panel.id);
@@ -249,8 +355,15 @@ export function createDecisionTools(
 
   // The page with lettered colorbar candidates, rulers for rough boxes.
   function candidatesView(list: CandidateList, name: string) {
-    const view = renderView({ overlay: 'calibration', marks: list.map((c) => ({ box: c.bar, label: c.letter, color: CANDIDATE_COLOR })), zoom: false });
-    return { dataUrl: view.dataUrl, note: `${name}: colorbar candidates in orange letters, on the page with its rulers. ${view.note}` };
+    const view = renderView({
+      overlay: 'calibration',
+      marks: list.map((c) => ({ box: c.bar, label: c.letter, color: CANDIDATE_COLOR })),
+      zoom: false,
+    });
+    return {
+      dataUrl: view.dataUrl,
+      note: `${name}: colorbar candidates in orange letters, on the page with its rulers. ${view.note}`,
+    };
   }
 
   // One image for the LLM: the cells with their own labels, colorbar and
@@ -269,7 +382,10 @@ export function createDecisionTools(
       y1: Math.min(H, Math.max(ext.y1, labelReach(img, cells, 'below', reach)) + 8),
     };
     const view = renderView({ region, overlay: 'calibration', rulers: false, maxSide: 900, marks });
-    ws.zoomToPoints([{ x: region.x0, y: region.y0 }, { x: region.x1, y: region.y1 }]);
+    ws.zoomToPoints([
+      { x: region.x0, y: region.y0 },
+      { x: region.x1, y: region.y1 },
+    ]);
     return view;
   }
 
@@ -278,7 +394,10 @@ export function createDecisionTools(
     const { W, H } = size();
     const region = growBox(union([bar, ...marks.map((m) => m.box)]), 0.1, 40, W, H);
     const view = renderView({ region, overlay: 'calibration', rulers: false, maxSide: 700, marks, zoom: false });
-    return { dataUrl: view.dataUrl, note: `Colorbar of ${panel.name} (panel ${panel.id}) with numbered tick-label boxes.` };
+    return {
+      dataUrl: view.dataUrl,
+      note: `Colorbar of ${panel.name} (panel ${panel.id}) with numbered tick-label boxes.`,
+    };
   }
 
   async function locate({ name, description, panelId, box }: Args): Promise<ToolCallResult> {
@@ -288,14 +407,19 @@ export function createDecisionTools(
     // heatmap) is trusted: its edges only move onto the cells' edges, and
     // the decision model is not asked (a bad crop answer overrode a good
     // box before).
-    const located = box ? { cells: snapEdges(page().imageData, clip(box)) || clip(box), rough: null } : await cellsFromJev(description, notes);
+    const located = box
+      ? { cells: snapEdges(page().imageData, clip(box)) || clip(box), rough: null }
+      : await cellsFromJev(description, notes);
     const placed = await placeGrid(panel, located.cells);
     const cells = placed.cells;
     if (placed.note) notes.push(placed.note);
     // The decision model can put two descriptions on one heatmap (t10:
     // the strip above a block was boxed as the block).
     const twin = pageGrids().find((g) => g.id !== panel.id && iou(g.cells, cells) > 0.8);
-    if (twin) notes.push(`These cells are the same as panel ${twin.id} "${twin.name}"'s: one of the two found the wrong heatmap; locate it again with panelId and box.`);
+    if (twin)
+      notes.push(
+        `These cells are the same as panel ${twin.id} "${twin.name}"'s: one of the two found the wrong heatmap; locate it again with panelId and box.`,
+      );
 
     const grid = { rows: placed.rows, cols: placed.cols };
     const { candidates, none } = await colorbarCandidates(cells, grid);
@@ -311,30 +435,51 @@ export function createDecisionTools(
       boxesText = applied.text;
       const gap = Math.round(sideGap(cells, bar));
       if (choice.how === 'near') notes.push(`The colorbar is ${gap} px from the cells.`);
-      if (choice.how === 'only') notes.push(`This is the only colorbar found on the page, ${gap} px from the cells: if it is not this heatmap's, use_colorbar with fromPanel or box.`);
+      if (choice.how === 'only')
+        notes.push(
+          `This is the only colorbar found on the page, ${gap} px from the cells: if it is not this heatmap's, use_colorbar with fromPanel or box.`,
+        );
     } else if (choice.list.length) {
       candidatesByPanel.set(panel.id, choice.list);
       marksByPanel.set(panel.id, []);
-      const lines = choice.list.map((c) => `${c.letter}: ${orientation(c.bar)}, ${where(cells, c.bar)} the cells, ${c.gap} px away, ${boxText(c.bar)}, ${c.labels} tick label${c.labels === 1 ? '' : 's'}`);
-      notes.push(`It is not clear which colorbar is this heatmap's. Candidates: ${lines.join('; ')}. Choose with use_colorbar {candidate}, or {fromPanel} if it shares a calibrated panel's colorbar.`);
+      const lines = choice.list.map(
+        (c) =>
+          `${c.letter}: ${orientation(c.bar)}, ${where(cells, c.bar)} the cells, ${c.gap} px away, ${boxText(c.bar)}, ${c.labels} tick label${c.labels === 1 ? '' : 's'}`,
+      );
+      notes.push(
+        `It is not clear which colorbar is this heatmap's. Candidates: ${lines.join('; ')}. Choose with use_colorbar {candidate}, or {fromPanel} if it shares a calibrated panel's colorbar.`,
+      );
       images.push(candidatesView(choice.list, name));
     } else {
       marksByPanel.set(panel.id, []);
-      notes.push(`No colorbar was found${none !== null ? ` (the decision model sees none: ${none})` : ''}. If this heatmap has one, use_colorbar with box (its rough extent) or fromPanel; if it has none, remove_panel it.`);
+      notes.push(
+        `No colorbar was found${none !== null ? ` (the decision model sees none: ${none})` : ''}. If this heatmap has one, use_colorbar with box (its rough extent) or fromPanel; if it has none, remove_panel it.`,
+      );
     }
 
     // A colorbar away from the cells gets its own image; one image of
     // both would shrink the cells (test-1: 2600 px apart).
     const apart = bar && choice.how !== 'beside';
     if (apart) images.push(barView(panel, bar!, marks));
-    const view = panelView(cells, [...(located.rough ? [located.rough] : []), ...(bar && !apart ? [bar] : [])], apart ? [] : marks);
+    const view = panelView(
+      cells,
+      [...(located.rough ? [located.rough] : []), ...(bar && !apart ? [bar] : [])],
+      apart ? [] : marks,
+    );
     const text = [
       `Panel ${panel.id} "${name}": cells ${boxText(cells)}, ${placed.rows} row${placed.rows === 1 ? '' : 's'} × ${placed.cols} column${placed.cols === 1 ? '' : 's'} (counted by the app).`,
       bar ? `Colorbar ${orientation(bar)}, ${boxText(bar)}. ${boxesText}` : '',
       ...notes,
-      bar ? 'Next: set_ticks and set_labels from the image (and correct_grid_size if the lines merge or split cells).' : 'Next: set_labels, and the colorbar as above.',
-    ].filter(Boolean).join(' ');
-    images.unshift({ dataUrl: view.dataUrl, note: `${name} (panel ${panel.id}): magenta grid${apart ? ' (its colorbar is in the next image)' : ', orange colorbar line, blue numbered tick-label boxes'}.` });
+      bar
+        ? 'Next: set_ticks and set_labels from the image (and correct_grid_size if the lines merge or split cells).'
+        : 'Next: set_labels, and the colorbar as above.',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    images.unshift({
+      dataUrl: view.dataUrl,
+      note: `${name} (panel ${panel.id}): magenta grid${apart ? ' (its colorbar is in the next image)' : ', orange colorbar line, blue numbered tick-label boxes'}.`,
+    });
     return { ok: true, result: text, images };
   }
 
@@ -357,29 +502,53 @@ export function createDecisionTools(
       const src = app.project.panels.find((p) => p.id === fromPanel);
       if (!src) throw new Error(`No panel "${fromPanel}".`);
       if (src.id === panel.id) throw new Error('fromPanel is this panel.');
-      if (src.page !== panel.page) throw new Error(`Panel ${src.id} is on page ${src.page}; a colorbar can only be shared on one page.`);
+      if (src.page !== panel.page)
+        throw new Error(`Panel ${src.id} is on page ${src.page}; a colorbar can only be shared on one page.`);
       const cb = src.colorbar;
       if (!cb.start || !cb.end) throw new Error(`Panel ${src.id} has no colorbar.`);
-      for (const k of [...panel.colorbar.ticks]) must(await api.run('remove_tick', { panelId: panel.id, tickId: k.id }));
-      must(await api.run('set_colorbar', { panelId: panel.id, start: cb.start, end: cb.end, halfWidth: cb.halfWidth, snap: false }));
-      for (const k of ticksWithT(cb)) if (Number.isFinite(k.t) && Number.isFinite(k.value)) must(await api.run('add_tick', { panelId: panel.id, t: k.t, value: k.value, snap: false }));
+      for (const k of [...panel.colorbar.ticks])
+        must(await api.run('remove_tick', { panelId: panel.id, tickId: k.id }));
+      must(
+        await api.run('set_colorbar', {
+          panelId: panel.id,
+          start: cb.start,
+          end: cb.end,
+          halfWidth: cb.halfWidth,
+          snap: false,
+        }),
+      );
+      for (const k of ticksWithT(cb))
+        if (Number.isFinite(k.t) && Number.isFinite(k.value))
+          must(await api.run('add_tick', { panelId: panel.id, t: k.t, value: k.value, snap: false }));
       must(await api.run('set_colorbar_scale', { panelId: panel.id, scale: cb.scale }));
       marksByPanel.set(panel.id, marksByPanel.get(src.id) || []);
       candidatesByPanel.delete(panel.id);
-      return { ok: true, result: `${panel.name} now uses the colorbar of ${src.name} (${cb.ticks.length} ticks, ${cb.scale}). ${(await check(panel)).text}` };
+      return {
+        ok: true,
+        result: `${panel.name} now uses the colorbar of ${src.name} (${cb.ticks.length} ticks, ${cb.scale}). ${(await check(panel)).text}`,
+      };
     }
     let bar: Box | undefined;
     if (candidate) {
       const list = candidatesByPanel.get(panel.id) || [];
       bar = list.find((c) => c.letter === candidate.trim().toUpperCase())?.bar;
-      if (!bar) throw new Error(list.length ? `No candidate "${candidate}": they are ${list.map((c) => c.letter).join(', ')}.` : 'This panel has no colorbar candidates; use fromPanel or box.');
+      if (!bar)
+        throw new Error(
+          list.length
+            ? `No candidate "${candidate}": they are ${list.map((c) => c.letter).join(', ')}.`
+            : 'This panel has no colorbar candidates; use fromPanel or box.',
+        );
     }
     let note = '';
     if (!candidate) {
       const found = snapStripBox(page().imageData, clip(box));
-      if (!found) throw new Error('No colored strip was found in that box. Check it on view_page, or place the ends with set_colorbar.');
+      if (!found)
+        throw new Error(
+          'No colored strip was found in that box. Check it on view_page, or place the ends with set_colorbar.',
+        );
       bar = found.bar;
-      if (found.extended) note = ` The colored strip found covers only ${Math.round(found.share * 100)}% of your box's length, so the colorbar was extended to your box: check its ends in the image (a pale end?).`;
+      if (found.extended)
+        note = ` The colored strip found covers only ${Math.round(found.share * 100)}% of your box's length, so the colorbar was extended to your box: check its ends in the image (a pale end?).`;
     }
     const applied = await applyBar(panel, bar!);
     const text = `Colorbar of ${panel.name}: ${orientation(applied.bar)}, ${boxText(applied.bar)}.${note} ${applied.text} Next: set_ticks.`;
@@ -392,7 +561,12 @@ export function createDecisionTools(
     if (!cb.start || !cb.end) throw new Error('This panel has no colorbar yet. Use use_colorbar first.');
     const marks = marksByPanel.get(panel.id) || [];
     const bad = ticks.filter((k: Args) => k.mark !== undefined && !marks[k.mark - 1]).map((k: Args) => k.mark);
-    if (bad.length) throw new Error(marks.length ? `No box ${bad.join(', ')}: the boxes are numbered 1 to ${marks.length}.` : 'This panel has no numbered boxes: give the ticks as {t, value}.');
+    if (bad.length)
+      throw new Error(
+        marks.length
+          ? `No box ${bad.join(', ')}: the boxes are numbered 1 to ${marks.length}.`
+          : 'This panel has no numbered boxes: give the ticks as {t, value}.',
+      );
     for (const k of [...cb.ticks]) must(await api.run('remove_tick', { panelId: panel.id, tickId: k.id }));
     for (const k of ticks) {
       const where = k.mark !== undefined ? { at: marks[k.mark - 1].at } : { t: tFromTopLeft(cb.start, cb.end, k.t) };
@@ -411,10 +585,17 @@ export function createDecisionTools(
       const s = scaleForTicks(ticksWithT(panel.colorbar), panel.colorbar.scale);
       if (s) {
         must(await api.run('set_colorbar_scale', { panelId: panel.id, scale: s }));
-        note = s === 'log10' ? ' The tick values grow by constant factors, so the app set the scale to log10.' : ` The ticks are unevenly spaced along the bar for their values, so the app set the scale to ${s} (values between neighbouring ticks).`;
+        note =
+          s === 'log10'
+            ? ' The tick values grow by constant factors, so the app set the scale to log10.'
+            : ` The ticks are unevenly spaced along the bar for their values, so the app set the scale to ${s} (values between neighbouring ticks).`;
       }
     }
-    return { ok: true, result: `${ticks.length} ticks set.${note} ${(await check(panel)).text}`, image: ticksView(panel) };
+    return {
+      ok: true,
+      result: `${ticks.length} ticks set.${note} ${(await check(panel)).text}`,
+      image: ticksView(panel),
+    };
   }
 
   // After set_ticks: the panel's grid and colorbar with the tick dots and
@@ -425,12 +606,20 @@ export function createDecisionTools(
     const { W, H } = size();
     const cb = panel.colorbar;
     const cells = gridBox(panel);
-    const bar = { x0: Math.min(cb.start!.x, cb.end!.x) - 6, y0: Math.min(cb.start!.y, cb.end!.y) - 6, x1: Math.max(cb.start!.x, cb.end!.x) + 6, y1: Math.max(cb.start!.y, cb.end!.y) + 6 };
+    const bar = {
+      x0: Math.min(cb.start!.x, cb.end!.x) - 6,
+      y0: Math.min(cb.start!.y, cb.end!.y) - 6,
+      x1: Math.max(cb.start!.x, cb.end!.x) + 6,
+      y1: Math.max(cb.start!.y, cb.end!.y) + 6,
+    };
     const labels = (marksByPanel.get(panel.id) || []).map((m) => m.box);
     const apart = sideGap(cells, bar) > 0.5 * Math.max(cells.x1 - cells.x0, cells.y1 - cells.y0);
     const region = growBox(union(apart ? [bar, ...labels] : [cells, bar, ...labels]), 0.04, 20, W, H);
     const view = renderView({ region, overlay: 'calibration', rulers: false, maxSide: 640, zoom: false });
-    return { dataUrl: view.dataUrl, note: `${panel.name} (panel ${panel.id}) after set_ticks: orange dots are the ticks with their values; each should sit level with its printed label${apart ? '' : ', and the magenta grid on the cells'}.` };
+    return {
+      dataUrl: view.dataUrl,
+      note: `${panel.name} (panel ${panel.id}) after set_ticks: orange dots are the ticks with their values; each should sit level with its printed label${apart ? '' : ', and the magenta grid on the cells'}.`,
+    };
   }
 
   // The app's own check: ready, tick values on the scale's line, and how
@@ -444,17 +633,34 @@ export function createDecisionTools(
     // Box number of the worst tick, when it came from a numbered box.
     const marks = marksByPanel.get(panel.id) || [];
     const worst = misfit && ticks[misfit.index];
-    const mark = worst ? marks.findIndex((m) => Math.abs(projectT(cb.start!, cb.end!, m.at) - worst.t) < 0.03) + 1 || null : null;
+    const mark = worst
+      ? marks.findIndex((m) => Math.abs(projectT(cb.start!, cb.end!, m.at) - worst.t) < 0.03) + 1 || null
+      : null;
     const offMapReasons: Record<string, number> = {};
-    for (const c of res.cells.flat()) if (c.status === 'off-map') offMapReasons[c.reason!] = (offMapReasons[c.reason!] || 0) + 1;
-    return checkSummary({ counts: res.counts, clampedShare: res.clampedShare, offMapReasons, bins: res.bins?.length || 0, misfit, mark });
+    for (const c of res.cells.flat())
+      if (c.status === 'off-map') offMapReasons[c.reason!] = (offMapReasons[c.reason!] || 0) + 1;
+    return checkSummary({
+      counts: res.counts,
+      clampedShare: res.clampedShare,
+      offMapReasons,
+      bins: res.bins?.length || 0,
+      misfit,
+      mark,
+    });
   }
 
   async function correctGridSize({ panelId, rows, cols, box }: Args): Promise<ToolCallResult> {
     const panel = await usePanel(panelId);
     if (!panel.grid.corners) throw new Error('This panel has no grid yet. Run locate_heatmap first.');
     const notes = [];
-    const setGrid = async (b: Box) => must(await api.run('set_grid', { panelId: panel.id, topLeft: { x: b.x0, y: b.y0 }, bottomRight: { x: b.x1, y: b.y1 } }));
+    const setGrid = async (b: Box) =>
+      must(
+        await api.run('set_grid', {
+          panelId: panel.id,
+          topLeft: { x: b.x0, y: b.y0 },
+          bottomRight: { x: b.x1, y: b.y1 },
+        }),
+      );
     if (box) {
       const b = snapEdges(page().imageData, clip(box)) || clip(box);
       await setGrid(b);
@@ -467,15 +673,31 @@ export function createDecisionTools(
       const backRows = cut && cut.alt.row === rows;
       const backCols = cut && cut.alt.col === cols;
       if (backRows || backCols) {
-        await setGrid({ x0: backCols ? cut.box.x0 : g.x0, x1: backCols ? cut.box.x1 : g.x1, y0: backRows ? cut.box.y0 : g.y0, y1: backRows ? cut.box.y1 : g.y1 });
-        notes.push(`The white ${[backRows && 'row', backCols && 'column'].filter(Boolean).join(' and ')} is back in the grid.`);
+        await setGrid({
+          x0: backCols ? cut.box.x0 : g.x0,
+          x1: backCols ? cut.box.x1 : g.x1,
+          y0: backRows ? cut.box.y0 : g.y0,
+          y1: backRows ? cut.box.y1 : g.y1,
+        });
+        notes.push(
+          `The white ${[backRows && 'row', backCols && 'column'].filter(Boolean).join(' and ')} is back in the grid.`,
+        );
         trimmedByPanel.delete(panel.id);
       }
     }
     must(await api.run('set_grid_size', { panelId: panel.id, rows, cols }));
     unsureByPanel.set(panel.id, { row: false, col: false });
-    const view = renderView({ region: growBox(gridBox(panel), 0.05, 10, size().W, size().H), overlay: 'calibration', rulers: false, maxSide: 900 });
-    return { ok: true, result: `Grid of ${panel.name} is now ${rows} rows × ${cols} columns. ${notes.join(' ')} ${(await check(panel)).text}`, image: { dataUrl: view.dataUrl, note: `${panel.name} (panel ${panel.id}) with the corrected grid.` } };
+    const view = renderView({
+      region: growBox(gridBox(panel), 0.05, 10, size().W, size().H),
+      overlay: 'calibration',
+      rulers: false,
+      maxSide: 900,
+    });
+    return {
+      ok: true,
+      result: `Grid of ${panel.name} is now ${rows} rows × ${cols} columns. ${notes.join(' ')} ${(await check(panel)).text}`,
+      image: { dataUrl: view.dataUrl, note: `${panel.name} (panel ${panel.id}) with the corrected grid.` },
+    };
   }
 
   // Printed numbers in cells against the extracted values (printedCheck).
@@ -484,18 +706,39 @@ export function createDecisionTools(
     const res = ws.resultFor(panel) as HeatmapResult;
     if (res.error) throw new Error(`Not ready: ${res.error}`);
     const outside = cells.filter((c: Args) => c.row > res.rows || c.col > res.cols);
-    if (outside.length) throw new Error(`No cell at ${outside.map((c: Args) => `row ${c.row}, column ${c.col}`).join('; ')}: the grid has ${res.rows} rows and ${res.cols} columns.`);
-    const values = ticksWithT(panel.colorbar).map((k) => k.value).filter(Number.isFinite);
+    if (outside.length)
+      throw new Error(
+        `No cell at ${outside.map((c: Args) => `row ${c.row}, column ${c.col}`).join('; ')}: the grid has ${res.rows} rows and ${res.cols} columns.`,
+      );
+    const values = ticksWithT(panel.colorbar)
+      .map((k) => k.value)
+      .filter(Number.isFinite);
     if (values.length < 2) throw new Error('This panel has no tick values yet. Use set_ticks first.');
     const pairs = cells.map((c: Args) => {
       const x = res.cells[c.row - 1][c.col - 1];
-      return { row: c.row, col: c.col, printed: c.value, value: Number.isFinite(x.value) ? x.value : null, open: x.open || null };
+      return {
+        row: c.row,
+        col: c.col,
+        printed: c.value,
+        value: Number.isFinite(x.value) ? x.value : null,
+        open: x.open || null,
+      };
     });
-    return { ok: true, result: printedCheck(pairs, { min: Math.min(...values), max: Math.max(...values) }, panel.colorbar.scale).text };
+    return {
+      ok: true,
+      result: printedCheck(pairs, { min: Math.min(...values), max: Math.max(...values) }, panel.colorbar.scale).text,
+    };
   }
 
   async function askTool({ region, overlay = 'none', questions }: Args): Promise<ToolCallResult> {
-    const view = renderView({ region, overlay, rulers: false, maxSide: region ? JEV.cropSide : JEV.pageSide, minSide: JEV.minSide, zoom: false });
+    const view = renderView({
+      region,
+      overlay,
+      rulers: false,
+      maxSide: region ? JEV.cropSide : JEV.pageSide,
+      minSide: JEV.minSide,
+      zoom: false,
+    });
     const answers = await ask([imagePart(view.dataUrl)], questions);
     const out: Record<string, unknown> = {};
     for (const [id, a] of Object.entries(answers)) {
@@ -518,7 +761,10 @@ export function createDecisionTools(
       const r = await api.run('set_colorbar_scale', args);
       if (!r.ok) return r;
       const panel = await usePanel(args.panelId);
-      return { ok: true, result: `Scale of ${panel.name} is now ${panel.colorbar.scale}. ${(await check(panel)).text}` };
+      return {
+        ok: true,
+        result: `Scale of ${panel.name} is now ${panel.colorbar.scale}. ${(await check(panel)).text}`,
+      };
     },
     ask: askTool,
   };

@@ -2,23 +2,32 @@ import JSZip from 'jszip';
 import { DECISION_SYSTEM_PROMPT } from '../../agent/decide.ts';
 import { LABELS_PROMPT } from '../../agent/labels.ts';
 import { AGENT_SYSTEM_PROMPT } from '../../agent/llm.ts';
+import type {
+  ColorItem,
+  DomEl,
+  HotkeyAction,
+  MatchingSettings,
+  Settings,
+  SettingsUi,
+  ToolKind,
+  Workspace,
+} from '../../types/index.ts';
 import {
+  buildSettingsZip,
   COLOR_GROUPS,
   COLOR_ITEMS,
-  HOTKEY_ACTIONS,
-  HOTKEY_GROUPS,
-  MATCHING_DEFAULTS,
-  buildSettingsZip,
   comboFromEvent,
   defaultSettings,
   formatCombo,
+  HOTKEY_ACTIONS,
+  HOTKEY_GROUPS,
   hotkeyClashes,
   isMacPlatform,
+  MATCHING_DEFAULTS,
   normalizeCombo,
   normalizeSettings,
   readSettingsFile,
 } from './settings.ts';
-import type { ColorItem, DomEl, HotkeyAction, MatchingSettings, Settings, SettingsUi, ToolKind, Workspace } from '../../types/index.ts';
 
 // Settings dialog: agent connection, matching defaults, hotkeys, overlay
 // colors, and settings zips. The settings object is ws.settings (see
@@ -81,11 +90,14 @@ export function setupSettings(ws: Workspace): SettingsUi {
     if (!dialog.open) dialog.showModal();
   }
   function showTab(name: string) {
-    for (const b of dialog.querySelectorAll<HTMLElement>('[data-settings-tab]')) b.classList.toggle('active', b.dataset.settingsTab === name);
-    for (const p of dialog.querySelectorAll<HTMLElement>('[data-settings-pane]')) p.hidden = p.dataset.settingsPane !== name;
+    for (const b of dialog.querySelectorAll<HTMLElement>('[data-settings-tab]'))
+      b.classList.toggle('active', b.dataset.settingsTab === name);
+    for (const p of dialog.querySelectorAll<HTMLElement>('[data-settings-pane]'))
+      p.hidden = p.dataset.settingsPane !== name;
     stopCapture();
   }
-  for (const b of dialog.querySelectorAll<HTMLElement>('[data-settings-tab]')) b.addEventListener('click', () => showTab(b.dataset.settingsTab!));
+  for (const b of dialog.querySelectorAll<HTMLElement>('[data-settings-tab]'))
+    b.addEventListener('click', () => showTab(b.dataset.settingsTab!));
   $('btn-settings').addEventListener('click', () => open());
   // Clicking the backdrop closes the dialog.
   dialog.addEventListener('click', (e) => {
@@ -175,7 +187,11 @@ export function setupSettings(ws: Workspace): SettingsUi {
     (settings.matching[kind] as unknown as Record<string, unknown>)[key] = value;
     ws.applyMatching(kind, settings.matching[kind]);
   }
-  for (const [id, kind] of [['set-hm-distance', 'heatmap'], ['set-roi-distance', 'roi'], ['set-map-distance', 'map']] as const) {
+  for (const [id, kind] of [
+    ['set-hm-distance', 'heatmap'],
+    ['set-roi-distance', 'roi'],
+    ['set-map-distance', 'map'],
+  ] as const) {
     $(id).addEventListener('change', (e) => {
       setMatching(kind, 'distance', (e.target as DomEl).value);
       changed();
@@ -199,13 +215,23 @@ export function setupSettings(ws: Workspace): SettingsUi {
   function matchingNote() {
     if (!app.sourceCanvas) return '';
     const parts: string[] = [];
-    for (const [kind, label] of [['heatmap', 'heatmap'], ['roi', 'ROI'], ['map', 'map']] as const) {
+    for (const [kind, label] of [
+      ['heatmap', 'heatmap'],
+      ['roi', 'ROI'],
+      ['map', 'map'],
+    ] as const) {
       const m = settings.matching[kind];
-      const n = app.project.panels.filter((p) => p.tool === kind && Object.entries(m).some(([k, v]) => (p.settings as unknown as Record<string, unknown>)[k] !== v)).length;
+      const n = app.project.panels.filter(
+        (p) =>
+          p.tool === kind &&
+          Object.entries(m).some(([k, v]) => (p.settings as unknown as Record<string, unknown>)[k] !== v),
+      ).length;
       if (n) parts.push(`${n} ${label} panel${n === 1 ? '' : 's'}`);
     }
     const list = parts.length > 2 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts.join(' and ');
-    return parts.length ? `In the open project, ${list} use other values. They keep them until you change a value of that tool here.` : '';
+    return parts.length
+      ? `In the open project, ${list} use other values. They keep them until you change a value of that tool here.`
+      : '';
   }
 
   // ------------------------------------------------------------ hotkeys
@@ -239,10 +265,13 @@ export function setupSettings(ws: Workspace): SettingsUi {
     const keys = document.createElement('td');
     const combos = settings.hotkeys[action.id] || [];
     if (capturing === action.id) keys.textContent = 'Press a key… (Esc cancels)';
-    else if (!combos.length) keys.append(Object.assign(document.createElement('span'), { className: 'muted', textContent: 'none' }));
+    else if (!combos.length)
+      keys.append(Object.assign(document.createElement('span'), { className: 'muted', textContent: 'none' }));
     else keys.append(...combos.map((c) => Object.assign(document.createElement('kbd'), { textContent: label(c) })));
     const btns = document.createElement('td');
-    const change = button(capturing === action.id ? 'Cancel' : 'Change', () => (capturing === action.id ? stopCapture() : startCapture(action.id)));
+    const change = button(capturing === action.id ? 'Cancel' : 'Change', () =>
+      capturing === action.id ? stopCapture() : startCapture(action.id),
+    );
     const isDefault = JSON.stringify(combos) === JSON.stringify(action.keys);
     const reset = button('Reset', () => setKeys(action.id, [...action.keys]));
     reset.disabled = isDefault;
@@ -255,7 +284,11 @@ export function setupSettings(ws: Workspace): SettingsUi {
   }
 
   function button(text: string, onClick: () => void) {
-    const b = Object.assign(document.createElement('button'), { type: 'button', className: 'btn small', textContent: text });
+    const b = Object.assign(document.createElement('button'), {
+      type: 'button',
+      className: 'btn small',
+      textContent: text,
+    });
     b.addEventListener('click', onClick);
     return b;
   }
@@ -288,7 +321,13 @@ export function setupSettings(ws: Workspace): SettingsUi {
       if (!raw) {
         // Control on a Mac and the Windows key belong to the system.
         const system = !['Control', 'Meta', 'OS'].includes(e.key) && (isMac ? e.ctrlKey : e.metaKey);
-        if (system) ws.toast(isMac ? 'Control (⌃) chords belong to macOS; use ⌘ instead.' : 'Windows-key chords belong to Windows; use Ctrl instead.', true);
+        if (system)
+          ws.toast(
+            isMac
+              ? 'Control (⌃) chords belong to macOS; use ⌘ instead.'
+              : 'Windows-key chords belong to Windows; use Ctrl instead.',
+            true,
+          );
         return; // otherwise a modifier on its own: wait for the key
       }
       const combo = normalizeCombo(raw);
@@ -326,7 +365,13 @@ export function setupSettings(ws: Workspace): SettingsUi {
       el.dataset.key = combos.length ? label(combos[0]) : '';
       const keys = combos.map(label).join(' or ');
       const base = el.dataset.title || '';
-      el.title = base.includes('{key}') ? (keys ? base.replace('{key}', keys) : base.replace(/\s*[:(]?\s*\{key\}\)?/, '')) : keys ? `${base} (${keys})` : base;
+      el.title = base.includes('{key}')
+        ? keys
+          ? base.replace('{key}', keys)
+          : base.replace(/\s*[:(]?\s*\{key\}\)?/, '')
+        : keys
+          ? `${base} (${keys})`
+          : base;
     }
   }
   listeners.push(updateTitles);
@@ -392,7 +437,13 @@ export function setupSettings(ws: Workspace): SettingsUi {
   // variables (base.css); they follow the overlay colors.
   function applyCssColors() {
     const root = document.documentElement.style;
-    for (const [name, id] of [['--grid-color', 'grid'], ['--bar-color', 'bar'], ['--flag-color', 'flag'], ['--highlight-color', 'highlight']]) root.setProperty(name, settings.colors[id] as string);
+    for (const [name, id] of [
+      ['--grid-color', 'grid'],
+      ['--bar-color', 'bar'],
+      ['--flag-color', 'flag'],
+      ['--highlight-color', 'highlight'],
+    ])
+      root.setProperty(name, settings.colors[id] as string);
   }
   listeners.push(applyCssColors);
   applyCssColors();

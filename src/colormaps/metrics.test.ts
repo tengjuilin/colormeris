@@ -2,8 +2,16 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { cmapData } from '../core/colormap-library.ts';
 import { parseHexColors } from '../core/cvd.ts';
-import { colormapMetrics, lchOf, minSeparation, perceptualSteps, ratingMethod, ratingNotes, readability, stepStats } from './metrics.ts';
-
+import {
+  colormapMetrics,
+  lchOf,
+  minSeparation,
+  perceptualSteps,
+  ratingMethod,
+  ratingNotes,
+  readability,
+  stepStats,
+} from './metrics.ts';
 
 const close = (a: number, b: number, eps: number) => assert.ok(Math.abs(a - b) <= eps, `${a} vs ${b}`);
 const metricsOf = (name: string) => {
@@ -12,7 +20,11 @@ const metricsOf = (name: string) => {
 };
 
 test('perceptual steps and their spread', () => {
-  const steps = perceptualSteps([[0, 0, 0], [0, 0, 0], [255, 255, 255]]);
+  const steps = perceptualSteps([
+    [0, 0, 0],
+    [0, 0, 0],
+    [255, 255, 255],
+  ]);
   assert.equal(steps.length, 2);
   assert.equal(steps[0], 0);
   assert.ok(steps[1] > 90);
@@ -65,7 +77,8 @@ test('every map gets metrics quickly', () => {
   const t0 = performance.now();
   for (const m of cmapData.maps) {
     const r = colormapMetrics(parseHexColors(m.colors), { kind: m.kind, cyclic: m.group === 'cyclic' });
-    for (const k of ['orig', 'protanopia', 'deuteranopia', 'tritanopia', 'gray']) assert.ok(r.separations[k], `${m.name} ${k}`);
+    for (const k of ['orig', 'protanopia', 'deuteranopia', 'tritanopia', 'gray'])
+      assert.ok(r.separations[k], `${m.name} ${k}`);
   }
   // The viewer rates every map; keep it near 6 ms per map on a laptop.
   const per = (performance.now() - t0) / cmapData.maps.length;
@@ -74,10 +87,21 @@ test('every map gets metrics quickly', () => {
 
 test('ratingNotes: one sentence per rating that applies', () => {
   const v = ratingNotes(metricsOf('viridis'));
-  assert.deepEqual(v.map((n) => [n.key, n.rating]), [['uniform', 'yes'], ['cvdSafe', 'yes'], ['graySafe', 'yes'], ['readable', 'yes']]);
+  assert.deepEqual(
+    v.map((n) => [n.key, n.rating]),
+    [
+      ['uniform', 'yes'],
+      ['cvdSafe', 'yes'],
+      ['graySafe', 'yes'],
+      ['readable', 'yes'],
+    ],
+  );
   for (const n of v) assert.ok(n.text.length > 10 && n.label);
   // Qualitative maps have no uniform or readable rating.
-  assert.deepEqual(ratingNotes(metricsOf('tab10'), { qual: true }).map((n) => n.key), ['cvdSafe', 'graySafe']);
+  assert.deepEqual(
+    ratingNotes(metricsOf('tab10'), { qual: true }).map((n) => n.key),
+    ['cvdSafe', 'graySafe'],
+  );
   assert.deepEqual(Object.keys(ratingMethod()), ['uniform', 'cvdSafe', 'graySafe', 'readable']);
 });
 
@@ -89,7 +113,10 @@ test('readability: flat zones, ambiguity and levels', () => {
   assert.equal(r.gray.ambiguous, 0);
   assert.ok(r.gray.levels > 25 && r.gray.levels < 40, `levels ${r.gray.levels}`);
   // A map that goes up and back down: every color has a twin on the other side.
-  const tent = ramp(256, (t) => { const v = Math.round(255 * (1 - Math.abs(2 * t - 1))); return [v, 0, 255 - v]; });
+  const tent = ramp(256, (t) => {
+    const v = Math.round(255 * (1 - Math.abs(2 * t - 1)));
+    return [v, 0, 255 - v];
+  });
   assert.ok(readability(tent)!.orig.ambiguous > 0.8);
   // Constant first half: flat there, and spans say where.
   const half = ramp(256, (t) => (t < 0.5 ? [0, 0, 128] : [255 * t, 0, 128].map(Math.round)));

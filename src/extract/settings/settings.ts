@@ -81,13 +81,23 @@ export const COLOR_ITEMS: ColorItem[] = [
   { id: 'flag', group: 'common', label: 'Flagged heatmap cells', value: '#ff3b30' },
   { id: 'highlight', group: 'common', label: 'Highlight (hovered cell, first polygon point)', value: '#ffd400' },
   { id: 'scale', group: 'common', label: 'Scale bar', value: '#22d3ee' },
-  { id: 'roiPalette', group: 'roi', label: 'Regions', value: ['#00e5ff', '#ffd400', '#7cff4f', '#ff6ad5', '#ff8c1a', '#b18cff', '#ffffff', '#4fa3ff'] },
+  {
+    id: 'roiPalette',
+    group: 'roi',
+    label: 'Regions',
+    value: ['#00e5ff', '#ffd400', '#7cff4f', '#ff6ad5', '#ff8c1a', '#b18cff', '#ffffff', '#4fa3ff'],
+  },
   { id: 'roiDraft', group: 'roi', label: 'Region being drawn', value: '#00e5ff' },
   { id: 'roiSignal', group: 'roi', label: 'Signal mask (Show signal)', value: '#ff00c8' },
   { id: 'roiFlagged', group: 'roi', label: 'Flagged pixels in the mask', value: '#ff2828' },
   { id: 'axisX', group: 'map', label: 'X-axis ticks', value: '#7cff4f' },
   { id: 'axisY', group: 'map', label: 'Y-axis ticks', value: '#ffd400' },
-  { id: 'profilePalette', group: 'map', label: 'Profiles', value: ['#00c2e0', '#e040a0', '#f59f00', '#40c057', '#845ef7'] },
+  {
+    id: 'profilePalette',
+    group: 'map',
+    label: 'Profiles',
+    value: ['#00c2e0', '#e040a0', '#f59f00', '#40c057', '#845ef7'],
+  },
   { id: 'trace', group: 'map', label: 'Traced profile sample', value: '#ffd400' },
   { id: 'mapFlag', group: 'map', label: 'Flagged values (Show flags)', value: '#ff2828' },
   { id: 'mapHigh', group: 'map', label: 'At the colorbar top (Show flags)', value: '#ff00c8' },
@@ -95,7 +105,8 @@ export const COLOR_ITEMS: ColorItem[] = [
 ];
 export const COLOR_DEFAULTS = Object.fromEntries(COLOR_ITEMS.map((c) => [c.id, structuredClone(c.value)]));
 
-const hexColor = (v: unknown) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v.trim()) ? v.trim().toLowerCase() : null);
+const hexColor = (v: unknown) =>
+  typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v.trim()) ? v.trim().toLowerCase() : null;
 
 // [r, g, b] of a #rrggbb color.
 export function hexToRgb(hex: string): Rgb {
@@ -105,7 +116,20 @@ export function hexToRgb(hex: string): Rgb {
 
 // mode: "agent" (the LLM does everything) or "decision" (the LLM asks a
 // decision model, agent/decide.js); `decision` is that model's id.
-const AGENT_DEFAULTS: AgentSettings = { key: '', rememberKey: false, minConfidence: 0.9, maxSteps: 80, base: '', llm: '', labels: '', prompt: '', labelsPrompt: '', mode: 'agent', decision: '', decisionPrompt: '' };
+const AGENT_DEFAULTS: AgentSettings = {
+  key: '',
+  rememberKey: false,
+  minConfidence: 0.9,
+  maxSteps: 80,
+  base: '',
+  llm: '',
+  labels: '',
+  prompt: '',
+  labelsPrompt: '',
+  mode: 'agent',
+  decision: '',
+  decisionPrompt: '',
+};
 
 export function defaultSettings(): Settings {
   return {
@@ -116,7 +140,8 @@ export function defaultSettings(): Settings {
   };
 }
 
-const num = (v: unknown, lo: number, hi: number, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback);
+const num = (v: unknown, lo: number, hi: number, fallback: number) =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
 const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v.trim() : fallback);
 
 // Settings from any JSON-ish input; missing or bad values fall back to the defaults.
@@ -175,7 +200,14 @@ export function normalizeCombo(combo: unknown): string {
   // "Mod++" is Mod and the plus key.
   const parts = combo.trim().split(/\+(?=.)/);
   const key = parts.pop() as string;
-  const mods = new Set<string | undefined>(parts.map((p) => ({ ctrl: 'Mod', cmd: 'Mod', meta: 'Mod', mod: 'Mod', alt: 'Alt', option: 'Alt', shift: 'Shift' })[p.toLowerCase()]));
+  const mods = new Set<string | undefined>(
+    parts.map(
+      (p) =>
+        ({ ctrl: 'Mod', cmd: 'Mod', meta: 'Mod', mod: 'Mod', alt: 'Alt', option: 'Alt', shift: 'Shift' })[
+          p.toLowerCase()
+        ],
+    ),
+  );
   if (mods.has(undefined) || !key) return '';
   const k = key.length === 1 ? key.toUpperCase() : key === ' ' ? 'Space' : key;
   if (RESERVED_KEYS.includes(k) && !mods.size) return '';
@@ -184,7 +216,9 @@ export function normalizeCombo(combo: unknown): string {
 
 // Whether the browser runs on macOS or iOS, where ⌘ is the command key.
 // `nav` is navigator (passed in, so this stays testable).
-export function isMacPlatform(nav: { userAgentData?: { platform?: string }; platform?: string; userAgent?: string } | null | undefined) {
+export function isMacPlatform(
+  nav: { userAgentData?: { platform?: string }; platform?: string; userAgent?: string } | null | undefined,
+) {
   const platform = nav?.userAgentData?.platform || nav?.platform || nav?.userAgent || '';
   return /Mac|iPhone|iPad|iPod/i.test(platform);
 }
@@ -195,9 +229,13 @@ export function isMacPlatform(nav: { userAgentData?: { platform?: string }; plat
 // with it are no hotkeys. Shift only counts for letters and named keys,
 // since for other characters it changes the character itself ("+" is
 // Shift and "=" on many keyboards).
-export function comboFromEvent(e: Pick<KeyboardEvent, 'key'> & Partial<Pick<KeyboardEvent, 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>>, mac = false) {
+export function comboFromEvent(
+  e: Pick<KeyboardEvent, 'key'> & Partial<Pick<KeyboardEvent, 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>>,
+  mac = false,
+) {
   let key = e.key;
-  if (!key || ['Control', 'Meta', 'OS', 'Alt', 'AltGraph', 'Shift', 'CapsLock', 'Dead', 'Unidentified'].includes(key)) return '';
+  if (!key || ['Control', 'Meta', 'OS', 'Alt', 'AltGraph', 'Shift', 'CapsLock', 'Dead', 'Unidentified'].includes(key))
+    return '';
   if (mac ? e.ctrlKey : e.metaKey) return '';
   // Alt changes the character on a Mac (Alt+G types ©), and other keyboard
   // layouts type other letters (Cyrillic, Greek); take the name of letter
@@ -223,7 +261,11 @@ function hotkeysOverlap(a: string, b: string) {
 
 // Id of the action bound to a combo, or null. With `tool`, actions of other
 // tools are skipped; without it, the first match counts.
-export function findHotkey(hotkeys: Record<string, string[]> | null | undefined, combo: string, tool: ToolKind | null = null) {
+export function findHotkey(
+  hotkeys: Record<string, string[]> | null | undefined,
+  combo: string,
+  tool: ToolKind | null = null,
+) {
   if (!combo) return null;
   for (const [id, keys] of Object.entries(hotkeys || {})) {
     if (!keys.includes(combo)) continue;
@@ -240,15 +282,36 @@ export function hotkeyClashes(hotkeys: Record<string, string[]> | null | undefin
     .map(([other]) => other);
 }
 
-const KEY_NAMES: Record<string, string> = { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Space: 'Space', PageUp: 'Page Up', PageDown: 'Page Down' };
+const KEY_NAMES: Record<string, string> = {
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+  Space: 'Space',
+  PageUp: 'Page Up',
+  PageDown: 'Page Down',
+};
 // A Mac keyboard labels some keys with symbols; its "delete" key is Backspace.
-const MAC_KEY_NAMES: Record<string, string> = { ...KEY_NAMES, Backspace: '⌫', Delete: '⌦', Enter: '↩', Escape: 'esc', Tab: '⇥' };
+const MAC_KEY_NAMES: Record<string, string> = {
+  ...KEY_NAMES,
+  Backspace: '⌫',
+  Delete: '⌦',
+  Enter: '↩',
+  Escape: 'esc',
+  Tab: '⇥',
+};
 // Human-readable combo: "Ctrl+Shift+Z", or "⇧⌘Z" on a Mac (Apple's
 // modifier order: ⌥ ⇧ ⌘).
 export function formatCombo(combo: string, mac = false) {
   const parts = combo.split(/\+(?=.)/);
   const key = parts.pop() as string;
-  if (mac) return ['Alt', 'Shift', 'Mod'].filter((m) => parts.includes(m)).map((m) => ({ Mod: '⌘', Alt: '⌥', Shift: '⇧' })[m]).join('') + (MAC_KEY_NAMES[key] || key);
+  if (mac)
+    return (
+      ['Alt', 'Shift', 'Mod']
+        .filter((m) => parts.includes(m))
+        .map((m) => ({ Mod: '⌘', Alt: '⌥', Shift: '⇧' })[m])
+        .join('') + (MAC_KEY_NAMES[key] || key)
+    );
   return [...parts.map((m) => (m === 'Mod' ? 'Ctrl' : m)), KEY_NAMES[key] || key].join('+');
 }
 
@@ -268,9 +331,14 @@ export function serializeSettings(settings: Settings, { includeKey = false }: { 
 // Settings from a settings file's JSON. `hasKey` tells whether the file
 // carried an API key; without one the caller keeps the current key.
 export function parseSettings(json: Raw) {
-  if (!json || typeof json !== 'object' || json.schema !== SETTINGS_SCHEMA) throw new Error('Not a Colormeris settings file.');
-  if (json.version > SETTINGS_VERSION) throw new Error(`Settings version ${json.version} is newer than this app understands (${SETTINGS_VERSION}).`);
-  return { settings: normalizeSettings(json), hasKey: typeof json.agent?.key === 'string' && json.agent.key.trim() !== '' };
+  if (!json || typeof json !== 'object' || json.schema !== SETTINGS_SCHEMA)
+    throw new Error('Not a Colormeris settings file.');
+  if (json.version > SETTINGS_VERSION)
+    throw new Error(`Settings version ${json.version} is newer than this app understands (${SETTINGS_VERSION}).`);
+  return {
+    settings: normalizeSettings(json),
+    hasKey: typeof json.agent?.key === 'string' && json.agent.key.trim() !== '',
+  };
 }
 
 export async function buildSettingsZip(JSZip: typeof JSZipType, settings: Settings, opts?: { includeKey?: boolean }) {

@@ -180,7 +180,20 @@ export class Viewer implements ViewerApi {
     if (e.button === 2) return;
     const handle = panOnly ? null : this.cb.hitTest?.(img, 8 / this.scale);
     const draw = !panOnly && !handle && e.button === 0 && !!this.cb.wantsDrag?.();
-    this.pointer = { id: e.pointerId, sx, sy, start: img, ox: this.ox, oy: this.oy, moved: false, handle, draw, panOnly, shift: e.shiftKey, alt: e.altKey };
+    this.pointer = {
+      id: e.pointerId,
+      sx,
+      sy,
+      start: img,
+      ox: this.ox,
+      oy: this.oy,
+      moved: false,
+      handle,
+      draw,
+      panOnly,
+      shift: e.shiftKey,
+      alt: e.altKey,
+    };
     this.canvas.setPointerCapture(e.pointerId);
     if (handle) this.canvas.classList.add('dragging');
   }
@@ -292,14 +305,26 @@ export class Viewer implements ViewerApi {
     // (axis lock, ticks projected onto the bar) can move it off the pointer, and
     // a bar grabbed beside its line keeps that offset, which is many page
     // pixels when zoomed out.
-    const img = (this.pointer?.handle && this.pointer.moved && this.cb.handlePoint?.(this.pointer.handle, this.hover!.img)) || this.hover!.img;
+    const img =
+      (this.pointer?.handle && this.pointer.moved && this.cb.handlePoint?.(this.pointer.handle, this.hover!.img)) ||
+      this.hover!.img;
     const lc = this.loupe.getContext('2d')!;
     const half = LOUPE_SIZE / 2;
     lc.imageSmoothingEnabled = false;
     lc.fillStyle = '#808080';
     lc.fillRect(0, 0, LOUPE_SIZE, LOUPE_SIZE);
     const srcSize = LOUPE_SIZE / LOUPE_ZOOM;
-    lc.drawImage(this.source!, img.x - srcSize / 2, img.y - srcSize / 2, srcSize, srcSize, 0, 0, LOUPE_SIZE, LOUPE_SIZE);
+    lc.drawImage(
+      this.source!,
+      img.x - srcSize / 2,
+      img.y - srcSize / 2,
+      srcSize,
+      srcSize,
+      0,
+      0,
+      LOUPE_SIZE,
+      LOUPE_SIZE,
+    );
     lc.strokeStyle = 'rgba(0,0,0,0.8)';
     lc.lineWidth = 3;
     lc.beginPath();

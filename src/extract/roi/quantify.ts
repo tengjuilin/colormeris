@@ -1,7 +1,17 @@
 import { rgbToLab } from '../../core/color.ts';
 import { colorbarSamples, labToT, makeValueFn } from '../../core/colorbar.ts';
 import { cellAt, readPixel } from '../../core/grid.ts';
-import type { ErrorResult, Panel, PixelImage, Point, Rgb, RoiResult, RoiRow, RoiStats, ScaleBar } from '../../types/index.ts';
+import type {
+  ErrorResult,
+  Panel,
+  PixelImage,
+  Point,
+  Rgb,
+  RoiResult,
+  RoiRow,
+  RoiStats,
+  ScaleBar,
+} from '../../types/index.ts';
 import { boxLabel, colorbarProblem, ticksWithT } from '../project/project.ts';
 import { centroid, forEachPixelInPolygon, roiInstances } from './geometry.ts';
 
@@ -36,7 +46,8 @@ export function roiPanelProblem(panel: Panel): string | null {
   const bar = colorbarProblem(panel);
   if (bar) return bar;
   if (!panel.rois.length) return 'Draw at least one region (ellipse, rectangle or polygon).';
-  if (panel.rois.some((r) => r.replicate) && !panel.grid.corners) return 'Place the grid, or turn off "copy to every box" for each region.';
+  if (panel.rois.some((r) => r.replicate) && !panel.grid.corners)
+    return 'Place the grid, or turn off "copy to every box" for each region.';
   return null;
 }
 
@@ -75,7 +86,8 @@ export function makeClassifier(img: PixelImage, panel: Panel): Classifier {
     }
     return k;
   };
-  const classify = ((rgb: Rgb) => hits[indexOf(Math.round(rgb[0]), Math.round(rgb[1]), Math.round(rgb[2])) - 1]) as Classifier;
+  const classify = ((rgb: Rgb) =>
+    hits[indexOf(Math.round(rgb[0]), Math.round(rgb[1]), Math.round(rgb[2])) - 1]) as Classifier;
   // Same as classify(readPixel(img, x, y)) for pixel i = y * width + x, but
   // remembered per pixel (index into hits, 0 = not read yet): dragging a
   // region re-reads mostly the same pixels, and an array read is much
@@ -103,14 +115,20 @@ export function makeClassifier(img: PixelImage, panel: Panel): Classifier {
 }
 
 // Statistics over the pixels of one outline (image pixels).
-export function quantifyOutline(img: PixelImage, outline: Point[], classify: Classifier, pxArea: number | null): RoiStats {
+export function quantifyOutline(
+  img: PixelImage,
+  outline: Point[],
+  classify: Classifier,
+  pxArea: number | null,
+): RoiStats {
   let areaPx = 0;
   let signalPx = 0;
   let flaggedPx = 0;
   let sum = 0;
   let max = 0;
   const { width } = img;
-  const at = classify.img === img ? classify.pixel : ((i: number) => classify(readPixel(img, i % width, Math.floor(i / width))));
+  const at =
+    classify.img === img ? classify.pixel : (i: number) => classify(readPixel(img, i % width, Math.floor(i / width)));
   forEachPixelInPolygon(outline, img.width, img.height, (x, y) => {
     const c = at(y * width + x);
     areaPx++;
@@ -215,7 +233,12 @@ export function roiTableModel(panel: Panel, result: RoiResult) {
   for (const r of result.rows) {
     const key = keyOf(r);
     if (!rowsByKey.has(key)) {
-      rowsByKey.set(key, { label: r.row === null ? 'Image' : boxLabel(panel.grid, r.row, r.col as number), row: r.row, col: r.col, cells: new Map() });
+      rowsByKey.set(key, {
+        label: r.row === null ? 'Image' : boxLabel(panel.grid, r.row, r.col as number),
+        row: r.row,
+        col: r.col,
+        cells: new Map(),
+      });
       order.push(key);
     }
     rowsByKey.get(key)!.cells.set(r.roi.id, r);

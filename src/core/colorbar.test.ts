@@ -1,9 +1,25 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
+import { cmap, makeImage, paintColorbar, setPixel, VIRIDISH } from '../testing/helpers.ts';
 import type { ColorbarSample, Rgb } from '../types/index.ts';
-import { VIRIDISH, cmap, makeImage, paintColorbar, setPixel } from '../testing/helpers.ts';
-import { deltaE2000, deltaE76, rgbToLab } from './color.ts';
-import { SCALES, colorAtT, colorStatus, colorbarBins, isLogScale, isPiecewiseScale, labToT, labelBins, makeValueFn, piecewiseScaleFor, projectT, refineColorbar, sampleColorbar, snapTick, tickProblem } from './colorbar.ts';
+import { deltaE76, deltaE2000, rgbToLab } from './color.ts';
+import {
+  colorAtT,
+  colorbarBins,
+  colorStatus,
+  isLogScale,
+  isPiecewiseScale,
+  labelBins,
+  labToT,
+  makeValueFn,
+  piecewiseScaleFor,
+  projectT,
+  refineColorbar,
+  SCALES,
+  sampleColorbar,
+  snapTick,
+  tickProblem,
+} from './colorbar.ts';
 import { colormapSamples } from './colormap-match.ts';
 
 const close = (a: number, b: number, eps: number, msg = '') => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b} ${msg}`);
@@ -14,7 +30,11 @@ test('projectT projects onto the line', () => {
 });
 
 test('makeValueFn interpolates and extrapolates linearly', () => {
-  const f = makeValueFn([{ t: 0.2, value: 3 }, { t: 0.6, value: 5 }, { t: 1, value: 6 }])!;
+  const f = makeValueFn([
+    { t: 0.2, value: 3 },
+    { t: 0.6, value: 5 },
+    { t: 1, value: 6 },
+  ])!;
   close(f(0.2), 3, 1e-12);
   close(f(0.4), 4, 1e-12);
   close(f(0.8), 5.5, 1e-12);
@@ -22,16 +42,47 @@ test('makeValueFn interpolates and extrapolates linearly', () => {
 });
 
 test('makeValueFn log10 interpolates in log space', () => {
-  const f = makeValueFn([{ t: 0, value: 1 }, { t: 1, value: 1000 }], 'log10')!;
+  const f = makeValueFn(
+    [
+      { t: 0, value: 1 },
+      { t: 1, value: 1000 },
+    ],
+    'log10',
+  )!;
   close(f(1 / 3), 10, 1e-9);
   close(f(2 / 3), 100, 1e-9);
 });
 
 test('tickProblem reports missing or invalid ticks', () => {
   assert.ok(tickProblem([{ t: 0.1, value: 1 }], 'linear'));
-  assert.ok(tickProblem([{ t: 0.1, value: 1 }, { t: 0.1, value: 2 }], 'linear'));
-  assert.ok(tickProblem([{ t: 0, value: 0 }, { t: 1, value: 2 }], 'log10'));
-  assert.equal(tickProblem([{ t: 0, value: 0 }, { t: 1, value: 2 }], 'linear'), null);
+  assert.ok(
+    tickProblem(
+      [
+        { t: 0.1, value: 1 },
+        { t: 0.1, value: 2 },
+      ],
+      'linear',
+    ),
+  );
+  assert.ok(
+    tickProblem(
+      [
+        { t: 0, value: 0 },
+        { t: 1, value: 2 },
+      ],
+      'log10',
+    ),
+  );
+  assert.equal(
+    tickProblem(
+      [
+        { t: 0, value: 0 },
+        { t: 1, value: 2 },
+      ],
+      'linear',
+    ),
+    null,
+  );
 });
 
 test('sampleColorbar and labToT recover positions along a painted bar', () => {
@@ -144,7 +195,15 @@ function binnedBar(colors: Rgb[], n = 256) {
     return colors[i];
   }, n);
 }
-const BINS7: Rgb[] = [[33, 137, 199], [136, 219, 251], [212, 235, 251], [245, 230, 225], [253, 175, 163], [247, 106, 94], [247, 45, 41]];
+const BINS7: Rgb[] = [
+  [33, 137, 199],
+  [136, 219, 251],
+  [212, 235, 251],
+  [245, 230, 225],
+  [253, 175, 163],
+  [247, 106, 94],
+  [247, 45, 41],
+];
 
 test('piecewise scales: log10 between neighbours, steady values, a suggested twin', () => {
   assert.deepEqual(SCALES, ['linear', 'log10', 'piecewise', 'piecewise-log10']);
@@ -159,9 +218,37 @@ test('piecewise scales: log10 between neighbours, steady values, a suggested twi
   assert.equal(piecewiseScaleFor([0, 3, 6].map((value, i) => ({ t: i / 2, value }))), 'piecewise');
   assert.equal(piecewiseScaleFor([1, 2, 5].map((value, i) => ({ t: i / 2, value }))), 'piecewise');
   // Values that turn back cannot be interpolated between neighbours.
-  assert.match(tickProblem([{ t: 0, value: 1 }, { t: 0.5, value: 5 }, { t: 1, value: 2 }], 'piecewise')!, /steadily/);
-  assert.equal(tickProblem([{ t: 0, value: 9 }, { t: 0.5, value: 5 }, { t: 1, value: 2 }], 'piecewise'), null);
-  assert.ok(tickProblem([{ t: 0, value: 0 }, { t: 1, value: 2 }], 'piecewise-log10'));
+  assert.match(
+    tickProblem(
+      [
+        { t: 0, value: 1 },
+        { t: 0.5, value: 5 },
+        { t: 1, value: 2 },
+      ],
+      'piecewise',
+    )!,
+    /steadily/,
+  );
+  assert.equal(
+    tickProblem(
+      [
+        { t: 0, value: 9 },
+        { t: 0.5, value: 5 },
+        { t: 1, value: 2 },
+      ],
+      'piecewise',
+    ),
+    null,
+  );
+  assert.ok(
+    tickProblem(
+      [
+        { t: 0, value: 0 },
+        { t: 1, value: 2 },
+      ],
+      'piecewise-log10',
+    ),
+  );
 });
 
 test('colorbarBins finds the bins of a discrete bar and nothing on smooth ones', () => {
@@ -183,21 +270,37 @@ test('colorbarBins finds the bins of a discrete bar and nothing on smooth ones',
 test('labelBins: bin middles in the scale, open-ended bins past the outermost ticks', () => {
   const bins = colorbarBins(binnedBar(BINS7))!;
   // Linear ticks on every boundary, ends included (0, 3, … 21): arithmetic middles.
-  const lin = labelBins(bins, [0, 3, 6, 9, 12, 15, 18, 21].map((value, i) => ({ t: i / 7 + 0.002, value })), 'piecewise')!;
+  const lin = labelBins(
+    bins,
+    [0, 3, 6, 9, 12, 15, 18, 21].map((value, i) => ({ t: i / 7 + 0.002, value })),
+    'piecewise',
+  )!;
   lin.forEach((b, i) => close(b.value, 1.5 + 3 * i, 1e-9, `bin ${i}`));
   assert.ok(lin.every((b) => b.open === null));
   // Uneven log-like ticks on the inner boundaries only: geometric middles,
   // and the end bins say "below 1e4" and "above 3e6".
   const values = [1e4, 2e4, 2e5, 5e5, 1e6, 3e6];
-  const log = labelBins(bins, values.map((value, i) => ({ t: (i + 1) / 7, value })), 'piecewise-log10')!;
+  const log = labelBins(
+    bins,
+    values.map((value, i) => ({ t: (i + 1) / 7, value })),
+    'piecewise-log10',
+  )!;
   assert.deepEqual([log[0].value, log[0].open], [1e4, 'below']);
   assert.deepEqual([log[6].value, log[6].open], [3e6, 'above']);
   for (let i = 1; i < 6; i++) close(log[i].value, Math.sqrt(values[i - 1] * values[i]), values[i] * 1e-9, `bin ${i}`);
   // A bar running the other way (high values at t = 0) opens the other way.
-  const down = labelBins(bins, values.map((value, i) => ({ t: (6 - i) / 7, value })), 'piecewise-log10')!;
+  const down = labelBins(
+    bins,
+    values.map((value, i) => ({ t: (6 - i) / 7, value })),
+    'piecewise-log10',
+  )!;
   assert.deepEqual([down[0].open, down[6].open], ['above', 'below']);
   // Ticks at bin centres: each bin reads its label.
-  const centres = labelBins(bins, [1, 2, 3, 4, 5, 6, 7].map((value, i) => ({ t: (i + 0.5) / 7, value })), 'linear')!;
+  const centres = labelBins(
+    bins,
+    [1, 2, 3, 4, 5, 6, 7].map((value, i) => ({ t: (i + 0.5) / 7, value })),
+    'linear',
+  )!;
   centres.forEach((b, i) => close(b.value, i + 1, 0.05));
 });
 
@@ -206,30 +309,99 @@ test('colorStatus: off-map grays and hues, clamped cells past an end', () => {
     const lab = rgbToLab(rgb);
     return colorStatus(lab, labToT(lab, samples), samples, 10);
   };
-  const diverging = barSamples((t) => cmap([[33, 60, 200], [245, 245, 250], [200, 30, 30]], t));
+  const diverging = barSamples((t) =>
+    cmap(
+      [
+        [33, 60, 200],
+        [245, 245, 250],
+        [200, 30, 30],
+      ],
+      t,
+    ),
+  );
   // A gray "ND" cell beside a colorful bar, and a black diagonal past its dark blue end.
   assert.deepEqual(status([183, 183, 183], diverging), { status: 'off-map', reason: 'gray' });
   assert.equal(status([0, 0, 0], diverging).status, 'off-map');
   assert.equal(status([40, 200, 40], diverging).status, 'off-map');
-  assert.equal(status(cmap([[33, 60, 200], [245, 245, 250], [200, 30, 30]], 0.3), diverging).status, 'ok');
+  assert.equal(
+    status(
+      cmap(
+        [
+          [33, 60, 200],
+          [245, 245, 250],
+          [200, 30, 30],
+        ],
+        0.3,
+      ),
+      diverging,
+    ).status,
+    'ok',
+  );
   // test-9: a mid gray (L* 77) beside a pale blue of chroma 11.6 at L* 85 on an RdBu bar is ND, not pale blue.
   // Its real bar is near neutral there too (chroma 7 at L* 70–85).
-  const knots = [[50, -10, -40], [80, -5, -5], [97, 0, 0]];
-  const lerp = (t: number) => (t < 0.5 ? [0, 1, 2].map((i) => knots[0][i] + (knots[1][i] - knots[0][i]) * 2 * t) : [0, 1, 2].map((i) => knots[1][i] + (knots[2][i] - knots[1][i]) * (2 * t - 1)));
+  const knots = [
+    [50, -10, -40],
+    [80, -5, -5],
+    [97, 0, 0],
+  ];
+  const lerp = (t: number) =>
+    t < 0.5
+      ? [0, 1, 2].map((i) => knots[0][i] + (knots[1][i] - knots[0][i]) * 2 * t)
+      : [0, 1, 2].map((i) => knots[1][i] + (knots[2][i] - knots[1][i]) * (2 * t - 1));
   const paleBlue = Array.from({ length: 101 }, (_, i) => ({ t: i / 100, lab: lerp(i / 100) })) as ColorbarSample[];
   const gray = rgbToLab([191, 191, 191]);
   assert.deepEqual(colorStatus(gray, labToT(gray, paleBlue), paleBlue, 10), { status: 'off-map', reason: 'gray' });
   // Grays on a grayscale bar and near-whites on a white-ended bar are on the map.
-  assert.equal(status([128, 128, 128], barSamples((t) => cmap([[0, 0, 0], [255, 255, 255]], t))).status, 'ok');
-  assert.equal(status([240, 246, 252], barSamples((t) => cmap([[247, 251, 255], [8, 48, 107]], t))).status, 'ok');
+  assert.equal(
+    status(
+      [128, 128, 128],
+      barSamples((t) =>
+        cmap(
+          [
+            [0, 0, 0],
+            [255, 255, 255],
+          ],
+          t,
+        ),
+      ),
+    ).status,
+    'ok',
+  );
+  assert.equal(
+    status(
+      [240, 246, 252],
+      barSamples((t) =>
+        cmap(
+          [
+            [247, 251, 255],
+            [8, 48, 107],
+          ],
+          t,
+        ),
+      ),
+    ).status,
+    'ok',
+  );
   // Paler than a pink low end (cells past the colorbar): clamped there.
-  const pink = barSamples((t) => cmap([[218, 136, 138], [150, 20, 30]], t));
+  const pink = barSamples((t) =>
+    cmap(
+      [
+        [218, 136, 138],
+        [150, 20, 30],
+      ],
+      t,
+    ),
+  );
   assert.deepEqual(status([243, 222, 222], pink), { status: 'clamped', end: 'start' });
   assert.deepEqual(status([110, 5, 15], pink), { status: 'clamped', end: 'end' });
   // Exactly the end color is on the bar.
   assert.equal(status([218, 136, 138], pink).status, 'ok');
   // Past a flat end (binned bar): lighter than the whole bar and of its family.
-  const reds = binnedBar([[254, 200, 200], [240, 120, 120], [180, 30, 30]]);
+  const reds = binnedBar([
+    [254, 200, 200],
+    [240, 120, 120],
+    [180, 30, 30],
+  ]);
   const lab = rgbToLab([254, 236, 236]);
   assert.equal(colorStatus(lab, { t: 0, deltaE: 8 }, reds, 10).status, 'clamped');
 });

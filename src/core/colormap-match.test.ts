@@ -9,7 +9,7 @@ const byName = (n: string) => maps.find((m) => m.name === n)!;
 
 // Deterministic noise of ±6 per channel, like JPEG artifacts.
 let seed = 1;
-const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 const noisy = (c: number[]) => c.map((v) => Math.max(0, Math.min(255, Math.round(v + rand() * 12 - 6))));
 
 function bar(name: string, { n = 180, reversed = false }: { n?: number; reversed?: boolean } = {}) {
@@ -17,7 +17,10 @@ function bar(name: string, { n = 180, reversed = false }: { n?: number; reversed
   return Array.from({ length: n }, (_, i) => {
     let t = i / (n - 1);
     if (reversed) t = 1 - t;
-    const c = m.kind === 'qualitative' ? m.rgbs[Math.min(m.rgbs.length - 1, Math.floor(t * m.rgbs.length))] : m.rgbs[Math.round(t * 255)];
+    const c =
+      m.kind === 'qualitative'
+        ? m.rgbs[Math.min(m.rgbs.length - 1, Math.floor(t * m.rgbs.length))]
+        : m.rgbs[Math.round(t * 255)];
     return noisy(c);
   });
 }

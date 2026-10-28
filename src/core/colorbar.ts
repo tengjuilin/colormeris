@@ -1,5 +1,19 @@
-import type { CellStatus, ColorBin, Colorbar, ColorbarSample, ColorbarScale, LabelledBin, Lab, OffMapReason, OpenSide, PixelImage, Point, Rgb, TickWithT } from '../types/index.ts';
-import { colorDistance, deltaE2000, deltaE76, labToRgb, rgbToLab } from './color.ts';
+import type {
+  CellStatus,
+  ColorBin,
+  Colorbar,
+  ColorbarSample,
+  ColorbarScale,
+  Lab,
+  LabelledBin,
+  OffMapReason,
+  OpenSide,
+  PixelImage,
+  Point,
+  Rgb,
+  TickWithT,
+} from '../types/index.ts';
+import { colorDistance, deltaE76, deltaE2000, labToRgb, rgbToLab } from './color.ts';
 import { colormapSamples } from './colormap-match.ts';
 import { readPixel } from './grid.ts';
 
@@ -7,12 +21,17 @@ import { readPixel } from './grid.ts';
 // along the bar (t in [0, 1], start → end) to data values via user ticks, and
 // map arbitrary colors back to t by nearest perceptual match.
 
-
 export const DEFAULT_SAMPLES = 256;
 
 // Returns [{t, rgb, lab}] sampled evenly from start to end. Each sample is the
 // mean over a window of ±halfWidth pixels perpendicular to the bar.
-export function sampleColorbar(img: PixelImage, start: Point, end: Point, halfWidth = 2, n = DEFAULT_SAMPLES): ColorbarSample[] {
+export function sampleColorbar(
+  img: PixelImage,
+  start: Point,
+  end: Point,
+  halfWidth = 2,
+  n = DEFAULT_SAMPLES,
+): ColorbarSample[] {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const len = Math.hypot(dx, dy);
@@ -86,7 +105,8 @@ export function tickProblem(ticks: TickWithT[], scale: string) {
     // Between neighbours only works when values rise (or fall) all along.
     const v = [...valid].sort((a, b) => a.t - b.t).map((k) => k.value);
     const steps = v.slice(1).map((x, i) => Math.sign(x - v[i]));
-    if (steps.some((s) => s !== steps[0]) || !steps[0]) return 'Piecewise scale needs tick values that rise or fall steadily along the bar.';
+    if (steps.some((s) => s !== steps[0]) || !steps[0])
+      return 'Piecewise scale needs tick values that rise or fall steadily along the bar.';
   }
   return null;
 }
@@ -115,7 +135,7 @@ export function makeValueFn(ticks: TickWithT[], scale: string = 'linear'): ((t: 
     const a = merged[k];
     const b = merged[k + 1];
     const y = a.y + ((t - a.t) / (b.t - a.t)) * (b.y - a.y);
-    return log ? Math.pow(10, y) : y;
+    return log ? 10 ** y : y;
   };
 }
 
@@ -282,7 +302,12 @@ export function colorbarBins(samples: ColorbarSample[]): ColorBin[] | null {
 // middle is exact. A bin past the outermost tick on its side is open-ended
 // (the bar says "below 1e4" or "above 3e6", not how far): its value is that
 // tick's value and `open` is 'below' or 'above'; otherwise open is null.
-export function labelBins(bins: ColorBin[] | null, ticks: TickWithT[], scale: string = 'linear', nSamples = DEFAULT_SAMPLES): LabelledBin[] | null {
+export function labelBins(
+  bins: ColorBin[] | null,
+  ticks: TickWithT[],
+  scale: string = 'linear',
+  nSamples = DEFAULT_SAMPLES,
+): LabelledBin[] | null {
   const valueAt = makeValueFn(ticks, scale);
   if (!bins || !valueAt) return null;
   const ts = ticks.filter((k) => Number.isFinite(k.t) && Number.isFinite(k.value)).sort((a, b) => a.t - b.t);
@@ -366,7 +391,8 @@ function sameFamily(lab: Lab, endLab: Lab, lighter: boolean) {
 // the lightness rule. Returns 'start', 'end' or null.
 function pastEndOf(lab: Lab, t: number, samples: ColorbarSample[], tol: number): 'start' | 'end' | null {
   const n = samples.length;
-  const take = (a: number, b: number) => samples.slice(Math.max(0, a), Math.max(Math.max(0, a) + 1, b)).map((s) => s.lab);
+  const take = (a: number, b: number) =>
+    samples.slice(Math.max(0, a), Math.max(Math.max(0, a) + 1, b)).map((s) => s.lab);
   const Ls = samples.map((s) => s.lab[0]);
   const w = Math.max(1, Math.round(n * 0.03));
   const inA = Math.round(n * 0.06);
@@ -420,7 +446,12 @@ export interface RefinedColorbar {
 // maxDeltaE). The ΔE between maxDeltaE and twice it is left as flagged:
 // such cells are often mixed colors at cell edges, which still say roughly
 // where on the bar they belong.
-export function colorStatus(lab: Lab, match: { t: number; deltaE: number; lab?: Lab }, samples: ColorbarSample[], maxDeltaE = 10): ColorStatus {
+export function colorStatus(
+  lab: Lab,
+  match: { t: number; deltaE: number; lab?: Lab },
+  samples: ColorbarSample[],
+  maxDeltaE = 10,
+): ColorStatus {
   if (!samples.length) return { status: 'ok' };
   // A color as close to the bar as this is on it, even past the median end
   // color (a bar that keeps darkening into its last sample).
@@ -506,10 +537,16 @@ export function refineColorbar(img: PixelImage, start: Point, end: Point): Refin
   const dy = end.y - start.y;
   if (Math.abs(dx) < 0.07 * Math.abs(dy)) {
     const mx = (start.x + end.x) / 2;
-    [start, end] = [{ x: mx, y: start.y }, { x: mx, y: end.y }];
+    [start, end] = [
+      { x: mx, y: start.y },
+      { x: mx, y: end.y },
+    ];
   } else if (Math.abs(dy) < 0.07 * Math.abs(dx)) {
     const my = (start.y + end.y) / 2;
-    [start, end] = [{ x: start.x, y: my }, { x: end.x, y: my }];
+    [start, end] = [
+      { x: start.x, y: my },
+      { x: end.x, y: my },
+    ];
   }
   const rough = axes(start, end);
   if (rough.len < 10) return null;
@@ -571,7 +608,12 @@ export function refineColorbar(img: PixelImage, start: Point, end: Point): Refin
 // the background) or drawn into the strip from its edge (off the strip's
 // color there). Returns {t, moved (pixels along the bar), point} or null
 // when no clear mark is near.
-export function snapTick(img: PixelImage, start: Point, end: Point, at: Point): { t: number; moved: number; point: Point } | null {
+export function snapTick(
+  img: PixelImage,
+  start: Point,
+  end: Point,
+  at: Point,
+): { t: number; moved: number; point: Point } | null {
   const { len, u, at: pt } = axes(start, end);
   if (len < 10) return null;
   const s0 = (at.x - start.x) * u.x + (at.y - start.y) * u.y;
@@ -580,7 +622,10 @@ export function snapTick(img: PixelImage, start: Point, end: Point, at: Point): 
   const to = Math.round(s0 + W + 4);
   const { lo, hi } = stripSides(img, start, end);
   const bands: { ks: number[]; min: number; outside: boolean }[] = [];
-  for (const [dir, edge] of [[-1, lo], [1, hi]]) {
+  for (const [dir, edge] of [
+    [-1, lo],
+    [1, hi],
+  ]) {
     if (edge >= MAX_SIDE) continue;
     const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => dir * (a + i));
     // Outside: the background dominates the band, marks stand out from it.
@@ -605,7 +650,8 @@ export function snapTick(img: PixelImage, start: Point, end: Point, at: Point): 
     const flush = () => {
       if (!run) return;
       const centre = run.sum / run.weight;
-      if (run.to - run.from < 8 && Math.abs(centre - s0) <= W && (!best || Math.abs(centre - s0) < Math.abs(best - s0))) best = centre;
+      if (run.to - run.from < 8 && Math.abs(centre - s0) <= W && (!best || Math.abs(centre - s0) < Math.abs(best - s0)))
+        best = centre;
       run = null;
     };
     profile.forEach((v, i) => {

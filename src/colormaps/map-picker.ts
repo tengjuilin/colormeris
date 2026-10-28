@@ -1,4 +1,5 @@
 import type { CmapViewerContext, ColormapEntry } from '../types/index.ts';
+
 // A text field that filters the colormaps as you type (an ARIA combobox),
 // shared by Recolor (pick the new map) and Compare (add maps). Empty, it
 // lists them all in their groups. Typing "name_r" counts as the reversed map.
@@ -26,13 +27,23 @@ export interface MapPickerOptions {
   onChoose: (name: string, typedReversed: boolean) => void;
 }
 
-export function createMapPicker(ctx: Pick<CmapViewerContext, 'el' | 'data' | 'mapByName' | 'base' | 'stripCanvas'>, opts: MapPickerOptions) {
+export function createMapPicker(
+  ctx: Pick<CmapViewerContext, 'el' | 'data' | 'mapByName' | 'base' | 'stripCanvas'>,
+  opts: MapPickerOptions,
+) {
   const { el, data, mapByName, base, stripCanvas } = ctx;
   const listId = `${opts.id}-maps`;
   const box = el('div', { class: 'cmap-rc-pick' });
   const input = el('input', {
-    type: 'text', role: 'combobox', 'aria-label': opts.label, 'aria-autocomplete': 'list',
-    'aria-expanded': 'false', 'aria-controls': listId, autocomplete: 'off', spellcheck: 'false', placeholder: opts.placeholder || 'Type to search',
+    type: 'text',
+    role: 'combobox',
+    'aria-label': opts.label,
+    'aria-autocomplete': 'list',
+    'aria-expanded': 'false',
+    'aria-controls': listId,
+    autocomplete: 'off',
+    spellcheck: 'false',
+    placeholder: opts.placeholder || 'Type to search',
   });
   const idle = () => opts.current() || '';
   input.value = idle();
@@ -43,13 +54,20 @@ export function createMapPicker(ctx: Pick<CmapViewerContext, 'el' | 'data' | 'ma
   let active = -1;
 
   const optionFor = (m: ColormapEntry) => {
-    const li = el('li', { role: 'option', id: `${listId}-${m.name}`, 'aria-selected': String(m.name === opts.current()) });
+    const li = el('li', {
+      role: 'option',
+      id: `${listId}-${m.name}`,
+      'aria-selected': String(m.name === opts.current()),
+    });
     li.dataset.name = m.name;
     const mini = el('span', { class: 'cmap-mini' });
     mini.append(stripCanvas(base(m), m.kind === 'qualitative'));
     li.append(mini, el('span', { class: 'cmap-rc-opt-name' }, m.name));
     // mousedown, not click, so the input keeps the focus.
-    li.addEventListener('mousedown', (e: Event) => { e.preventDefault(); choose(m.name); });
+    li.addEventListener('mousedown', (e: Event) => {
+      e.preventDefault();
+      choose(m.name);
+    });
     return li;
   };
 
@@ -120,13 +138,21 @@ export function createMapPicker(ctx: Pick<CmapViewerContext, 'el' | 'data' | 'ma
   }
 
   // Focused with nothing typed: show all, so the list is a menu.
-  input.addEventListener('focus', () => { input.select(); open(''); });
-  input.addEventListener('click', () => { if (list.hidden) open(''); });
+  input.addEventListener('focus', () => {
+    input.select();
+    open('');
+  });
+  input.addEventListener('click', () => {
+    if (list.hidden) open('');
+  });
   input.addEventListener('input', () => open(input.value));
   input.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      if (list.hidden) { open(input.value === idle() ? '' : input.value); return; }
+      if (list.hidden) {
+        open(input.value === idle() ? '' : input.value);
+        return;
+      }
       setActive(active + (e.key === 'ArrowDown' ? 1 : -1));
     } else if (e.key === 'Enter') {
       if (list.hidden) return;
@@ -143,7 +169,10 @@ export function createMapPicker(ctx: Pick<CmapViewerContext, 'el' | 'data' | 'ma
   input.addEventListener('blur', () => {
     const m = input.value.trim() && input.value !== idle() ? exact(input.value) : null;
     if (m) choose(m.name);
-    else { input.value = idle(); close(); }
+    else {
+      input.value = idle();
+      close();
+    }
   });
   return { box, input };
 }

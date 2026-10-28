@@ -14,7 +14,12 @@ const MAX_SIDE = 4000; // larger images are scaled down before sampling
 const EXAMPLE = 'examples/example-jet.png';
 
 // A rectangle in image pixels (Recolor's regions).
-export interface FigureBox { x: number; y: number; w: number; h: number }
+export interface FigureBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 type Pt = { x: number; y: number };
 
 // What createFigureInput returns, besides its methods.
@@ -37,7 +42,14 @@ export interface FigureState {
   dragging: boolean;
 }
 
-interface FigureDrag { start: Pt; px: number; py: number; before: FigureState['line']; boxMode: boolean; box: FigureBox | null }
+interface FigureDrag {
+  start: Pt;
+  px: number;
+  py: number;
+  before: FigureState['line'];
+  boxMode: boolean;
+  box: FigureBox | null;
+}
 
 // biome-ignore lint/suspicious/noExplicitAny: TODO(types) the options bag is documented above; the tabs pass differing subsets
 export function createFigureInput(opts: any) {
@@ -54,16 +66,26 @@ export function createFigureInput(opts: any) {
   const zone = el('div', { class: 'cmap-drop-wrap' });
   // An arrow into a tray, so the dashed box reads as a place to drop an image.
   const icon = el('span', { class: 'cmap-drop-icon', 'aria-hidden': 'true' });
-  icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  icon.innerHTML =
+    '<svg viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   // The whole dashed box is the button that opens the file dialog; Example and
   // Clear sit outside it, since they do not take a file from the box.
   const region = el('div', { class: 'cmap-drop', role: 'button', tabindex: '0', 'aria-label': 'Choose an image file' });
   region.append(icon, dropText);
   zone.append(region, bar, hint);
-  const canvas: HTMLCanvasElement = el('canvas', { class: 'cmap-id-canvas', hidden: '', role: 'img', tabindex: '0', 'aria-label': opts.label });
+  const canvas: HTMLCanvasElement = el('canvas', {
+    class: 'cmap-id-canvas',
+    hidden: '',
+    role: 'img',
+    tabindex: '0',
+    'aria-label': opts.label,
+  });
 
   const fig: FigureState = {
-    zone, file, canvas, hint,
+    zone,
+    file,
+    canvas,
+    hint,
     src: null, // offscreen canvas with the full-resolution image
     img: null, // its ImageData
     name: '', // file name without extension
@@ -77,7 +99,8 @@ export function createFigureInput(opts: any) {
   // Pointer positions are relative to the content box: the border is not part of the image.
   const scale = () => canvas.width / (canvas.clientWidth || canvas.width);
 
-  const accentColor = () => getComputedStyle(document.documentElement).getPropertyValue('--bar-color').trim() || '#f29900';
+  const accentColor = () =>
+    getComputedStyle(document.documentElement).getPropertyValue('--bar-color').trim() || '#f29900';
 
   function redraw() {
     if (!fig.src) return;
@@ -101,7 +124,10 @@ export function createFigureInput(opts: any) {
     const line = fig.line;
     if (!line) return;
     g.lineCap = 'round';
-    for (const [w, c] of [[4.5 * k, 'rgba(0,0,0,0.75)'], [2 * k, accent]] as [number, string][]) {
+    for (const [w, c] of [
+      [4.5 * k, 'rgba(0,0,0,0.75)'],
+      [2 * k, accent],
+    ] as [number, string][]) {
       g.strokeStyle = c;
       g.lineWidth = w;
       g.beginPath();
@@ -146,7 +172,11 @@ export function createFigureInput(opts: any) {
   // Resolves true once the image is shown, false when it could not be read.
   function load(f: File | null | undefined) {
     return new Promise<boolean>((resolve) => {
-      if (!f || !/^image\//.test(f.type)) { fail('That file is not an image. Use a PNG, JPEG, WebP or GIF.'); resolve(false); return; }
+      if (!f || !/^image\//.test(f.type)) {
+        fail('That file is not an image. Use a PNG, JPEG, WebP or GIF.');
+        resolve(false);
+        return;
+      }
       const url = URL.createObjectURL(f);
       const im = new Image();
       im.onload = () => {
@@ -181,7 +211,11 @@ export function createFigureInput(opts: any) {
           resolve(false);
         }
       };
-      im.onerror = () => { URL.revokeObjectURL(url); fail('Could not open that image.'); resolve(false); };
+      im.onerror = () => {
+        URL.revokeObjectURL(url);
+        fail('Could not open that image.');
+        resolve(false);
+      };
       im.src = url;
     });
   }
@@ -199,10 +233,22 @@ export function createFigureInput(opts: any) {
     if (!fig.img || e.button > 0 || opts.lines === false) return;
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
-    drag = { start: pointAt(e), px: e.clientX, py: e.clientY, before: fig.line, boxMode: opts.dragMode?.() === 'box', box: null };
+    drag = {
+      start: pointAt(e),
+      px: e.clientX,
+      py: e.clientY,
+      before: fig.line,
+      boxMode: opts.dragMode?.() === 'box',
+      box: null,
+    };
     fig.dragging = true;
   });
-  const boxOf = (a: Pt, b: Pt) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) });
+  const boxOf = (a: Pt, b: Pt) => ({
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    w: Math.abs(b.x - a.x),
+    h: Math.abs(b.y - a.y),
+  });
   canvas.addEventListener('pointermove', (e) => {
     if (!drag) return;
     if (drag.boxMode) drag.box = boxOf(drag.start, pointAt(e));
@@ -217,12 +263,17 @@ export function createFigureInput(opts: any) {
     if (boxMode) {
       // A click or a cancelled drag adds no box.
       const box = boxOf(start, pointAt(e));
-      if (e.type !== 'pointercancel' && Math.hypot(e.clientX - px, e.clientY - py) >= 8 && box.w >= 1 && box.h >= 1) opts.onBox?.(box);
+      if (e.type !== 'pointercancel' && Math.hypot(e.clientX - px, e.clientY - py) >= 8 && box.w >= 1 && box.h >= 1)
+        opts.onBox?.(box);
       redraw();
       return;
     }
     // A click or a cancelled drag keeps the line there was.
-    if (e.type === 'pointercancel' || Math.hypot(e.clientX - px, e.clientY - py) < 8) { fig.line = opts.keepLineOnClick ? before : null; redraw(); return; }
+    if (e.type === 'pointercancel' || Math.hypot(e.clientX - px, e.clientY - py) < 8) {
+      fig.line = opts.keepLineOnClick ? before : null;
+      redraw();
+      return;
+    }
     opts.onLine?.(start, pointAt(e));
   };
   canvas.addEventListener('pointerup', finish);
@@ -234,7 +285,9 @@ export function createFigureInput(opts: any) {
     e.preventDefault();
     file.click();
   });
-  file.addEventListener('change', () => { if (file.files?.[0]) load(file.files[0]); });
+  file.addEventListener('change', () => {
+    if (file.files?.[0]) load(file.files[0]);
+  });
   async function loadExample() {
     try {
       const res = await fetch(EXAMPLE);
@@ -246,11 +299,18 @@ export function createFigureInput(opts: any) {
     }
   }
   example.addEventListener('click', loadExample);
-  clear.addEventListener('click', () => { reset(false); hint.textContent = ''; });
+  clear.addEventListener('click', () => {
+    reset(false);
+    hint.textContent = '';
+  });
 
-  const fileOf = (dt: DataTransfer | null) => [...(dt?.files || [])].find((f) => /^image\//.test(f.type)) || [...(dt?.files || [])][0];
+  const fileOf = (dt: DataTransfer | null) =>
+    [...(dt?.files || [])].find((f) => /^image\//.test(f.type)) || [...(dt?.files || [])][0];
   for (const t of [zone, canvas]) {
-    t.addEventListener('dragover', (e: Event) => { e.preventDefault(); region.classList.add('over'); });
+    t.addEventListener('dragover', (e: Event) => {
+      e.preventDefault();
+      region.classList.add('over');
+    });
     t.addEventListener('dragleave', () => region.classList.remove('over'));
     t.addEventListener('drop', (e: DragEvent) => {
       e.preventDefault();

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { deltaE2000, deltaE76, labToRgb, rgbToHex, rgbToLab } from './color.ts';
+import { deltaE76, deltaE2000, labToRgb, rgbToHex, rgbToLab } from './color.ts';
 
 const close = (a: number, b: number, eps: number) => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b}`);
 
@@ -13,7 +13,12 @@ test('white and black map to L=100 and L=0', () => {
 });
 
 test('Lab round trip preserves RGB', () => {
-  for (const rgb of [[12, 200, 90], [255, 0, 0], [68, 1, 84], [253, 231, 37]]) {
+  for (const rgb of [
+    [12, 200, 90],
+    [255, 0, 0],
+    [68, 1, 84],
+    [253, 231, 37],
+  ]) {
     assert.deepEqual(labToRgb(rgbToLab(rgb)), rgb);
   }
 });

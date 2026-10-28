@@ -67,7 +67,13 @@ export function setupLabelReader(ws: Workspace, settingsUi: SettingsUi) {
           model,
           messages: [
             { role: 'system', content: agent().labelsPrompt || LABELS_PROMPT },
-            { role: 'user', content: [{ type: 'text', text: labelsUserText({ rows, cols, box }) }, { type: 'image_url', imageUrl: { url: dataUrl } }] },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: labelsUserText({ rows, cols, box }) },
+                { type: 'image_url', imageUrl: { url: dataUrl } },
+              ],
+            },
           ],
           tools: [labelsTool()],
           toolChoice: { type: 'function', function: { name: 'set_labels' } },
@@ -90,7 +96,9 @@ export function setupLabelReader(ws: Workspace, settingsUi: SettingsUi) {
         if (out.colLabels.length) p.grid.colLabels = out.colLabels;
       });
       const cost = res.usage?.cost ? ` ($${res.usage.cost.toFixed(4)})` : '';
-      const parts = [`Read ${out.rowLabels.length} row and ${out.colLabels.length} column labels${cost}. Check them; Undo reverts.`];
+      const parts = [
+        `Read ${out.rowLabels.length} row and ${out.colLabels.length} column labels${cost}. Check them; Undo reverts.`,
+      ];
       if (out.warnings.length) parts.push(`Note: ${out.warnings.join('; ')}.`);
       if (out.note) parts.push(out.note);
       setHint(parts.join(' '), out.warnings.length > 0);

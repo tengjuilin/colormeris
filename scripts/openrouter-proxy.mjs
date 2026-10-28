@@ -7,8 +7,9 @@
 // the key empty. The proxy only forwards OpenRouter API paths, only accepts
 // pages served from localhost, and adds `Authorization: Bearer
 // $OPENROUTER_API_KEY` on the way out. It never logs or returns the key.
-import { createServer } from 'node:http';
+
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 
 const PORT = Number(process.env.PROXY_PORT) || 8787;
 const UPSTREAM = 'https://openrouter.ai';
@@ -49,14 +50,19 @@ createServer(async (req, res) => {
   if (!originOk) return end(res, 403, 'Origin not allowed.');
   // A site that points its own domain at 127.0.0.1 (DNS rebinding) sends its
   // domain as Host; only localhost names reach the key.
-  if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '')) return end(res, 403, 'Host not allowed.');
+  if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || ''))
+    return end(res, 403, 'Host not allowed.');
   if (req.method === 'OPTIONS') return end(res, 204);
   const path = new URL(req.url, 'http://x').pathname;
   if (!ALLOWED_PATHS.test(path)) return end(res, 404, 'Only /api/v1/ and /api/alpha/decisions are forwarded.');
   try {
     const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await readBody(req);
-    const headers = { authorization: `Bearer ${KEY}`, 'content-type': req.headers['content-type'] || 'application/json' };
-    for (const h of ['http-referer', 'x-title', 'x-openrouter-title', 'accept']) if (req.headers[h]) headers[h] = req.headers[h];
+    const headers = {
+      authorization: `Bearer ${KEY}`,
+      'content-type': req.headers['content-type'] || 'application/json',
+    };
+    for (const h of ['http-referer', 'x-title', 'x-openrouter-title', 'accept'])
+      if (req.headers[h]) headers[h] = req.headers[h];
     const up = await fetch(UPSTREAM + req.url, { method: req.method, headers, body });
     res.statusCode = up.status;
     res.setHeader('content-type', up.headers.get('content-type') || 'application/json');
@@ -66,7 +72,11 @@ createServer(async (req, res) => {
     console.error(`${req.method} ${path} failed: ${err.message}`);
     end(res, 502, 'Upstream request failed.');
   }
-}).listen(PORT, '127.0.0.1', () => console.log(`OpenRouter proxy on http://localhost:${PORT}/api/v1 (key from ${process.env.OPENROUTER_API_KEY ? 'environment' : '.env'})`));
+}).listen(PORT, '127.0.0.1', () =>
+  console.log(
+    `OpenRouter proxy on http://localhost:${PORT}/api/v1 (key from ${process.env.OPENROUTER_API_KEY ? 'environment' : '.env'})`,
+  ),
+);
 
 function readBody(req) {
   return new Promise((resolve, reject) => {

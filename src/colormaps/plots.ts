@@ -1,5 +1,5 @@
-import type { CmapViewerContext } from '../types/index.ts';
 import { rgbToHex } from '../core/color.ts';
+import type { CmapViewerContext } from '../types/index.ts';
 
 // SVG plots of the colormap viewer: axes, line and dot series with a
 // hover guide, figures with captions, and the per-position profile of a map
@@ -42,9 +42,17 @@ export function setupCmapPlots(ctx: CmapViewerContext) {
       svg.append(svgEl('line', { class: 'cmap-grid', x1: px(x), x2: px(x), y1: m.t, y2: H - m.b }));
       svg.append(svgText('cmap-tick', { x: px(x), y: H - m.b + 14, 'text-anchor': 'middle' }, label));
     }
-    svg.append(svgEl('rect', { class: 'cmap-axes', x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'none' }));
+    svg.append(
+      svgEl('rect', { class: 'cmap-axes', x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'none' }),
+    );
     svg.append(svgText('cmap-axis-label', { x: (m.l + W - m.r) / 2, y: H - 4, 'text-anchor': 'middle' }, xLabel));
-    svg.append(svgText('cmap-axis-label', { transform: `translate(11 ${(m.t + H - m.b) / 2}) rotate(-90)`, 'text-anchor': 'middle' }, yLabel));
+    svg.append(
+      svgText(
+        'cmap-axis-label',
+        { transform: `translate(11 ${(m.t + H - m.b) / 2}) rotate(-90)`, 'text-anchor': 'middle' },
+        yLabel,
+      ),
+    );
     return { px, py };
   }
 
@@ -71,7 +79,9 @@ export function setupCmapPlots(ctx: CmapViewerContext) {
       }
       if (halo) parent.append(svgEl('path', { class: 'cmap-halo', d, fill: 'none' }));
       if (stroke) parent.append(svgEl('path', { class: 'cmap-seg', d, fill: 'none', stroke }));
-      else for (const { color, ...xy } of segs) parent.append(svgEl('line', { class: 'cmap-seg', ...xy, stroke: rgbToHex(color) }));
+      else
+        for (const { color, ...xy } of segs)
+          parent.append(svgEl('line', { class: 'cmap-seg', ...xy, stroke: rgbToHex(color) }));
     } else {
       const cls = dotR > 3 ? 'cmap-dot' : halo ? 'cmap-pt cmap-pt-halo' : 'cmap-pt';
       for (const p of points) {
@@ -87,17 +97,41 @@ export function setupCmapPlots(ctx: CmapViewerContext) {
   //   ref     optional dashed line { x1, y1, x2, y2, label }
   //   W, H    size; the defaults give a square plot box (the detail view
   //           passes a smaller, still square one)
-  function linePlot({ map, title, yLabel, xLabel = 'Position', yMax, yTicks, xTicks, points, mode, ref, dotR = 3, W = PW, H = PH }: any) {
+  function linePlot({
+    map,
+    title,
+    yLabel,
+    xLabel = 'Position',
+    yMax,
+    yTicks,
+    xTicks,
+    points,
+    mode,
+    ref,
+    dotR = 3,
+    W = PW,
+    H = PH,
+  }: any) {
     const svg = svgEl('svg', {
-      class: 'cmap-plot', viewBox: `0 0 ${W} ${H}`, role: 'img',
+      class: 'cmap-plot',
+      viewBox: `0 0 ${W} ${H}`,
+      role: 'img',
       'aria-label': `${title} of ${map.name} against position`,
     });
     const { px, py } = drawAxes(svg, { W, H, m: M, yMax, yTicks, xTicks, xLabel, yLabel });
 
     if (ref) {
-      svg.append(svgEl('line', { class: 'cmap-linear', x1: px(ref.x1), y1: py(ref.y1), x2: px(ref.x2), y2: py(ref.y2) }));
+      svg.append(
+        svgEl('line', { class: 'cmap-linear', x1: px(ref.x1), y1: py(ref.y1), x2: px(ref.x2), y2: py(ref.y2) }),
+      );
       const low = ref.y2 > yMax / 2;
-      svg.append(svgText('cmap-linear-label', { x: px(ref.x2) - 4, y: py(ref.y2) + (low ? 14 : -6), 'text-anchor': 'end' }, ref.label));
+      svg.append(
+        svgText(
+          'cmap-linear-label',
+          { x: px(ref.x2) - 4, y: py(ref.y2) + (low ? 14 : -6), 'text-anchor': 'end' },
+          ref.label,
+        ),
+      );
     }
     drawSeries(svg, { points, mode, dotR }, px, py);
     const guide = svgEl('line', { class: 'cmap-guide', y1: M.t, y2: H - M.b, visibility: 'hidden' });
@@ -105,19 +139,27 @@ export function setupCmapPlots(ctx: CmapViewerContext) {
 
     svg.addEventListener('pointermove', (e) => {
       const r = svg.getBoundingClientRect();
-      const x = ((e.clientX - r.left) / r.width * W - M.l) / (W - M.l - M.r);
+      const x = (((e.clientX - r.left) / r.width) * W - M.l) / (W - M.l - M.r);
       let p = points[0];
       for (const q of points) if (Math.abs(q.x - x) < Math.abs(p.x - x)) p = q;
       guide.setAttribute('x1', px(p.x));
       guide.setAttribute('x2', px(p.x));
       guide.setAttribute('visibility', 'visible');
       const hex = rgbToHex(p.color);
-      showTip({
-        hex, title: `${map.name} · ${title}`,
-        text: [hex, `rgb(${p.color[0]}, ${p.color[1]}, ${p.color[2]})`, p.pos, p.value],
-      }, e.clientX, e.clientY);
+      showTip(
+        {
+          hex,
+          title: `${map.name} · ${title}`,
+          text: [hex, `rgb(${p.color[0]}, ${p.color[1]}, ${p.color[2]})`, p.pos, p.value],
+        },
+        e.clientX,
+        e.clientY,
+      );
     });
-    svg.addEventListener('pointerleave', () => { guide.setAttribute('visibility', 'hidden'); hideTip(); });
+    svg.addEventListener('pointerleave', () => {
+      guide.setAttribute('visibility', 'hidden');
+      hideTip();
+    });
     return svg;
   }
 
@@ -161,9 +203,14 @@ export function setupCmapPlots(ctx: CmapViewerContext) {
     const qual = map.kind === 'qualitative';
     const xOf = (i: any) => (n > 1 ? i / (n - 1) : 0.5);
     const posOf = (i: any) => (qual ? `color ${i + 1} of ${n}` : `t = ${xOf(i).toFixed(3)}`);
-    const pts = (ys: any, fmt: any, skip: any) => colors.map((c, i) => ({
-      x: xOf(i), y: skip && skip(i) ? null : ys[i], color: c, pos: posOf(i), value: fmt(ys[i]),
-    }));
+    const pts = (ys: any, fmt: any, skip: any) =>
+      colors.map((c, i) => ({
+        x: xOf(i),
+        y: skip && skip(i) ? null : ys[i],
+        color: c,
+        pos: posOf(i),
+        value: fmt(ys[i]),
+      }));
     return { colors, Ls, m, C, h, n, qual, xOf, pts, reversed };
   }
 
@@ -174,13 +221,29 @@ export function setupCmapPlots(ctx: CmapViewerContext) {
     return steps.map((v, i) => {
       const t = (i + 0.5) / k;
       return {
-        x: t, y: v, color: colors[Math.round(t * (n - 1))],
-        pos: `t = ${(i / k).toFixed(3)}–${((i + 1) / k).toFixed(3)}`, value: `ΔE2000 = ${v.toFixed(2)}`,
+        x: t,
+        y: v,
+        color: colors[Math.round(t * (n - 1))],
+        pos: `t = ${(i / k).toFixed(3)}–${((i + 1) / k).toFixed(3)}`,
+        value: `ΔE2000 = ${v.toFixed(2)}`,
       };
     });
   }
 
   const HUE_MIN_CHROMA = 5;
 
-  return { M, PW, PH, niceAxis, drawAxes, drawSeries, linePlot, figure, POS_TICKS, profile, stepPoints, HUE_MIN_CHROMA };
+  return {
+    M,
+    PW,
+    PH,
+    niceAxis,
+    drawAxes,
+    drawSeries,
+    linePlot,
+    figure,
+    POS_TICKS,
+    profile,
+    stepPoints,
+    HUE_MIN_CHROMA,
+  };
 }

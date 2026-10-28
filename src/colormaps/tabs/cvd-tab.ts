@@ -1,7 +1,7 @@
-import type { CmapViewerContext } from '../../types/index.ts';
-import { createFigureInput } from '../figure-input.ts';
 import { deltaE2000, rgbToHex, rgbToLab } from '../../core/color.ts';
 import { ACHROMAT, cvdLinearFn, resolveCvdModel, simulateCvdPixels } from '../../core/cvd.ts';
+import type { CmapViewerContext } from '../../types/index.ts';
+import { createFigureInput } from '../figure-input.ts';
 
 // The CVD tab of the colormap viewer (colormaps.html): a figure next to how
 // it may look with a color vision deficiency (or with no color at all), after the DaltonLens simulator
@@ -13,12 +13,29 @@ import { ACHROMAT, cvdLinearFn, resolveCvdModel, simulateCvdPixels } from '../..
 const TYPES: [string, string, string, string, string][] = [
   // key, button, full name, partial name, what is missing (tooltip)
   ['protanopia', 'Protan', 'Protanopia', 'Protanomaly', 'Missing or shifted L (red) cones'],
-  ['deuteranopia', 'Deutan', 'Deuteranopia', 'Deuteranomaly', 'Missing or shifted M (green) cones; the most common kind'],
+  [
+    'deuteranopia',
+    'Deutan',
+    'Deuteranopia',
+    'Deuteranomaly',
+    'Missing or shifted M (green) cones; the most common kind',
+  ],
   ['tritanopia', 'Tritan', 'Tritanopia', 'Tritanomaly', 'Missing or shifted S (blue) cones; rare'],
-  ['achromatopsia', 'Gray', 'Achromatopsia', 'Achromatomaly', 'Achromatopsia: no color vision at all. Shown as the gray of the same luminance (CIELAB L*), as in Browse; very rare'],
+  [
+    'achromatopsia',
+    'Gray',
+    'Achromatopsia',
+    'Achromatomaly',
+    'Achromatopsia: no color vision at all. Shown as the gray of the same luminance (CIELAB L*), as in Browse; very rare',
+  ],
 ];
 const TYPE = new Map(TYPES.map((t) => [t[0], t]));
-const MODEL_NAMES: Record<string, string> = { brettel: 'Brettel 1997', vienot: 'Viénot 1999', machado: 'Machado 2009', luminance: 'grayscale by luminance' };
+const MODEL_NAMES: Record<string, string> = {
+  brettel: 'Brettel 1997',
+  vienot: 'Viénot 1999',
+  machado: 'Machado 2009',
+  luminance: 'grayscale by luminance',
+};
 const DEFAULT_TYPE = 'deuteranopia';
 const CHUNK = 400000; // pixels simulated between pauses
 const KEEP = 6; // simulated images kept, so going back to a setting is instant
@@ -29,7 +46,13 @@ export function setupCmapCvd(ctx: CmapViewerContext) {
 
   const d = el('section', { class: 'cmap-cvd', 'aria-labelledby': 'cmap-cvd-title', hidden: '' });
   d.append(el('h2', { id: 'cmap-cvd-title' }, 'Simulate color vision deficiency'));
-  d.append(el('p', { class: 'muted' }, 'See a figure next to how it may look to someone with a color vision deficiency (CVD), to check that its colors stay apart. The image stays in your browser.'));
+  d.append(
+    el(
+      'p',
+      { class: 'muted' },
+      'See a figure next to how it may look to someone with a color vision deficiency (CVD), to check that its colors stay apart. The image stays in your browser.',
+    ),
+  );
 
   const EMPTY_HINT = 'Drop an image here, paste one (Ctrl/Cmd+V), or click to choose a file (PNG, JPEG, WebP or GIF).';
   const status = el('p', { class: 'cmap-id-status', 'aria-live': 'polite' });
@@ -37,9 +60,16 @@ export function setupCmapCvd(ctx: CmapViewerContext) {
   // ---- controls ----
   let type = DEFAULT_TYPE; // or 'all'
   const kinds = el('div', { class: 'cmap-tabs', role: 'group', 'aria-label': 'Deficiency' });
-  const kindBtns = [...TYPES.map(([k, label, , , tip]) => [k, label, tip]), ['all', 'All', 'All four kinds next to the original']].map(([k, label, tip]) => {
+  const kindBtns = [
+    ...TYPES.map(([k, label, , , tip]) => [k, label, tip]),
+    ['all', 'All', 'All four kinds next to the original'],
+  ].map(([k, label, tip]) => {
     const b = el('button', { type: 'button', 'aria-pressed': 'false', title: tip }, label);
-    b.addEventListener('click', () => { type = k; syncKinds(); render(); });
+    b.addEventListener('click', () => {
+      type = k;
+      syncKinds();
+      render();
+    });
     if (k === 'achromatopsia') b.setAttribute('aria-label', 'Gray (achromatopsia)');
     kinds.append(b);
     return [k, b];
@@ -58,14 +88,28 @@ export function setupCmapCvd(ctx: CmapViewerContext) {
     ['brettel', 'Brettel 1997'],
     ['vienot', 'Viénot 1999 (protan, deutan)'],
     ['machado', 'Machado 2009'],
-  ]) model.append(el('option', { value: v }, label));
+  ])
+    model.append(el('option', { value: v }, label));
   syncKinds();
   const download = el('button', { type: 'button', class: 'btn small primary', hidden: '' }, 'Download PNG');
   const fieldsRow = el('div', { class: 'cmap-rc-fields' });
   fieldsRow.append(
-    field('Deficiency', 'Which kind of cone is missing (or shifted, below full severity). Gray is achromatopsia: no color at all.', kinds),
-    field('Severity', '1 is dichromacy (protanopia, deuteranopia, tritanopia): one kind of cone is missing. Below 1 is anomalous trichromacy (protanomaly etc.): the cone is shifted, a milder and more common form. 0 is normal vision.', sev, sevOut),
-    field('Model', 'Recommended follows the DaltonLens review: Brettel 1997 for tritan, Machado 2009 for protan and deutan (it models partial severity best). Viénot 1999 does not model tritan; Brettel 1997 is used instead. Gray needs no model.', model),
+    field(
+      'Deficiency',
+      'Which kind of cone is missing (or shifted, below full severity). Gray is achromatopsia: no color at all.',
+      kinds,
+    ),
+    field(
+      'Severity',
+      '1 is dichromacy (protanopia, deuteranopia, tritanopia): one kind of cone is missing. Below 1 is anomalous trichromacy (protanomaly etc.): the cone is shifted, a milder and more common form. 0 is normal vision.',
+      sev,
+      sevOut,
+    ),
+    field(
+      'Model',
+      'Recommended follows the DaltonLens review: Brettel 1997 for tritan, Machado 2009 for protan and deutan (it models partial severity best). Viénot 1999 does not model tritan; Brettel 1997 is used instead. Gray needs no model.',
+      model,
+    ),
   );
   const controls = el('div', { class: 'cmap-rc-controls', hidden: '' });
   controls.append(fieldsRow);
@@ -104,9 +148,15 @@ export function setupCmapCvd(ctx: CmapViewerContext) {
       job++;
       clearMarks();
       readout.textContent = '';
-      if (!keepImage) { controls.hidden = download.hidden = true; grid.hidden = true; note.hidden = true; }
+      if (!keepImage) {
+        controls.hidden = download.hidden = true;
+        grid.hidden = true;
+        note.hidden = true;
+      }
     },
-    onError: (msg: any) => { status.textContent = msg; },
+    onError: (msg: any) => {
+      status.textContent = msg;
+    },
   });
   fig.clear.addEventListener('click', () => fig.loadExample());
   fig.canvas.classList.add('cmap-cvd-canvas');
@@ -127,17 +177,31 @@ export function setupCmapCvd(ctx: CmapViewerContext) {
   const orig = panel(fig.canvas, 'original');
   orig.cap.textContent = 'Original';
   const sims: any[] = TYPES.map(([k, , name]) => {
-    const c = el('canvas', { class: 'cmap-id-canvas cmap-cvd-canvas', role: 'img', 'aria-label': `${name} simulation` });
+    const c = el('canvas', {
+      class: 'cmap-id-canvas cmap-cvd-canvas',
+      role: 'img',
+      'aria-label': `${name} simulation`,
+    });
     return panel(c, k);
   });
   const panels = [orig, ...sims];
   grid.append(...panels.map((p) => p.f));
   const readout = el('p', { class: 'cmap-cvd-readout muted' });
   const note = el('p', { class: 'cmap-fig-cap muted', hidden: '' });
-  note.append('Simulated in linear sRGB with ', ref('brettel', 'Brettel et al. 1997'), ', ', ref('vienot', 'Viénot et al. 1999'), ' (both with libDaltonLens’ parameters) or ',
-    ref('machado', 'Machado et al. 2009'), '; Recommended follows the ', ref('daltonlens', 'DaltonLens review'),
-    '. Gray shows each color as the gray of the same luminance (CIELAB L*). A simulation shows which colors become hard to tell apart, not exactly what any one person sees. Hover to compare colors; press and hold a simulation to see the original.');
-  function ref(key: any, text: any) { return el('a', { href: `#ref-${key}` }, text); }
+  note.append(
+    'Simulated in linear sRGB with ',
+    ref('brettel', 'Brettel et al. 1997'),
+    ', ',
+    ref('vienot', 'Viénot et al. 1999'),
+    ' (both with libDaltonLens’ parameters) or ',
+    ref('machado', 'Machado et al. 2009'),
+    '; Recommended follows the ',
+    ref('daltonlens', 'DaltonLens review'),
+    '. Gray shows each color as the gray of the same luminance (CIELAB L*). A simulation shows which colors become hard to tell apart, not exactly what any one person sees. Hover to compare colors; press and hold a simulation to see the original.',
+  );
+  function ref(key: any, text: any) {
+    return el('a', { href: `#ref-${key}` }, text);
+  }
 
   d.append(fig.zone, fig.file, controls, status, grid, readout, note);
 
@@ -151,7 +215,8 @@ export function setupCmapCvd(ctx: CmapViewerContext) {
     const [, label, full, partial] = TYPE.get(k)!;
     const s = severity();
     const used = resolveCvdModel(k, model.value);
-    const m = MODEL_NAMES[used] + (k === 'tritanopia' && model.value === 'vienot' ? '; Viénot 1999 has no tritan model' : '');
+    const m =
+      MODEL_NAMES[used] + (k === 'tritanopia' && model.value === 'vienot' ? '; Viénot 1999 has no tritan model' : '');
     if (s === 0) return `${label}, severity 0: normal vision`;
     return s >= 1 ? `${full} (${m})` : `${partial}, severity ${s.toFixed(1)} (${m})`;
   }
@@ -161,7 +226,11 @@ export function setupCmapCvd(ctx: CmapViewerContext) {
   async function simulate(k: any, my: any) {
     const key = `${k}|${resolveCvdModel(k, model.value)}|${severity()}`;
     const hit = cache.get(key);
-    if (hit) { cache.delete(key); cache.set(key, hit); return hit; } // most recent last
+    if (hit) {
+      cache.delete(key);
+      cache.set(key, hit);
+      return hit;
+    } // most recent last
     const src = fig.img;
     const out = new ImageData(src!.width, src!.height);
     const opts: any = { model: model.value, severity: severity(), out: out.data, cache: new Map() };
@@ -213,14 +282,20 @@ export function setupCmapCvd(ctx: CmapViewerContext) {
   sev.addEventListener('input', () => {
     sevOut.textContent = severity().toFixed(1);
     if (sevFrame) return;
-    sevFrame = requestAnimationFrame(() => { sevFrame = 0; render(); });
+    sevFrame = requestAnimationFrame(() => {
+      sevFrame = 0;
+      render();
+    });
   });
   model.addEventListener('change', render);
 
   // ---- hover: the same spot on every panel, with its colors ----
   let last: any = null; // the last hovered image pixel
   const hex = (rgb: any) => rgbToHex(rgb);
-  const pixel = (data: any, x: any, y: any) => { const o = (y * data.width + x) * 4; return [data.data[o], data.data[o + 1], data.data[o + 2]]; };
+  const pixel = (data: any, x: any, y: any) => {
+    const o = (y * data.width + x) * 4;
+    return [data.data[o], data.data[o + 1], data.data[o + 2]];
+  };
 
   function clearMarks() {
     last = null;
@@ -263,7 +338,10 @@ export function setupCmapCvd(ctx: CmapViewerContext) {
       if (x < 0 || y < 0 || x >= fig.img.width || y >= fig.img.height) return;
       showAt({ x, y });
     });
-    p.canvas.addEventListener('pointerleave', () => { clearMarks(); readout.textContent = ''; });
+    p.canvas.addEventListener('pointerleave', () => {
+      clearMarks();
+      readout.textContent = '';
+    });
   }
 
   // Press and hold a simulation to see the original in its place.
@@ -308,7 +386,10 @@ export function setupCmapCvd(ctx: CmapViewerContext) {
       what = `cvd-${model.value}-s${severity().toFixed(1)}`;
     }
     c.toBlob((blob: any) => {
-      if (!blob) { status.textContent = 'Could not make the PNG.'; return; }
+      if (!blob) {
+        status.textContent = 'Could not make the PNG.';
+        return;
+      }
       const a = el('a', { href: URL.createObjectURL(blob), download: `${fig.name}-${what}.png` });
       document.body.append(a);
       a.click();

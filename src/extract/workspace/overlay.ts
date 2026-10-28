@@ -1,5 +1,5 @@
-import { bilinear, outerCorners, rectCorners } from '../../core/grid.ts';
 import { pointAtT, projectT } from '../../core/colorbar.ts';
+import { bilinear, outerCorners, rectCorners } from '../../core/grid.ts';
 import type { OverlayMembers, Panel, Point, ViewerApi, WorkspaceContext } from '../../types/index.ts';
 
 // What the workspace draws over the image: grids, colorbars with their

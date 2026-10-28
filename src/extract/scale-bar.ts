@@ -55,7 +55,13 @@ export function drawScaleBar(ws: Workspace, ctx: CanvasRenderingContext2D, v: Vi
 }
 
 // The dashed line from the first end to the pointer while measuring.
-export function drawScalePreview(ws: Workspace, ctx: CanvasRenderingContext2D, v: ViewerApi, m: Mode, hover: Point | undefined) {
+export function drawScalePreview(
+  ws: Workspace,
+  ctx: CanvasRenderingContext2D,
+  v: ViewerApi,
+  m: Mode,
+  hover: Point | undefined,
+) {
   if (m.type !== 'scale' || m.points.length !== 1 || !hover) return;
   const a = v.toScreen(m.points[0]);
   const b = v.toScreen(ws.snapAxis(m.points[0], hover));

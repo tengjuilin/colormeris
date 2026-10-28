@@ -1,4 +1,3 @@
-
 // Sources of the colormaps shown in colormaps.html, and of the methods used
 // there. citeFor(name) gives the reference keys for one colormap.
 
@@ -141,16 +140,62 @@ const REFS: Record<string, { text: string; url: string | null }> = {
 
 const BY_NAME: Record<string, string> = {};
 // seaborn's names have no prefix (it registers rocket and vlag that way).
-const SEABORN = ['rocket', 'mako', 'flare', 'crest', 'vlag', 'icefire', 'deep', 'muted', 'pastel', 'bright', 'dark', 'colorblind'];
-const set = (key: string, names: string[]) => names.forEach((n) => {
+const SEABORN = [
+  'rocket',
+  'mako',
+  'flare',
+  'crest',
+  'vlag',
+  'icefire',
+  'deep',
+  'muted',
+  'pastel',
+  'bright',
+  'dark',
+  'colorblind',
+];
+const set = (key: string, names: string[]) =>
+  names.forEach((n) => {
     BY_NAME[n] = key;
   });
 set('viridis', ['viridis', 'plasma', 'inferno', 'magma']);
 set('cividis', ['cividis']);
 set('colorbrewer', [
-  'Greys', 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds', 'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
-  'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn', 'PiYG', 'PRGn', 'BrBG', 'PuOr', 'RdGy', 'RdBu', 'RdYlBu',
-  'RdYlGn', 'Spectral', 'Pastel1', 'Pastel2', 'Paired', 'Accent', 'Dark2', 'Set1', 'Set2', 'Set3',
+  'Greys',
+  'Purples',
+  'Blues',
+  'Greens',
+  'Oranges',
+  'Reds',
+  'YlOrBr',
+  'YlOrRd',
+  'OrRd',
+  'PuRd',
+  'RdPu',
+  'BuPu',
+  'GnBu',
+  'PuBu',
+  'YlGnBu',
+  'PuBuGn',
+  'BuGn',
+  'YlGn',
+  'PiYG',
+  'PRGn',
+  'BrBG',
+  'PuOr',
+  'RdGy',
+  'RdBu',
+  'RdYlBu',
+  'RdYlGn',
+  'Spectral',
+  'Pastel1',
+  'Pastel2',
+  'Paired',
+  'Accent',
+  'Dark2',
+  'Set1',
+  'Set2',
+  'Set3',
 ]);
 set('crameri', ['berlin', 'managua', 'vanimo']);
 set('coolwarm', ['coolwarm']);

@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { labelsTool, labelsUserText, parseLabelsAnswer } from './labels.ts';
 
-const msg = (args: unknown) => ({ toolCalls: [{ function: { name: 'set_labels', arguments: typeof args === 'string' ? args : JSON.stringify(args) } }] });
+const msg = (args: unknown) => ({
+  toolCalls: [{ function: { name: 'set_labels', arguments: typeof args === 'string' ? args : JSON.stringify(args) } }],
+});
 
 test('labelsTool requires both label lists', () => {
   const t = labelsTool();

@@ -1,5 +1,5 @@
-import { labToT } from '../core/colorbar.ts';
 import { rgbToLab } from '../core/color.ts';
+import { labToT } from '../core/colorbar.ts';
 import type { MatchMap } from '../core/colormap-match.ts';
 import { cmapColorAt } from '../core/colormap-match.ts';
 import type { ColorbarSample, PixelImage, Rgb } from '../types/index.ts';
@@ -104,7 +104,11 @@ function mapLut(map: MatchMap, reversed = false) {
 // The new map's color for each bar position t (the order of the sampled
 // bar). `flip` turns the bar's t around first, when it was drawn from the
 // high end, so the low end of the old map becomes the low end of the new one.
-export function newColorAt(map: MatchMap, t: number, { reversed = false, flip = false }: { reversed?: boolean; flip?: boolean } = {}) {
+export function newColorAt(
+  map: MatchMap,
+  t: number,
+  { reversed = false, flip = false }: { reversed?: boolean; flip?: boolean } = {},
+) {
   const u = flip ? 1 - t : t;
   return cmapColorAt(map, reversed ? 1 - u : u);
 }
@@ -132,7 +136,12 @@ export function recolorPixels(
   img: PixelImage,
   index: ColorIndex,
   map: MatchMap,
-  { tolerance = 12, reversed = false, flip = false, region = null }: { tolerance?: number; reversed?: boolean; flip?: boolean; region?: Uint8Array | null } = {},
+  {
+    tolerance = 12,
+    reversed = false,
+    flip = false,
+    region = null,
+  }: { tolerance?: number; reversed?: boolean; flip?: boolean; region?: Uint8Array | null } = {},
 ) {
   if (lastLut?.rgbs !== map.rgbs || lastLut.kind !== map.kind || lastLut.reversed !== reversed) {
     lastLut = { rgbs: map.rgbs, kind: map.kind, reversed, lut: mapLut(map, reversed) };
@@ -171,7 +180,11 @@ export function similarMask(
   t0: number,
   band: number,
   tolerance = 12,
-  { step = 1, mask = null, region = null }: { step?: number; mask?: Uint8Array | null; region?: Uint8Array | null } = {},
+  {
+    step = 1,
+    mask = null,
+    region = null,
+  }: { step?: number; mask?: Uint8Array | null; region?: Uint8Array | null } = {},
 ) {
   const { t, de } = index;
   const s = Math.max(1, Math.floor(step));
@@ -184,7 +197,10 @@ export function similarMask(
     const row = y * s * index.width;
     for (let x = 0; x < w; x++, j++) {
       const i = row + x * s;
-      if (region && !region[i]) { m[j] = 0; continue; }
+      if (region && !region[i]) {
+        m[j] = 0;
+        continue;
+      }
       const on = de[i] <= tolerance && Math.abs(t[i] - t0) <= band ? 1 : 0;
       m[j] = on;
       count += on;
@@ -233,7 +249,7 @@ export function sinePattern(n: number, kind = 'waves') {
           const cy = (Math.floor(q / K) + 0.5) / K;
           bump += Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / s2);
         }
-        out[j * n + i] = Math.min(1, (1 - H) * (x + y) / 2 + H * bump);
+        out[j * n + i] = Math.min(1, ((1 - H) * (x + y)) / 2 + H * bump);
       }
     }
     return out;
@@ -246,9 +262,10 @@ export function sinePattern(n: number, kind = 'waves') {
     for (let i = 0; i < n; i++) {
       const x = at(i);
       const r = Math.hypot(x - 0.62, y - 0.38);
-      const v = 0.4 * Math.sin(TAU * (1.35 * x + 0.45 * y))
-        + 0.35 * Math.sin(TAU * (0.4 * x - 1.05 * y) + 1)
-        + 0.25 * Math.sin(TAU * 2.3 * r);
+      const v =
+        0.4 * Math.sin(TAU * (1.35 * x + 0.45 * y)) +
+        0.35 * Math.sin(TAU * (0.4 * x - 1.05 * y) + 1) +
+        0.25 * Math.sin(TAU * 2.3 * r);
       out[j * n + i] = v;
       if (v < lo) lo = v;
       if (v > hi) hi = v;
@@ -282,7 +299,11 @@ export function colorsLut(colors: Rgb[], qualitative = false) {
 }
 
 // Values in [0, 1] → RGBA bytes through a LUT from colorsLut.
-export function paintValues(values: ArrayLike<number>, lut: Uint8ClampedArray, out = new Uint8ClampedArray(values.length * 4)) {
+export function paintValues(
+  values: ArrayLike<number>,
+  lut: Uint8ClampedArray,
+  out = new Uint8ClampedArray(values.length * 4),
+) {
   for (let i = 0; i < values.length; i++) {
     const k = Math.round(Math.min(1, Math.max(0, values[i])) * (LUT_N - 1)) * 3;
     out[i * 4] = lut[k];

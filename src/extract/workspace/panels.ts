@@ -1,5 +1,5 @@
-import { createPanel } from '../project/project.ts';
 import type { Panel, PanelSettings, PanelsMembers, WorkspaceContext } from '../../types/index.ts';
+import { createPanel } from '../project/project.ts';
 
 // Panels: the Panels card (chips, name, add and delete), links to other
 // pages with panels, and the rule that every page shown has a panel.
@@ -23,8 +23,20 @@ export function setupWorkspacePanels(w: WorkspaceContext): PanelsMembers {
         const problem = w.toolFor(p).panelProblem(p);
         const review = !problem && w.ws.reviewStatus?.(p);
         dot.className = `status-dot${problem ? '' : review === 'rejected' ? ' rejected' : ' done'}`;
-        btn.append(dot, Object.assign(document.createElement('span'), { className: 'chip-label', textContent: p.name || '(unnamed)' }));
-        btn.title = problem || (review === 'rejected' ? `Rejected in review${p.review!.note ? `: ${p.review!.note}` : ''}` : review === 'accepted' ? 'Calibrated and accepted' : 'Calibrated');
+        btn.append(
+          dot,
+          Object.assign(document.createElement('span'), {
+            className: 'chip-label',
+            textContent: p.name || '(unnamed)',
+          }),
+        );
+        btn.title =
+          problem ||
+          (review === 'rejected'
+            ? `Rejected in review${p.review!.note ? `: ${p.review!.note}` : ''}`
+            : review === 'accepted'
+              ? 'Calibrated and accepted'
+              : 'Calibrated');
         btn.addEventListener('click', () => {
           if (p.id === app.project.activePanelId) return;
           w.setMode(null);
@@ -58,16 +70,36 @@ export function setupWorkspacePanels(w: WorkspaceContext): PanelsMembers {
       .map(([page, names]) => {
         const btn = document.createElement('button');
         btn.className = 'chip';
-        btn.append(Object.assign(document.createElement('span'), { className: 'chip-label', textContent: `Page ${page}: ${names.join(', ')}` }));
+        btn.append(
+          Object.assign(document.createElement('span'), {
+            className: 'chip-label',
+            textContent: `Page ${page}: ${names.join(', ')}`,
+          }),
+        );
         btn.title = `Go to page ${page}`;
         btn.addEventListener('click', () => w.goToPage(page));
         return btn;
       });
-    box.replaceChildren(Object.assign(document.createElement('span'), { className: 'hint', textContent: 'Other pages:' }), ...items);
+    box.replaceChildren(
+      Object.assign(document.createElement('span'), { className: 'hint', textContent: 'Other pages:' }),
+      ...items,
+    );
   }
 
   function isEmptyPanel(p: Panel) {
-    return !p.grid.corners && !p.colorbar.start && !p.colorbar.colormap && !p.colorbar.ticks.length && !p.grid.rowLabels.length && !p.grid.colLabels.length && !p.grid.boxLabels.length && !p.rois.length && !p.map.x.ticks.length && !p.map.y.ticks.length && !p.map.profiles.length;
+    return (
+      !p.grid.corners &&
+      !p.colorbar.start &&
+      !p.colorbar.colormap &&
+      !p.colorbar.ticks.length &&
+      !p.grid.rowLabels.length &&
+      !p.grid.colLabels.length &&
+      !p.grid.boxLabels.length &&
+      !p.rois.length &&
+      !p.map.x.ticks.length &&
+      !p.map.y.ticks.length &&
+      !p.map.profiles.length
+    );
   }
 
   // Every page shown gets at least one panel of the active tool to calibrate.
@@ -123,7 +155,10 @@ export function setupWorkspacePanels(w: WorkspaceContext): PanelsMembers {
   $('panel-delete').addEventListener('click', () => {
     const panel = w.activePanel();
     const last = w.pagePanels().length < 2;
-    if (!confirm(last ? `Clear panel "${panel.name}"? A page always keeps one panel.` : `Delete panel "${panel.name}"?`)) return;
+    if (
+      !confirm(last ? `Clear panel "${panel.name}"? A page always keeps one panel.` : `Delete panel "${panel.name}"?`)
+    )
+      return;
     removePanel(panel);
   });
   w.bindText('panel-name', (p, v) => (p.name = v));

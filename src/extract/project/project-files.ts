@@ -33,7 +33,6 @@ export interface ProfileNorm {
 
 // CSV formatting and project zip packaging.
 
-
 export function formatNumber(v: number | null | undefined) {
   if (!Number.isFinite(v)) return '';
   return String(Number((v as number).toPrecision(6)));
@@ -62,7 +61,9 @@ export function toWideCsv(panel: Panel, result: HeatmapResult) {
 // value; reason gray, hue or far) or empty; bound: <= or >= when the
 // value is only a bound (past a bar end, or an open end bin).
 export function toLongCsv(items: ResultItem[]) {
-  const lines = [csvLine(['panel', 'page', 'row', 'col', 'value', 'r', 'g', 'b', 'deltaE', 'flagged', 'status', 'bound', 'reason'])];
+  const lines = [
+    csvLine(['panel', 'page', 'row', 'col', 'value', 'r', 'g', 'b', 'deltaE', 'flagged', 'status', 'bound', 'reason']),
+  ];
   for (const { panel, result: res } of items) {
     if (res.error) continue;
     const result = res as HeatmapResult;
@@ -93,7 +94,10 @@ export function toLongCsv(items: ResultItem[]) {
 }
 
 export function safeFileName(name: unknown) {
-  const s = String(name).trim().replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  const s = String(name)
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
   return s || 'untitled';
 }
 
@@ -117,7 +121,22 @@ const pageImagePath = (page: number | string) => `source/page-${page}.png`;
 // with results from quantifyPanel.
 export function roiCsv(items: ResultItem[]) {
   const unit = (items.find((it) => (it.result as RoiResult).unit)?.result as RoiResult | undefined)?.unit;
-  const head = ['panel', 'page', 'box', 'row', 'col', 'roi', 'shape', 'area_px', 'signal_px', 'flagged_px', 'sum', 'mean', 'mean_signal', 'max'];
+  const head = [
+    'panel',
+    'page',
+    'box',
+    'row',
+    'col',
+    'roi',
+    'shape',
+    'area_px',
+    'signal_px',
+    'flagged_px',
+    'sum',
+    'mean',
+    'mean_signal',
+    'max',
+  ];
   if (unit) head.push(`area_${unit}2`, `signal_area_${unit}2`, 'sum_x_area');
   const lines = [csvLine(head)];
   for (const { panel, result: res } of items) {
@@ -142,7 +161,12 @@ export function roiCsv(items: ResultItem[]) {
         formatNumber(s.meanSignal),
         formatNumber(s.max),
       ];
-      if (unit) line.push(...(s.area !== undefined ? [formatNumber(s.area), formatNumber(s.signalArea), formatNumber(s.sumArea)] : ['', '', '']));
+      if (unit)
+        line.push(
+          ...(s.area !== undefined
+            ? [formatNumber(s.area), formatNumber(s.signalArea), formatNumber(s.sumArea)]
+            : ['', '', '']),
+        );
       lines.push(csvLine(line));
     }
   }
@@ -154,7 +178,10 @@ export function roiCsv(items: ResultItem[]) {
 // constants imported above).
 
 // Column headers of a map: axis names, or pixel or scale-bar offsets (see mapCoord).
-const mapAxisNames = (result: MapField) => [result.xName ?? (result.xAxis ? 'x' : 'x_px'), result.yName ?? (result.yAxis ? 'y' : 'y_px')];
+const mapAxisNames = (result: MapField) => [
+  result.xName ?? (result.xAxis ? 'x' : 'x_px'),
+  result.yName ?? (result.yAxis ? 'y' : 'y_px'),
+];
 
 // Matrix layout: header row of x at bin centres, first column y at bin centres,
 // rows top to bottom as on the page.
@@ -183,7 +210,18 @@ export function mapLongCsv(items: ResultItem[]) {
         const f = result.flags[i];
         const clip = f & FLAG_LOW ? 'low' : f & FLAG_HIGH ? 'high' : '';
         lines.push(
-          [name, panel.page, r + 1, c + 1, formatNumber(result.xs[c]), formatNumber(result.ys[r]), formatNumber(result.values[i]), result.deltaE[i].toFixed(2), f & FLAG_DELTA_E ? 1 : 0, clip].join(','),
+          [
+            name,
+            panel.page,
+            r + 1,
+            c + 1,
+            formatNumber(result.xs[c]),
+            formatNumber(result.ys[r]),
+            formatNumber(result.values[i]),
+            result.deltaE[i].toFixed(2),
+            f & FLAG_DELTA_E ? 1 : 0,
+            clip,
+          ].join(','),
         );
       }
     }
@@ -196,14 +234,38 @@ export function mapLongCsv(items: ResultItem[]) {
 // follows the value. With a scale-bar unit, a d_<unit> column follows d_px.
 // Samples outside the plot area are left out.
 export function profileCsv(samples: ProfileSample[], norm: ProfileNorm | null = null, unit: ScaleUnit | null = null) {
-  const head = ['d_px', ...(unit ? [`d_${unit}`] : []), 'x', 'y', 'page_x', 'page_y', 'value', ...(norm ? [`value_per_${norm.mode}`] : []), 'deltaE', 'flagged', 'clipped'];
+  const head = [
+    'd_px',
+    ...(unit ? [`d_${unit}`] : []),
+    'x',
+    'y',
+    'page_x',
+    'page_y',
+    'value',
+    ...(norm ? [`value_per_${norm.mode}`] : []),
+    'deltaE',
+    'flagged',
+    'clipped',
+  ];
   const lines = [csvLine(head)];
   for (const s of samples) {
     if (s.outside) continue;
     const len = unit ? [formatNumber(s.len as number)] : [];
     const scaled = norm ? [formatNumber(s.value / norm.divisor)] : [];
     lines.push(
-      [s.d.toFixed(2), ...len, formatNumber(s.x as number), formatNumber(s.y as number), s.px.toFixed(2), s.py.toFixed(2), formatNumber(s.value), ...scaled, s.deltaE.toFixed(2), s.flagged ? 1 : 0, s.clipped ? 1 : 0].join(','),
+      [
+        s.d.toFixed(2),
+        ...len,
+        formatNumber(s.x as number),
+        formatNumber(s.y as number),
+        s.px.toFixed(2),
+        s.py.toFixed(2),
+        formatNumber(s.value),
+        ...scaled,
+        s.deltaE.toFixed(2),
+        s.flagged ? 1 : 0,
+        s.clipped ? 1 : 0,
+      ].join(','),
     );
   }
   return lines.join('\n') + '\n';
@@ -211,10 +273,14 @@ export function profileCsv(samples: ProfileSample[], norm: ProfileNorm | null = 
 
 // Several profiles in one long table with a profile column: [{name,
 // samples, norm}] (norm and unit as in profileCsv, the same for all).
-export function profilesCsv(entries: { name: string; samples: ProfileSample[]; norm?: ProfileNorm | null }[], unit: ScaleUnit | null = null) {
+export function profilesCsv(
+  entries: { name: string; samples: ProfileSample[]; norm?: ProfileNorm | null }[],
+  unit: ScaleUnit | null = null,
+) {
   const lines = [`profile,${profileCsv([], entries[0]?.norm, unit).trim()}`];
   for (const { name, samples, norm } of entries) {
-    for (const line of profileCsv(samples, norm, unit).trim().split('\n').slice(1)) lines.push(`${csvEscape(name)},${line}`);
+    for (const line of profileCsv(samples, norm, unit).trim().split('\n').slice(1))
+      lines.push(`${csvEscape(name)},${line}`);
   }
   return lines.join('\n') + '\n';
 }
@@ -234,7 +300,10 @@ export function mapPanelFiles(panel: Panel, result: MapResult | null | undefined
     let name = safeFileName(l.name);
     while (used.has(name)) name += '_';
     used.add(name);
-    files.push({ path: `data/${base}_profile_${name}.csv`, content: profileCsv(samples, null, lengthPerPixel(panel.scale) ? panel.scale!.unit : null) });
+    files.push({
+      path: `data/${base}_profile_${name}.csv`,
+      content: profileCsv(samples, null, lengthPerPixel(panel.scale) ? panel.scale!.unit : null),
+    });
   }
   return files;
 }
@@ -265,7 +334,12 @@ export function heatmapPanelFiles(panel: Panel, result: PanelResult | null | und
 // such as data CSVs.
 export async function buildProjectZip(
   JSZip: typeof JSZipType,
-  { project, sourceFile, pagePngs, files = [] }: { project: Project; sourceFile: File | null; pagePngs: Map<number, Blob>; files?: ZipFile[] },
+  {
+    project,
+    sourceFile,
+    pagePngs,
+    files = [],
+  }: { project: Project; sourceFile: File | null; pagePngs: Map<number, Blob>; files?: ZipFile[] },
 ) {
   const zip = new JSZip();
   const json = serializeProject(project);
@@ -291,7 +365,8 @@ export async function buildProjectZip(
 export async function readProjectZip(JSZip: typeof JSZipType, blob: Blob) {
   const zip = await JSZip.loadAsync(blob);
   const entry = zip.file('project.json');
-  if (!entry && zip.file('settings.json')) throw new Error('this is a settings zip. Import it under Settings → Import and export.');
+  if (!entry && zip.file('settings.json'))
+    throw new Error('this is a settings zip. Import it under Settings → Import and export.');
   if (!entry) throw new Error('Invalid project zip: project.json not found.');
   let json: Raw;
   try {

@@ -2,6 +2,7 @@ import { colorDistance, deltaE76, rgbToLab } from '../../core/color.ts';
 import { colorAtT, colorbarSamples, labToT, makeValueFn, sampleColorbar, tickProblem } from '../../core/colorbar.ts';
 import { bilinear, gridPixelSize, invertBilinear, readPixel } from '../../core/grid.ts';
 import type {
+  ColorbarSample,
   Corners,
   ErrorResult,
   MapField,
@@ -15,7 +16,6 @@ import type {
   ProfileSample,
   Rgb,
   ScaleBar,
-  ColorbarSample,
 } from '../../types/index.ts';
 import { colorbarProblem, createProfile, ticksWithT } from '../project/project.ts';
 
@@ -59,7 +59,8 @@ export function mapProblem(panel: Panel): string | null {
   const bar = colorbarProblem(panel);
   if (bar) return bar;
   const { rows, cols } = mapSize(panel);
-  if (rows * cols > MAX_MAP_CELLS) return `${cols} × ${rows} values is too many; use a larger bin (at most ${MAX_MAP_CELLS.toLocaleString('en-US')} values).`;
+  if (rows * cols > MAX_MAP_CELLS)
+    return `${cols} × ${rows} values is too many; use a larger bin (at most ${MAX_MAP_CELLS.toLocaleString('en-US')} values).`;
   return null;
 }
 
@@ -97,7 +98,8 @@ export function axisFn(panel: Panel, key: AxisKey) {
   if (!axis.ticks.length) return { fn: null, problem: null as string | null };
   const ticks = axis.ticks.map((k) => ({ ...k, t: axisT(panel, key, k) }));
   const problem = tickProblem(ticks, axis.scale);
-  if (problem) return { fn: null, problem: `${key.toUpperCase()} axis: ${problem.replace('along the bar', 'along the axis')}` };
+  if (problem)
+    return { fn: null, problem: `${key.toUpperCase()} axis: ${problem.replace('along the bar', 'along the axis')}` };
   return { fn: makeValueFn(ticks, axis.scale), problem: null };
 }
 
@@ -123,7 +125,8 @@ export function makeColorReader(samples: ColorbarSample[], valueAt: (t: number) 
     if (!hit) {
       const lab = rgbToLab([r, g, b]);
       const { t, deltaE } = labToT(lab, samples, settings.distance);
-      const clip = dist(lab, low) <= deltaE + CLIP_DELTA_E ? FLAG_LOW : dist(lab, high) <= deltaE + CLIP_DELTA_E ? FLAG_HIGH : 0;
+      const clip =
+        dist(lab, low) <= deltaE + CLIP_DELTA_E ? FLAG_LOW : dist(lab, high) <= deltaE + CLIP_DELTA_E ? FLAG_HIGH : 0;
       hit = { t, value: valueAt(t), deltaE, clip };
       cache.set(key, hit);
     }
@@ -184,7 +187,14 @@ export function extractField(img: PixelImage, panel: Panel): MapField | ErrorRes
   const ts = new Float32Array(n);
   const deltaE = new Float32Array(n);
   const flags = new Uint8Array(n);
-  const stats = { min: Infinity, max: -Infinity, flagged: 0, clippedLow: 0, clippedHigh: 0, levels: colorbarLevels(samples) };
+  const stats = {
+    min: Infinity,
+    max: -Infinity,
+    flagged: 0,
+    clippedLow: 0,
+    clippedHigh: 0,
+    levels: colorbarLevels(samples),
+  };
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const rgb = sampleBin(img, corners, (c + 0.5) / cols, (r + 0.5) / rows, 1 / cols, 1 / rows, nu, nv);
@@ -250,7 +260,16 @@ export function extractMap(img: PixelImage, panel: Panel): MapResult {
 // Reused typed buffers (one pass per channel, sorted in place), so reading a
 // bin allocates nothing per pixel.
 let binBuf = [new Float64Array(0), new Float64Array(0), new Float64Array(0)];
-function sampleBin(img: PixelImage, corners: Corners, u: number, v: number, du: number, dv: number, nu: number, nv: number): Rgb {
+function sampleBin(
+  img: PixelImage,
+  corners: Corners,
+  u: number,
+  v: number,
+  du: number,
+  dv: number,
+  nu: number,
+  nv: number,
+): Rgb {
   if (nu === 1 && nv === 1) {
     const p = bilinear(corners, u, v);
     return readPixel(img, p.x - 0.5, p.y - 0.5);
@@ -403,7 +422,10 @@ export function profileLength(panel: Panel, profile: Profile, choice?: MapUnits)
   const px = Math.hypot(profile.b.x - profile.a.x, profile.b.y - profile.a.y);
   if (kind === 'px') return { length: px, kind };
   if (kind === 'length') return { length: px * (lengthPerPixel(panel.scale) as number), kind };
-  return { length: Math.abs((axisCoords(panel, profile.b)[kind] as number) - (axisCoords(panel, profile.a)[kind] as number)), kind };
+  return {
+    length: Math.abs((axisCoords(panel, profile.b)[kind] as number) - (axisCoords(panel, profile.a)[kind] as number)),
+    kind,
+  };
 }
 
 // The end point that gives a profile `length` (in profileLength() units),
@@ -436,9 +458,15 @@ export function profileEndForLength(panel: Panel, profile: Profile, length: numb
 // What a profile's values are divided by to compare profiles by shape:
 // their maximum or mean (mode 'max' | 'mean') inside the plot area, 1 for 'raw'. {divisor} or
 // {error} when it is not positive (dividing would flip or blow up the line).
-export function profileDivisor(samples: ProfileSample[], mode: string): { divisor: number; error?: never } | ErrorResult {
+export function profileDivisor(
+  samples: ProfileSample[],
+  mode: string,
+): { divisor: number; error?: never } | ErrorResult {
   if (mode !== 'max' && mode !== 'mean') return { divisor: 1 };
-  const values = samples.filter((s) => !s.outside).map((s) => s.value).filter(Number.isFinite);
+  const values = samples
+    .filter((s) => !s.outside)
+    .map((s) => s.value)
+    .filter(Number.isFinite);
   const d = mode === 'max' ? Math.max(...values) : values.reduce((a, v) => a + v, 0) / values.length;
   return d > 0 ? { divisor: d } : { error: `The ${mode} is not positive, so the profile cannot be divided by it.` };
 }
@@ -447,7 +475,12 @@ export function profileDivisor(samples: ProfileSample[], mode: string): { diviso
 // areas a copy keeps its place within the plot (fromCorners → the panel's
 // corners); otherwise it keeps its page position, shifted by offset {x, y}.
 // Names already in the panel get a number: "Profile 1 (2)".
-export function pastedProfiles(panel: Panel, profiles: Profile[], fromCorners: Corners | null | undefined, offset = { x: 0, y: 0 }) {
+export function pastedProfiles(
+  panel: Panel,
+  profiles: Profile[],
+  fromCorners: Corners | null | undefined,
+  offset = { x: 0, y: 0 },
+) {
   const to = panel.grid.corners;
   const move =
     fromCorners && to && !samePoints(fromCorners, to)
@@ -472,7 +505,12 @@ export function pastedProfiles(panel: Panel, profiles: Profile[], fromCorners: C
 // little past the edge (a line from edge to edge) does not block the sweep.
 // With runOff the line may leave the area until no part of it is left:
 // a wider sweep for slanted lines, whose ends leave first.
-export function sweepRange(corners: Corners | null, a: Point, b: Point, { runOff = false }: { runOff?: boolean } = {}): { n: Point; min: number; max: number } | ErrorResult {
+export function sweepRange(
+  corners: Corners | null,
+  a: Point,
+  b: Point,
+  { runOff = false }: { runOff?: boolean } = {},
+): { n: Point; min: number; max: number } | ErrorResult {
   if (!corners) return { error: 'Place the plot area first.' };
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -488,7 +526,9 @@ export function sweepRange(corners: Corners | null, a: Point, b: Point, { runOff
   if (!inside(mid)) return { error: 'Move the profile inside the plot area to sweep it.' };
   // The area is convex, so each point stays inside over one interval of
   // offsets; the farthest it can go is the area's diagonal.
-  const far = Math.hypot(corners[2].x - corners[0].x, corners[2].y - corners[0].y) + Math.hypot(corners[3].x - corners[1].x, corners[3].y - corners[1].y);
+  const far =
+    Math.hypot(corners[2].x - corners[0].x, corners[2].y - corners[0].y) +
+    Math.hypot(corners[3].x - corners[1].x, corners[3].y - corners[1].y);
   const reach = (p: Point, sign: number) => {
     let lo = 0;
     let hi = far;
@@ -506,8 +546,17 @@ export function sweepRange(corners: Corners | null, a: Point, b: Point, { runOff
 // The offsets along n at which the line (from a along d, len long) still
 // touches the area: the area clipped to the strip the line sweeps, measured
 // across. The plot area's edges are straight, so it is a polygon.
-function runOffRange(corners: Corners, a: Point, d: Point, n: Point, len: number): { n: Point; min: number; max: number } | ErrorResult {
-  let poly = corners.map((p) => ({ along: (p.x - a.x) * d.x + (p.y - a.y) * d.y, across: (p.x - a.x) * n.x + (p.y - a.y) * n.y }));
+function runOffRange(
+  corners: Corners,
+  a: Point,
+  d: Point,
+  n: Point,
+  len: number,
+): { n: Point; min: number; max: number } | ErrorResult {
+  let poly = corners.map((p) => ({
+    along: (p.x - a.x) * d.x + (p.y - a.y) * d.y,
+    across: (p.x - a.x) * n.x + (p.y - a.y) * n.y,
+  }));
   poly = clipPolygon(poly, (q) => q.along);
   poly = clipPolygon(poly, (q) => len - q.along);
   if (!poly.length) return { error: 'Move the profile onto the plot area to sweep it.' };
@@ -531,7 +580,7 @@ function clipPolygon(poly: AlongAcross[], f: (q: AlongAcross) => number) {
     const fp = f(p);
     const fq = f(q);
     if (fp >= 0) out.push(p);
-    if ((fp >= 0) !== (fq >= 0)) {
+    if (fp >= 0 !== fq >= 0) {
       const t = fp / (fp - fq);
       out.push({ along: p.along + t * (q.along - p.along), across: p.across + t * (q.across - p.across) });
     }
@@ -539,7 +588,8 @@ function clipPolygon(poly: AlongAcross[], f: (q: AlongAcross) => number) {
   return out;
 }
 
-const samePoints = (a: Point[], b: Point[]) => a.length === b.length && a.every((p, i) => Math.abs(p.x - b[i].x) < 1e-9 && Math.abs(p.y - b[i].y) < 1e-9);
+const samePoints = (a: Point[], b: Point[]) =>
+  a.length === b.length && a.every((p, i) => Math.abs(p.x - b[i].x) < 1e-9 && Math.abs(p.y - b[i].y) < 1e-9);
 
 // Values along a profile line, one sample per pixel of length, each averaged
 // over ±halfWidth pixels across the line. Returns
@@ -558,7 +608,13 @@ export function sampleProfile(img: PixelImage, panel: Panel, profile: Profile): 
   const n = Math.round(length) + 1;
   // Page points put pixel i at [i, i + 1), as in the status bar; the
   // colorbar sampler reads pixel i at i.
-  const line = sampleColorbar(img, { x: a.x - 0.5, y: a.y - 0.5 }, { x: b.x - 0.5, y: b.y - 0.5 }, profile.halfWidth, n);
+  const line = sampleColorbar(
+    img,
+    { x: a.x - 0.5, y: a.y - 0.5 },
+    { x: b.x - 0.5, y: b.y - 0.5 },
+    profile.halfWidth,
+    n,
+  );
   const x = panel.grid.corners ? axisFn(panel, 'x').fn : null;
   const y = panel.grid.corners ? axisFn(panel, 'y').fn : null;
   const perPx = lengthPerPixel(panel.scale);

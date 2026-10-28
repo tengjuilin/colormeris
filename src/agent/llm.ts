@@ -1,4 +1,14 @@
-import type { ActionArgs, ChatContentPart, ChatMessage, ActionSpec, JsonSchema, LlmTool, RetryGuard, RunPanel, ToolCallResult } from '../types/index.ts';
+import type {
+  ActionArgs,
+  ActionSpec,
+  ChatContentPart,
+  ChatMessage,
+  JsonSchema,
+  LlmTool,
+  RetryGuard,
+  RunPanel,
+  ToolCallResult,
+} from '../types/index.ts';
 import { AGENT_ACTIONS, validate } from './schema.ts';
 
 // Pure parts of the extraction agent (agent/runner.js runs it): the system
@@ -31,9 +41,26 @@ When every heatmap on every page is done, call finish with one line per panel an
 // Agent actions the LLM may call (see agent/schema.js). File, tool, ROI
 // and question-answering actions are left to the runner and the user.
 export const LLM_ACTIONS = [
-  'get_state', 'get_results', 'sample_pixel', 'go_to_page', 'select_panel', 'add_panel', 'rename_panel',
-  'set_grid', 'detect_grid_size', 'set_grid_size', 'set_labels', 'remove_grid',
-  'set_colorbar', 'add_tick', 'set_tick_value', 'remove_tick', 'set_colorbar_scale', 'set_settings', 'undo', 'redo',
+  'get_state',
+  'get_results',
+  'sample_pixel',
+  'go_to_page',
+  'select_panel',
+  'add_panel',
+  'rename_panel',
+  'set_grid',
+  'detect_grid_size',
+  'set_grid_size',
+  'set_labels',
+  'remove_grid',
+  'set_colorbar',
+  'add_tick',
+  'set_tick_value',
+  'remove_tick',
+  'set_colorbar_scale',
+  'set_settings',
+  'undo',
+  'redo',
 ];
 
 const region: JsonSchema = {
@@ -46,12 +73,18 @@ const region: JsonSchema = {
 // Tools handled by the runner itself.
 export const RUNNER_TOOLS: Record<string, ActionSpec> = {
   view_page: {
-    description: 'Image of the current page (or a region of it) with pixel rulers. overlay "calibration" draws the grids, colorbars and ticks of this page\'s panels; "reconstruction" repaints each cell with the color its extracted value maps to.',
+    description:
+      'Image of the current page (or a region of it) with pixel rulers. overlay "calibration" draws the grids, colorbars and ticks of this page\'s panels; "reconstruction" repaints each cell with the color its extracted value maps to.',
     args: { type: 'object', properties: { region, overlay: { enum: ['none', 'calibration', 'reconstruction'] } } },
   },
   view_pages_overview: {
-    description: 'Thumbnails of up to 12 PDF pages in one image, labelled with page numbers, to find the pages with heatmaps.',
-    args: { type: 'object', properties: { from: { type: 'integer', minimum: 1 }, to: { type: 'integer', minimum: 1 } }, required: ['from', 'to'] },
+    description:
+      'Thumbnails of up to 12 PDF pages in one image, labelled with page numbers, to find the pages with heatmaps.',
+    args: {
+      type: 'object',
+      properties: { from: { type: 'integer', minimum: 1 }, to: { type: 'integer', minimum: 1 } },
+      required: ['from', 'to'],
+    },
   },
   finish: {
     description: 'End the run with a short summary for the user.',
@@ -66,7 +99,10 @@ export function validateRunnerTool(name: string, args: ActionArgs) {
 
 // Tool definitions in the SDK's chat format.
 export function llmTools() {
-  const fn = (name: string, description: string, parameters: JsonSchema): LlmTool => ({ type: 'function', function: { name, description, parameters } });
+  const fn = (name: string, description: string, parameters: JsonSchema): LlmTool => ({
+    type: 'function',
+    function: { name, description, parameters },
+  });
   return [
     ...LLM_ACTIONS.map((n) => fn(n, AGENT_ACTIONS[n].description, AGENT_ACTIONS[n].args)),
     ...Object.entries(RUNNER_TOOLS).map(([n, t]) => fn(n, t.description, t.args)),
@@ -80,28 +116,76 @@ export function llmTools() {
 // (started: has a grid, colorbar or labels).
 
 // Where the run stands, for tool results and nudges.
-export function progressNote({ pages, viewedPages, panels, currentPage }: { pages: number[]; viewedPages: Set<number>; panels: RunPanel[]; currentPage: number }) {
+export function progressNote({
+  pages,
+  viewedPages,
+  panels,
+  currentPage,
+}: {
+  pages: number[];
+  viewedPages: Set<number>;
+  panels: RunPanel[];
+  currentPage: number;
+}) {
   const left = pages.filter((p) => !viewedPages.has(p));
   const here = panels.filter((p) => p.page === currentPage && p.started);
   const parts = [];
-  if (here.length) parts.push(`Page ${currentPage} panels: ${here.map((p) => `${p.name}${p.ready ? '' : ' (incomplete)'}`).join(', ')}. Is every heatmap on this page in the list? If not, add_panel for the next one.`);
-  parts.push(left.length ? `Pages not looked at yet: ${left.join(', ')}.` : 'Every page of the run has been looked at.');
+  if (here.length)
+    parts.push(
+      `Page ${currentPage} panels: ${here.map((p) => `${p.name}${p.ready ? '' : ' (incomplete)'}`).join(', ')}. Is every heatmap on this page in the list? If not, add_panel for the next one.`,
+    );
+  parts.push(
+    left.length ? `Pages not looked at yet: ${left.join(', ')}.` : 'Every page of the run has been looked at.',
+  );
   return parts.join(' ');
 }
 
 // Why `finish` is refused, as {message, checklist}, or null to let the run
 // end. The final checklist is given once (`checked` after that); other
 // refusals stop after MAX_FINISH_REFUSALS so a stuck model can still end.
-export function finishCheck({ pages, viewedPages, panels, checked, refusals = 0 }: { pages: number[]; viewedPages: Set<number>; panels: RunPanel[]; checked?: boolean; refusals?: number }): { message: string; checklist: boolean } | null {
+export function finishCheck({
+  pages,
+  viewedPages,
+  panels,
+  checked,
+  refusals = 0,
+}: {
+  pages: number[];
+  viewedPages: Set<number>;
+  panels: RunPanel[];
+  checked?: boolean;
+  refusals?: number;
+}): { message: string; checklist: boolean } | null {
   if (refusals >= MAX_FINISH_REFUSALS) return null;
   const left = pages.filter((p) => !viewedPages.has(p));
   const many = left.length > 1;
-  if (left.length) return { message: `Not finished: page${many ? 's' : ''} ${left.join(', ')} ${many ? 'were' : 'was'} not looked at. go_to_page and view_page ${many ? 'each' : 'it'}, calibrate every heatmap on ${many ? 'them' : 'it'}, then call finish again.`, checklist: false };
+  if (left.length)
+    return {
+      message: `Not finished: page${many ? 's' : ''} ${left.join(', ')} ${many ? 'were' : 'was'} not looked at. go_to_page and view_page ${many ? 'each' : 'it'}, calibrate every heatmap on ${many ? 'them' : 'it'}, then call finish again.`,
+      checklist: false,
+    };
   const incomplete = panels.filter((p) => p.started && !p.ready);
-  if (incomplete.length && refusals < 1) return { message: `Not finished: ${incomplete.map((p) => `${p.name} (page ${p.page})`).join(', ')} ${incomplete.length > 1 ? 'are' : 'is'} only partly calibrated. Complete ${incomplete.length > 1 ? 'them' : 'it'}, or say in finish why not, then call finish again.`, checklist: false };
+  if (incomplete.length && refusals < 1)
+    return {
+      message: `Not finished: ${incomplete.map((p) => `${p.name} (page ${p.page})`).join(', ')} ${incomplete.length > 1 ? 'are' : 'is'} only partly calibrated. Complete ${incomplete.length > 1 ? 'them' : 'it'}, or say in finish why not, then call finish again.`,
+      checklist: false,
+    };
   if (checked) return null;
-  const byPage = pages.map((pg) => `page ${pg}: ${panels.filter((p) => p.page === pg && p.started).map((p) => p.name).join(', ') || 'no panels'}`).join('; ');
-  return { message: `Final check before finishing. Calibrated so far: ${byPage}. view_page each page once more (whole page) and compare: does every heatmap have its own panel? If one is missing, add_panel and calibrate it. When all are done, call finish again.`, checklist: true };
+  const byPage = pages
+    .map(
+      (pg) =>
+        `page ${pg}: ${
+          panels
+            .filter((p) => p.page === pg && p.started)
+            .map((p) => p.name)
+            .join(', ') || 'no panels'
+        }`,
+    )
+    .join('; ');
+  return {
+    message: `Final check before finishing. Calibrated so far: ${byPage}. view_page each page once more (whole page) and compare: does every heatmap have its own panel? If one is missing, add_panel and calibrate it. When all are done, call finish again.`,
+    checklist: true,
+  };
 }
 
 // ---------------------------------------------------------------- retries
@@ -117,7 +201,13 @@ const MAX_FINISH_REFUSALS = 3; // refused finish calls before any finish is acce
 //   guard.after(name, panelId, result) → the result, with the attempt count
 //     and instructions added to errors
 //   guard.stop → a reason to end the run, or null
-export function createRetryGuard({ maxAttempts = MAX_ATTEMPTS, maxErrorsInARow = MAX_ERRORS_IN_A_ROW }: { maxAttempts?: number; maxErrorsInARow?: number } = {}): RetryGuard {
+export function createRetryGuard({
+  maxAttempts = MAX_ATTEMPTS,
+  maxErrorsInARow = MAX_ERRORS_IN_A_ROW,
+}: {
+  maxAttempts?: number;
+  maxErrorsInARow?: number;
+} = {}): RetryGuard {
   const failures = new Map<string, number>();
   let inARow = 0;
   const guard: RetryGuard = {
@@ -125,7 +215,10 @@ export function createRetryGuard({ maxAttempts = MAX_ATTEMPTS, maxErrorsInARow =
     before(name: string, panelId: string | undefined): ToolCallResult | null {
       const key = `${name}|${panelId}`;
       if ((failures.get(key) || 0) >= maxAttempts) {
-        return { ok: false, error: `${name} is blocked for this panel after ${maxAttempts} failed attempts. Do not call it again for this panel. Skip this step, continue with the next step or panel, and list what is missing in finish.` };
+        return {
+          ok: false,
+          error: `${name} is blocked for this panel after ${maxAttempts} failed attempts. Do not call it again for this panel. Skip this step, continue with the next step or panel, and list what is missing in finish.`,
+        };
       }
       return null;
     },
@@ -139,7 +232,8 @@ export function createRetryGuard({ maxAttempts = MAX_ATTEMPTS, maxErrorsInARow =
       const n = (failures.get(key) || 0) + 1;
       failures.set(key, n);
       inARow++;
-      if (inARow >= maxErrorsInARow) guard.stop = `${inARow} tool calls in a row failed; the last was ${name}: ${result.error}`;
+      if (inARow >= maxErrorsInARow)
+        guard.stop = `${inARow} tool calls in a row failed; the last was ${name}: ${result.error}`;
       const next =
         n >= maxAttempts
           ? `This was attempt ${n} of ${maxAttempts}: ${name} is now blocked for this panel. Skip this step and move on; list it in finish.`
@@ -164,7 +258,12 @@ export function pruneImages(messages: ChatMessage[], keep = 3, step = 4): ChatMe
   let seen = 0;
   return messages.map((m) => {
     if (!hasImage(m) || ++seen > cut) return m;
-    return { ...m, content: (m.content as ChatContentPart[]).map((c): ChatContentPart => (c.type === 'image_url' ? { type: 'text', text: '[older image removed]' } : c)) };
+    return {
+      ...m,
+      content: (m.content as ChatContentPart[]).map(
+        (c): ChatContentPart => (c.type === 'image_url' ? { type: 'text', text: '[older image removed]' } : c),
+      ),
+    };
   });
 }
 const hasImage = (m: ChatMessage) => Array.isArray(m.content) && m.content.some((c) => c.type === 'image_url');
@@ -178,7 +277,9 @@ export function toolResultText(value: unknown, max = 12000) {
 // Parse page lists like "1-3, 7" (1-based, clamped to pageCount).
 export function parsePages(text: unknown, pageCount: number) {
   const pages = new Set<number>();
-  for (const part of String(text).split(/[,\s]+/).filter(Boolean)) {
+  for (const part of String(text)
+    .split(/[,\s]+/)
+    .filter(Boolean)) {
     const m = /^(\d+)(?:-(\d+))?$/.exec(part);
     if (!m) throw new Error(`Cannot read page range "${part}".`);
     const a = Number(m[1]);

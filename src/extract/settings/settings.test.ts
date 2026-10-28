@@ -1,8 +1,25 @@
-import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
-import { COLOR_DEFAULTS, COLOR_ITEMS, HOTKEY_ACTIONS, HOTKEY_GROUPS, buildSettingsZip, comboFromEvent, defaultSettings, findHotkey, formatCombo, hexToRgb, hotkeyClashes, isMacPlatform, normalizeCombo, normalizeSettings, parseSettings, readSettingsFile, serializeSettings } from './settings.ts';
-
+import { test } from 'vitest';
+import {
+  buildSettingsZip,
+  COLOR_DEFAULTS,
+  COLOR_ITEMS,
+  comboFromEvent,
+  defaultSettings,
+  findHotkey,
+  formatCombo,
+  HOTKEY_ACTIONS,
+  HOTKEY_GROUPS,
+  hexToRgb,
+  hotkeyClashes,
+  isMacPlatform,
+  normalizeCombo,
+  normalizeSettings,
+  parseSettings,
+  readSettingsFile,
+  serializeSettings,
+} from './settings.ts';
 
 test('default hotkeys are unique and canonical', () => {
   const all = HOTKEY_ACTIONS.flatMap((a) => a.keys);

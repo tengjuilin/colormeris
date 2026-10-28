@@ -1,10 +1,10 @@
-import type { CmapViewerContext, Rgb } from '../../types/index.ts';
-import { createFigureInput } from '../figure-input.ts';
-import { COMPARE_MAX } from '../route.ts';
 import { rgbToHex } from '../../core/color.ts';
 import { refineColorbar, sampleColorbar } from '../../core/colorbar.ts';
 import { identifyColorbar, identifyColors, matchLevel } from '../../core/colormap-match.ts';
 import { readPixel } from '../../core/grid.ts';
+import type { CmapViewerContext, Rgb } from '../../types/index.ts';
+import { createFigureInput } from '../figure-input.ts';
+import { COMPARE_MAX } from '../route.ts';
 
 // The Identify tab of the colormap viewer (colormaps.html): load an image of
 // a figure, drag along its colorbar (or use the whole image), and list the
@@ -49,14 +49,25 @@ export function setupCmapIdentify(ctx: CmapViewerContext) {
   function buildIdentify() {
     const d = el('section', { class: 'cmap-identify', 'aria-labelledby': 'cmap-identify-title', hidden: '' });
     d.append(el('h2', { id: 'cmap-identify-title' }, 'Identify a colormap from a figure'));
-    d.append(el('p', { class: 'muted' }, 'Give an image of a figure and find which Matplotlib, CMasher, Crameri, cmocean, colorcet, seaborn, CarbonPlan, NCL, SciVisColor, CARTOColors, MATLAB or R packages colormap it uses. The image stays in your browser.'));
+    d.append(
+      el(
+        'p',
+        { class: 'muted' },
+        'Give an image of a figure and find which Matplotlib, CMasher, Crameri, cmocean, colorcet, seaborn, CarbonPlan, NCL, SciVisColor, CARTOColors, MATLAB or R packages colormap it uses. The image stays in your browser.',
+      ),
+    );
 
     const whole = el('button', { type: 'button', class: 'btn small', disabled: '' }, 'Use the whole image');
-    const EMPTY_HINT = 'Drop an image here, paste one (Ctrl/Cmd+V), or click to choose a file (PNG, JPEG, WebP or GIF).';
+    const EMPTY_HINT =
+      'Drop an image here, paste one (Ctrl/Cmd+V), or click to choose a file (PNG, JPEG, WebP or GIF).';
     const sampled = el('div', { class: 'cmap-id-sampled', hidden: '' });
     const status = el('p', { class: 'cmap-id-status', 'aria-live': 'polite' });
     const verdict = el('p', { class: 'cmap-id-verdict', 'aria-live': 'polite' });
-    const explain = el('p', { class: 'cmap-fig-cap muted', hidden: '' }, 'The score is the average ΔE2000 between the sampled colors and the map (the worst 10% are ignored). Below 3 is the same map; 3 to 6 is a close relative.');
+    const explain = el(
+      'p',
+      { class: 'cmap-fig-cap muted', hidden: '' },
+      'The score is the average ΔE2000 between the sampled colors and the map (the worst 10% are ignored). Below 3 is the same map; 3 to 6 is a close relative.',
+    );
     const list = el('ol', { class: 'cmap-id-list' });
 
     const fig = createFigureInput({
@@ -66,10 +77,13 @@ export function setupCmapIdentify(ctx: CmapViewerContext) {
       label: 'Your figure. Drag along the colorbar from one end to the other.',
       hints: {
         empty: EMPTY_HINT,
-        loaded: 'Drag along the colorbar from one end to the other. Drag from the low end to the high end to read the direction. Or use the whole image if there is no colorbar.',
+        loaded:
+          'Drag along the colorbar from one end to the other. Drag from the low end to the high end to read the direction. Or use the whole image if there is no colorbar.',
       },
       buttons: [whole],
-      onLoad: () => { whole.disabled = false; },
+      onLoad: () => {
+        whole.disabled = false;
+      },
       onReset: (keepImage: any) => {
         runId++; // drop a match still waiting for its paint
         list.removeAttribute('aria-busy');
@@ -81,7 +95,9 @@ export function setupCmapIdentify(ctx: CmapViewerContext) {
         status.textContent = '';
         if (!keepImage) whole.disabled = true;
       },
-      onError: (msg: any) => { status.textContent = msg; },
+      onError: (msg: any) => {
+        status.textContent = msg;
+      },
       onLine: (a: any, b: any) => runColorbar(a, b),
     });
     const fail = (msg: any) => fig.fail(msg);
@@ -101,12 +117,14 @@ export function setupCmapIdentify(ctx: CmapViewerContext) {
       list.replaceChildren();
       explain.hidden = true;
       list.setAttribute('aria-busy', 'true');
-      requestAnimationFrame(() => setTimeout(() => {
-        if (id !== runId) return;
-        list.removeAttribute('aria-busy');
-        status.textContent = '';
-        work();
-      }, 0));
+      requestAnimationFrame(() =>
+        setTimeout(() => {
+          if (id !== runId) return;
+          list.removeAttribute('aria-busy');
+          status.textContent = '';
+          work();
+        }, 0),
+      );
     }
 
     function showVerdict(best: any, level: any, extra?: any) {
@@ -114,7 +132,12 @@ export function setupCmapIdentify(ctx: CmapViewerContext) {
       const sc = best.score.toFixed(1);
       verdict.replaceChildren();
       if (level === 'exact') verdict.append('Best match: ', el('strong', {}, nm), ` (ΔE ${sc}).`);
-      else if (level === 'close') verdict.append('Closest: ', el('strong', {}, nm), ` (ΔE ${sc}). Not an exact match; it may be a relative or a map from another library.`);
+      else if (level === 'close')
+        verdict.append(
+          'Closest: ',
+          el('strong', {}, nm),
+          ` (ΔE ${sc}). Not an exact match; it may be a relative or a map from another library.`,
+        );
       else verdict.append(`No good match among the known colormaps (best ΔE ${sc}).`);
       if (extra) verdict.append(' ', extra);
     }
@@ -122,7 +145,10 @@ export function setupCmapIdentify(ctx: CmapViewerContext) {
     function renderResults(results: any, { dir }: any) {
       list.replaceChildren();
       explain.hidden = !results.length;
-      if (!results.length) { verdict.textContent = 'Could not find any colors to match.'; return; }
+      if (!results.length) {
+        verdict.textContent = 'Could not find any colors to match.';
+        return;
+      }
       const groups = groupTies(results);
       const best = groups[0].lead;
       showVerdict(best, matchLevel(best.score));
@@ -138,14 +164,25 @@ export function setupCmapIdentify(ctx: CmapViewerContext) {
         name.append(el('code', {}, lead.name));
         if (lead.reversed) name.append(' (reversed)');
         if (ties.length) {
-          name.append(el('span', { class: 'muted' }, ` (same colors: ${ties.map((t) => (t.reversed ? `${t.name} reversed` : t.name)).join(', ')})`));
+          name.append(
+            el(
+              'span',
+              { class: 'muted' },
+              ` (same colors: ${ties.map((t) => (t.reversed ? `${t.name} reversed` : t.name)).join(', ')})`,
+            ),
+          );
         }
-        const nums = el('span', { class: 'cmap-id-score' }, `ΔE ${lead.score.toFixed(1)}${lead.coverage != null ? `, covers ${pct(lead.coverage)}` : ''}`);
+        const nums = el(
+          'span',
+          { class: 'cmap-id-score' },
+          `ΔE ${lead.score.toFixed(1)}${lead.coverage != null ? `, covers ${pct(lead.coverage)}` : ''}`,
+        );
         const act = el('span', { class: 'cmap-id-actions' });
         const show = el('button', { type: 'button', class: 'btn small' }, 'Show');
         show.setAttribute('aria-label', `Show ${lead.name} in Browse`);
         // The list is in its own tab, so say this before leaving.
-        if (lead.reversed) show.title = `${lead.name} matches reversed. In Browse, turn on Reversed (under ⋯) to see it that way.`;
+        if (lead.reversed)
+          show.title = `${lead.name} matches reversed. In Browse, turn on Reversed (under ⋯) to see it that way.`;
         show.addEventListener('click', () => ctx.showRow(lead.name));
         const cmpB = el('button', { type: 'button', class: 'btn small' });
         const syncCmp = () => {
@@ -155,7 +192,10 @@ export function setupCmapIdentify(ctx: CmapViewerContext) {
           cmpB.setAttribute('aria-label', `Compare ${lead.name}`);
         };
         syncCmp();
-        cmpB.addEventListener('click', () => { ctx.setCompared(lead.name, true); syncCmp(); });
+        cmpB.addEventListener('click', () => {
+          ctx.setCompared(lead.name, true);
+          syncCmp();
+        });
         act.append(show, cmpB);
         li.append(miniOf(map, lead.reversed), name, nums, act);
         list.append(li);
@@ -168,14 +208,22 @@ export function setupCmapIdentify(ctx: CmapViewerContext) {
       let start = a;
       let end = b;
       let half = 2;
-      if (k) { ({ start, end } = k); half = k.halfWidth; }
+      if (k) {
+        ({ start, end } = k);
+        half = k.halfWidth;
+      }
       fig.line = { start, end };
       fig.redraw();
       const samples = sampleColorbar(img!, start, end, half, 256);
-      if (samples.length < 2) { fail('That line is too short.'); return; }
+      if (samples.length < 2) {
+        fail('That line is too short.');
+        return;
+      }
       const rgbs = samples.map((s) => s.rgb);
       sampled.hidden = false;
-      sampled.replaceChildren(el('span', { class: 'muted' }, k ? 'Colors along the line (snapped to the colorbar)' : 'Colors along the line'));
+      sampled.replaceChildren(
+        el('span', { class: 'muted' }, k ? 'Colors along the line (snapped to the colorbar)' : 'Colors along the line'),
+      );
       const strip = el('div', { class: 'cmap-id-strip', role: 'img', 'aria-label': 'Sampled colors' });
       strip.append(stripCanvas(rgbs.map(roundRgb), false));
       sampled.append(strip);
@@ -197,7 +245,8 @@ export function setupCmapIdentify(ctx: CmapViewerContext) {
       fig.redraw();
       const step = Math.max(1, Math.ceil(Math.sqrt((img.width * img.height) / ID_MAX_PIXELS)));
       const px: Rgb[] = [];
-      for (let y = 0; y < img.height; y += step) for (let x = 0; x < img.width; x += step) px.push(readPixel(img, x, y));
+      for (let y = 0; y < img.height; y += step)
+        for (let x = 0; x < img.width; x += step) px.push(readPixel(img, x, y));
       sampled.hidden = true;
       afterPaint(() => {
         status.textContent = 'The direction cannot be known this way. A line along the colorbar is more reliable.';
@@ -205,7 +254,6 @@ export function setupCmapIdentify(ctx: CmapViewerContext) {
         verdict.append(' Whole image: the score is how close the image’s colors are to the nearest color of each map.');
       });
     }
-
 
     whole.addEventListener('click', runWhole);
     return d;

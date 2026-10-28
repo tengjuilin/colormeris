@@ -1,5 +1,5 @@
-import { cmapData } from '../../core/colormap-library.ts';
 import { projectT, SCALES, tickProblem } from '../../core/colorbar.ts';
+import { cmapData } from '../../core/colormap-library.ts';
 import type {
   AxisScale,
   AxisTick,
@@ -29,7 +29,6 @@ export type Raw = any;
 
 // Project model and its JSON (de)serialization. All coordinates are in the
 // pixel space of the rendered source image (source.width × source.height).
-
 
 export const SCHEMA = 'colormeris-project';
 // Version 2: each panel names its tool; version 1 had one tool per project (`kind`).
@@ -62,7 +61,17 @@ export function createPanel(name = 'Panel 1', page = 1, tool: ToolKind = 'heatma
     name,
     page,
     tool,
-    grid: { corners: null, anchor: 'corners', shape: 'square', rows: 4, cols: 4, sampleFraction: 0.5, rowLabels: [], colLabels: [], boxLabels: [] },
+    grid: {
+      corners: null,
+      anchor: 'corners',
+      shape: 'square',
+      rows: 4,
+      cols: 4,
+      sampleFraction: 0.5,
+      rowLabels: [],
+      colLabels: [],
+      boxLabels: [],
+    },
     // colormap: {name, reversed} reads colors from a known colormap instead
     // of the bar in the figure; the bar line is then optional.
     colorbar: { start: null, end: null, halfWidth: 2, nSamples: 256, ticks: [], scale: 'linear', colormap: null },
@@ -95,11 +104,19 @@ export function createAxisTick(p: Point, value = NaN): AxisTick {
   return { id: newMarkId('a'), x: p.x, y: p.y, value };
 }
 
-export function createProfile(a: Point, b: Point, { name = 'Profile', halfWidth = 1 }: { name?: string; halfWidth?: number } = {}): Profile {
+export function createProfile(
+  a: Point,
+  b: Point,
+  { name = 'Profile', halfWidth = 1 }: { name?: string; halfWidth?: number } = {},
+): Profile {
   return { id: newMarkId('l'), name, a: { x: a.x, y: a.y }, b: { x: b.x, y: b.y }, halfWidth };
 }
 
-export function createRoi(shape: RoiShape, geom: RoiGeom, { name = 'ROI', replicate = true }: { name?: string; replicate?: boolean } = {}): Roi {
+export function createRoi(
+  shape: RoiShape,
+  geom: RoiGeom,
+  { name = 'ROI', replicate = true }: { name?: string; replicate?: boolean } = {},
+): Roi {
   return { id: newRoiId(), name, shape, replicate, geom, offsets: {} } as Roi;
 }
 
@@ -125,7 +142,10 @@ export function boxLabel(grid: Grid, row: number, col: number): string {
 // anchor's default shape and sampled area (core/grid.js: outerCorners, dotRadius).
 export const GRID_ANCHORS: GridAnchor[] = ['corners', 'centers'];
 export const GRID_SHAPES: GridShape[] = ['square', 'circle'];
-export const ANCHOR_DEFAULTS: Record<GridAnchor, { shape: GridShape; sampleFraction: number }> = { corners: { shape: 'square', sampleFraction: 0.5 }, centers: { shape: 'circle', sampleFraction: 0.7 } };
+export const ANCHOR_DEFAULTS: Record<GridAnchor, { shape: GridShape; sampleFraction: number }> = {
+  corners: { shape: 'square', sampleFraction: 0.5 },
+  centers: { shape: 'circle', sampleFraction: 0.7 },
+};
 
 export function parseLabelText(text: string) {
   const trimmed = text.trim();
@@ -141,7 +161,13 @@ export function ticksWithT(colorbar: Colorbar): TickWithT[] {
   const { start, end } = colorbar;
   return colorbar.ticks.map((k) => ({
     ...k,
-    t: Number.isFinite(k.x) ? (start && end ? projectT(start, end, k as Point) : NaN) : Number.isFinite(k.t) ? (k.t as number) : NaN,
+    t: Number.isFinite(k.x)
+      ? start && end
+        ? projectT(start, end, k as Point)
+        : NaN
+      : Number.isFinite(k.t)
+        ? (k.t as number)
+        : NaN,
   }));
 }
 
@@ -150,7 +176,8 @@ export function ticksWithT(colorbar: Colorbar): TickWithT[] {
 export function colorbarProblem(panel: Panel): string | null {
   const cb = panel.colorbar;
   if (cb.colormap) {
-    if (cmapData && !cmapData.maps.some((m) => m.name === cb.colormap?.name)) return `Unknown colormap "${cb.colormap.name}".`;
+    if (cmapData && !cmapData.maps.some((m) => m.name === cb.colormap?.name))
+      return `Unknown colormap "${cb.colormap.name}".`;
   } else {
     if (!cb.start || !cb.end) return 'Set the colorbar start and end.';
     if (Math.hypot(cb.end.x - cb.start.x, cb.end.y - cb.start.y) < 2) return 'Colorbar is too short.';
@@ -191,7 +218,9 @@ export function serializeProject(project: Project) {
         halfWidth: p.colorbar.halfWidth,
         nSamples: p.colorbar.nSamples,
         scale: p.colorbar.scale,
-        ...(p.colorbar.colormap ? { colormap: { name: p.colorbar.colormap.name, reversed: !!p.colorbar.colormap.reversed } } : {}),
+        ...(p.colorbar.colormap
+          ? { colormap: { name: p.colorbar.colormap.name, reversed: !!p.colorbar.colormap.reversed } }
+          : {}),
         ticks: ticksWithT(p.colorbar).map((k) => ({
           x: Number.isFinite(k.x) ? k.x : null,
           y: Number.isFinite(k.y) ? k.y : null,
@@ -208,7 +237,9 @@ export function serializeProject(project: Project) {
               shape: r.shape,
               replicate: r.replicate,
               geom: serializeGeom(r),
-              offsets: Object.fromEntries(Object.entries(r.offsets).map(([k, o]: [string, RoiOffset]) => [k, { dx: o.dx, dy: o.dy }])),
+              offsets: Object.fromEntries(
+                Object.entries(r.offsets).map(([k, o]: [string, RoiOffset]) => [k, { dx: o.dx, dy: o.dy }]),
+              ),
             })),
             scale: serializeScale(p.scale),
           }
@@ -235,7 +266,10 @@ function serializeScale(sc: ScaleBar | null) {
 }
 
 function serializeAxis(axis: MapSettings['x']) {
-  return { scale: axis.scale, ticks: axis.ticks.map((k) => ({ x: k.x, y: k.y, value: Number.isFinite(k.value) ? k.value : null })) };
+  return {
+    scale: axis.scale,
+    ticks: axis.ticks.map((k) => ({ x: k.x, y: k.y, value: Number.isFinite(k.value) ? k.value : null })),
+  };
 }
 
 function readMap(raw: Raw, where: string): MapSettings {
@@ -283,7 +317,13 @@ function readRoi(raw: Raw, where: string): Roi {
   for (const [k, o] of Object.entries<Raw>(raw.offsets || {})) {
     if (/^\d+,\d+$/.test(k) && Number.isFinite(o?.dx) && Number.isFinite(o?.dy)) offsets[k] = { dx: o.dx, dy: o.dy };
   }
-  return { ...createRoi(raw.shape, geom, { name: typeof raw.name === 'string' ? raw.name : 'ROI', replicate: raw.replicate !== false }), offsets };
+  return {
+    ...createRoi(raw.shape, geom, {
+      name: typeof raw.name === 'string' ? raw.name : 'ROI',
+      replicate: raw.replicate !== false,
+    }),
+    offsets,
+  };
 }
 
 function fail(msg: string): never {
@@ -359,7 +399,12 @@ export function parseProject(json: Raw): Project {
     if (Number.isFinite(s.maxDeltaE)) p.settings.maxDeltaE = s.maxDeltaE;
     if (Number.isFinite(s.grayChroma)) p.settings.grayChroma = Math.max(0, s.grayChroma);
     const rv = raw.review;
-    if (rv && typeof rv === 'object' && ['accepted', 'rejected'].includes(rv.status) && typeof rv.resultHash === 'string') {
+    if (
+      rv &&
+      typeof rv === 'object' &&
+      ['accepted', 'rejected'].includes(rv.status) &&
+      typeof rv.resultHash === 'string'
+    ) {
       p.review = {
         status: rv.status,
         by: typeof rv.by === 'string' ? rv.by : null,
@@ -370,14 +415,17 @@ export function parseProject(json: Raw): Project {
       };
     }
     if (tool === 'roi') {
-      p.rois = (Array.isArray(raw.rois) ? raw.rois : []).map((r: Raw, j: number) => readRoi(r, `panel ${i + 1} region ${j + 1}`));
+      p.rois = (Array.isArray(raw.rois) ? raw.rois : []).map((r: Raw, j: number) =>
+        readRoi(r, `panel ${i + 1} region ${j + 1}`),
+      );
     }
     if (tool === 'roi' || tool === 'map') {
       const sc = raw.scale;
       if (sc && typeof sc === 'object') {
         const p1 = readPoint(sc.p1, `panel ${i + 1} scale`);
         const p2 = readPoint(sc.p2, `panel ${i + 1} scale`);
-        if (p1 && p2 && sc.length > 0) p.scale = { p1, p2, length: Number(sc.length), unit: SCALE_UNITS.includes(sc.unit) ? sc.unit : 'cm' };
+        if (p1 && p2 && sc.length > 0)
+          p.scale = { p1, p2, length: Number(sc.length), unit: SCALE_UNITS.includes(sc.unit) ? sc.unit : 'cm' };
       }
     }
     if (tool === 'map') p.map = readMap(raw.map, `panel ${i + 1}`);

@@ -1,6 +1,5 @@
 import type { DistanceName, Lab, Rgb } from '../types/index.ts';
 
-
 // Color space conversions and perceptual color differences.
 // All RGB values are 0–255 sRGB; Lab is CIELAB with a D65 white point.
 
@@ -8,7 +7,7 @@ const WHITE_D65: Rgb = [0.95047, 1.0, 1.08883];
 
 function srgbToLinearExact(c: number) {
   const v = c / 255;
-  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
 }
 // Colors are nearly always whole bytes; a table spares a pow per channel,
 // most of the colormap ratings' Lab conversions.
@@ -20,12 +19,12 @@ export function srgbToLinear(c: number) {
 }
 
 export function linearToSrgb(v: number) {
-  const c = v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+  const c = v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055;
   return Math.round(Math.min(1, Math.max(0, c)) * 255);
 }
 
 function labF(t: number) {
-  return t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116;
+  return t > 216 / 24389 ? Math.cbrt(t) : ((24389 / 27) * t + 16) / 116;
 }
 
 function labFInv(t: number) {

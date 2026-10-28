@@ -1,11 +1,19 @@
 import { rgbToLab } from '../../core/color.ts';
-import { colorbarBins, colorbarSamples, colorStatus, labelBins, labToT, makeValueFn, nearestBin } from '../../core/colorbar.ts';
+import {
+  colorbarBins,
+  colorbarSamples,
+  colorStatus,
+  labelBins,
+  labToT,
+  makeValueFn,
+  nearestBin,
+} from '../../core/colorbar.ts';
 import { dotRadius, sampleCell } from '../../core/grid.ts';
 import type {
   CellCounts,
   CellStatus,
-  ErrorResult,
   ColorbarSample,
+  ErrorResult,
   HeatmapCell,
   HeatmapResult,
   Lab,
@@ -27,12 +35,12 @@ interface MatchContext {
 
 // Combine grid sampling and colorbar calibration into a value matrix.
 
-
 // Returns a description of what is still missing before extraction, or null.
 export function panelProblem(panel: Panel): string | null {
   if (!panel.grid.corners) return 'Set the heatmap grid corners.';
   // Dot centers give the cell spacing only with at least two dots per side.
-  if (panel.grid.anchor === 'centers' && (panel.grid.rows < 2 || panel.grid.cols < 2)) return 'Dot centers need at least 2 rows and 2 columns.';
+  if (panel.grid.anchor === 'centers' && (panel.grid.rows < 2 || panel.grid.cols < 2))
+    return 'Dot centers need at least 2 rows and 2 columns.';
   return colorbarProblem(panel);
 }
 
@@ -127,7 +135,16 @@ export function extractPanel(img: PixelImage, panel: Panel): HeatmapResult | Err
     for (let c = 0; c < cols; c++) {
       const radius = dots ? dotRadius(img, panel.grid, r, c) : null;
       if (dots && !radius) {
-        row.push({ rgb: null, t: NaN, value: NaN, deltaE: NaN, flagged: false, status: 'empty', radius: null, empty: true });
+        row.push({
+          rgb: null,
+          t: NaN,
+          value: NaN,
+          deltaE: NaN,
+          flagged: false,
+          status: 'empty',
+          radius: null,
+          empty: true,
+        });
         continue;
       }
       const rgb = sampleCell(img, panel.grid, r, c, radius);

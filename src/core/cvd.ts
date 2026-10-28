@@ -1,5 +1,5 @@
 import type { Rgb } from '../types/index.ts';
-import { linearToSrgb, labToRgb, rgbToLab, srgbToLinear } from './color.ts';
+import { labToRgb, linearToSrgb, rgbToLab, srgbToLinear } from './color.ts';
 
 // Color vision deficiency (CVD) simulation, grayscale and lightness checks for
 // the colormap viewer (colormaps.html). RGB values are 0–255 sRGB.
@@ -190,7 +190,10 @@ export function cvdLinearFn(type: string, { model = 'recommended', severity = 1 
   }
   if (m === 'vienot') {
     const mat = VIENOT[type];
-    return (r, g, b, out, k) => { mul(mat, r, g, b, out, k); blend(r, g, b, out, k); };
+    return (r, g, b, out, k) => {
+      mul(mat, r, g, b, out, k);
+      blend(r, g, b, out, k);
+    };
   }
   const { m1, m2, n } = BRETTEL[type];
   return (r, g, b, out, k) => {
