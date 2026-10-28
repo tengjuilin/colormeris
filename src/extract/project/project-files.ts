@@ -100,13 +100,13 @@ export function safeFileName(name: unknown) {
 const README = `Colormeris project archive
 
 project.json          Calibration metadata (grid corners, colorbar line and ticks,
-                    labels, settings, page and review of each panel).
-                    Coordinates are pixels in the panel's source/page-<n>.png.
+                      labels, settings, page and review of each panel).
+                      Coordinates are pixels in the panel's source/page-<n>.png.
 source/               The original uploaded file and the rendered image of each
-                    page that has panels.
+                      page that has panels.
 data/                 Extracted data as CSV, one or more files per panel.
 agent/                actions.json and decisions.json: what the agent API and the
-                    heatmap agent changed and decided (with confidences).
+                      heatmap agent changed and decided (with confidences).
 
 Load this zip back into Colormeris to review or re-run the extraction.
 `;
@@ -150,8 +150,8 @@ export function roiCsv(items: ResultItem[]) {
 }
 
 // ---------------------------------------------------------------- map CSVs
-// Results come from extractMap (map/field.js, loaded after this file, so its
-// flag constants are looked up on CM at call time).
+// Results come from extractMap (map/field.ts, which also exports the flag
+// constants imported above).
 
 // Column headers of a map: axis names, or pixel or scale-bar offsets (see mapCoord).
 const mapAxisNames = (result: MapField) => [result.xName ?? (result.xAxis ? 'x' : 'x_px'), result.yName ?? (result.yAxis ? 'y' : 'y_px')];

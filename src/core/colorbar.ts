@@ -120,7 +120,7 @@ export function makeValueFn(ticks: TickWithT[], scale: string = 'linear'): ((t: 
 }
 
 // The colorbar's samples: from its known colormap when it has one (see
-// colormapSamples in core/colormap-match.js, loaded after this file), else
+// colormapSamples, imported from core/colormap-match.ts), else
 // read from the image along the bar line.
 export function colorbarSamples(img: PixelImage, cb: Colorbar) {
   if (cb.colormap) return colormapSamples(cb.colormap, cb.nSamples) || [];
