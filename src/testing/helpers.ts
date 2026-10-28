@@ -1,15 +1,14 @@
 // Synthetic image helpers for tests.
-import CM from './load.js';
+import type { Corners, PixelImage, Point, Rgb } from '../types/index.ts';
+import { invertBilinear } from '../core/grid.ts';
 
-const { invertBilinear } = CM;
-
-export function makeImage(width, height, fill = [255, 255, 255, 255]) {
+export function makeImage(width: number, height: number, fill: number[] = [255, 255, 255, 255]): PixelImage {
   const data = new Uint8ClampedArray(width * height * 4);
   for (let i = 0; i < width * height; i++) data.set(fill, i * 4);
   return { width, height, data };
 }
 
-export function setPixel(img, x, y, [r, g, b]) {
+export function setPixel(img: PixelImage, x: number, y: number, [r, g, b]: Rgb) {
   const i = (y * img.width + x) * 4;
   img.data[i] = r;
   img.data[i + 1] = g;
@@ -18,14 +17,14 @@ export function setPixel(img, x, y, [r, g, b]) {
 }
 
 // Piecewise-linear RGB colormap through stops, s in [0, 1].
-export function cmap(stops, s) {
+export function cmap(stops: Rgb[], s: number): Rgb {
   const x = Math.min(1, Math.max(0, s)) * (stops.length - 1);
   const i = Math.min(stops.length - 2, Math.floor(x));
   const f = x - i;
   return stops[i].map((c, k) => Math.round(c + f * (stops[i + 1][k] - c)));
 }
 
-export const VIRIDISH = [
+export const VIRIDISH: Rgb[] = [
   [68, 1, 84],
   [59, 82, 139],
   [33, 145, 140],
@@ -35,7 +34,7 @@ export const VIRIDISH = [
 
 // Paint a heatmap of `matrix` (values s in [0,1]) inside a quadrilateral,
 // with 1px dark grid lines between cells unless `lines` is false.
-export function paintHeatmap(img, corners, matrix, stops, { lines = true } = {}) {
+export function paintHeatmap(img: PixelImage, corners: Corners, matrix: number[][], stops: Rgb[], { lines = true }: { lines?: boolean } = {}) {
   const rows = matrix.length;
   const cols = matrix[0].length;
   const cellW = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y) / cols;
@@ -54,7 +53,7 @@ export function paintHeatmap(img, corners, matrix, stops, { lines = true } = {})
 }
 
 // Vertical colorbar from (x0..x1) spanning y0 (s=1, top) to y1 (s=0, bottom).
-export function paintColorbar(img, x0, x1, y0, y1, stops) {
+export function paintColorbar(img: PixelImage, x0: number, x1: number, y0: number, y1: number, stops: Rgb[]) {
   for (let y = y0; y <= y1; y++) {
     const s = (y1 - y) / (y1 - y0);
     for (let x = x0; x <= x1; x++) setPixel(img, x, y, cmap(stops, s));
@@ -64,7 +63,7 @@ export function paintColorbar(img, x0, x1, y0, y1, stops) {
 // Dot plot: a filled circle of radii[r][c] px (0 = no dot) colored by
 // matrix[r][c] at each center, on the image's background. `centers` are the
 // top-left and bottom-right dot centers; dots are evenly spaced between them.
-export function paintDots(img, tl, br, matrix, radii, stops) {
+export function paintDots(img: PixelImage, tl: Point, br: Point, matrix: number[][], radii: number[][], stops: Rgb[]) {
   const rows = matrix.length;
   const cols = matrix[0].length;
   for (let r = 0; r < rows; r++) {
@@ -80,17 +79,17 @@ export function paintDots(img, tl, br, matrix, radii, stops) {
   }
 }
 
-const fillRect = (img, x0, y0, x1, y1, rgb) => {
+const fillRect = (img: PixelImage, x0: number, y0: number, x1: number, y1: number, rgb: Rgb) => {
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) setPixel(img, x, y, rgb);
 };
-const outline = (img, x0, y0, x1, y1, rgb = [0, 0, 0]) => {
+const outline = (img: PixelImage, x0: number, y0: number, x1: number, y1: number, rgb: Rgb = [0, 0, 0]) => {
   fillRect(img, x0, y0, x1, y0 + 1, rgb);
   fillRect(img, x0, y1 - 1, x1, y1, rgb);
   fillRect(img, x0, y0, x0 + 1, y1, rgb);
   fillRect(img, x1 - 1, y0, x1, y1, rgb);
 };
 // Text-like dark blocks: `n` characters 6 × 10 px, 2 px apart.
-const text = (img, x, y, n) => {
+const text = (img: PixelImage, x: number, y: number, n: number) => {
   for (let i = 0; i < n; i++) fillRect(img, x + i * 8, y, x + i * 8 + 6, y + 10, [20, 20, 20]);
 };
 
@@ -106,8 +105,8 @@ export function groupedFigure() {
   const img = makeImage(1000, 420);
   const X0 = 100;
   const Y0 = 50;
-  const cellsX = (g, c) => X0 + 2 + g * 94 + c * 22; // 20 px of color, then a 2 px line
-  const cellsY = (r) => Y0 + 2 + r * 20; // 18 px of color, then a 2 px line
+  const cellsX = (g: number, c: number) => X0 + 2 + g * 94 + c * 22; // 20 px of color, then a 2 px line
+  const cellsY = (r: number) => Y0 + 2 + r * 20; // 18 px of color, then a 2 px line
   const pale = [[244, 222, 222], [246, 230, 230], [242, 219, 219], [236, 203, 204]];
   for (let g = 0; g < 8; g++)
     for (let c = 0; c < 4; c++)

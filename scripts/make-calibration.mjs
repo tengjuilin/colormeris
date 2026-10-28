@@ -1,10 +1,10 @@
-// Writes synthetic calibration heatmaps (known truth) to tests/fixtures/calibration/.
+// Writes synthetic calibration heatmaps (known truth) to src/testing/fixtures/calibration/.
 // One sequential, one diverging and one rainbow colormap. Each PNG has a 12 x 9 grid,
 // a vertical colorbar with three ticks, and a .json file with the true cell values and geometry, plus a .csv with the values in grid form (rows x cols).
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
-const OUT = new URL('../tests/fixtures/calibration/', import.meta.url);
+const OUT = new URL('../src/testing/fixtures/calibration/', import.meta.url);
 const W = 960, H = 660;
 const ROWS = 9, COLS = 12, CELL = 60, GX = 80, GY = 60;
 const BAR = { x0: 860, x1: 890, y0: GY, y1: GY + ROWS * CELL };

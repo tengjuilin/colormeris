@@ -1,9 +1,8 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import CM from '../load.js';
+import { test } from 'vitest';
+import { labelsTool, labelsUserText, parseLabelsAnswer } from './labels.ts';
 
-const { labelsTool, parseLabelsAnswer, labelsUserText } = CM;
-const msg = (args) => ({ toolCalls: [{ function: { name: 'set_labels', arguments: typeof args === 'string' ? args : JSON.stringify(args) } }] });
+const msg = (args: unknown) => ({ toolCalls: [{ function: { name: 'set_labels', arguments: typeof args === 'string' ? args : JSON.stringify(args) } }] });
 
 test('labelsTool requires both label lists', () => {
   const t = labelsTool();
@@ -25,7 +24,7 @@ test('parseLabelsAnswer warns on count mismatch and missing sides', () => {
 });
 
 test('parseLabelsAnswer throws without a tool call or with bad JSON', () => {
-  assert.throws(() => parseLabelsAnswer({ content: 'hi' }), /did not return/);
+  assert.throws(() => parseLabelsAnswer({ content: 'hi' } as never), /did not return/);
   assert.throws(() => parseLabelsAnswer(msg('{oops')), /not valid JSON/);
 });
 

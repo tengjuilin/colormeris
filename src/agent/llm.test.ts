@@ -1,22 +1,25 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import CM from '../load.js';
+import { test } from 'vitest';
+import type { ChatContentPart, ChatMessage } from '../types/index.ts';
+import { createRetryGuard, finishCheck, llmTools, parsePages, progressNote, pruneImages, toolResultText, validateRunnerTool } from './llm.ts';
+import { normalizeArgs, validateAction } from './schema.ts';
 
-const { pruneImages, parsePages, llmTools, validateRunnerTool, toolResultText } = CM;
+
+const parts = (m: ChatMessage) => m.content as ChatContentPart[];
 
 test('pruneImages keeps the newest images and moves its cut in steps', () => {
-  const img = (n) => ({ role: 'user', content: [{ type: 'text', text: `i${n}` }, { type: 'image_url', imageUrl: { url: `data:${n}` } }] });
-  const msgs = [{ role: 'system', content: 'x' }, img(1), { role: 'tool', toolCallId: 'a', content: '{}' }, img(2), img(3)];
+  const img = (n: number): ChatMessage => ({ role: 'user', content: [{ type: 'text', text: `i${n}` }, { type: 'image_url', imageUrl: { url: `data:${n}` } }] });
+  const msgs: ChatMessage[] = [{ role: 'system', content: 'x' }, img(1), { role: 'tool', toolCallId: 'a', content: '{}' }, img(2), img(3)];
   const out = pruneImages(msgs, 2, 1);
-  assert.equal(out[1].content[1].type, 'text');
-  assert.equal(out[3].content[1].type, 'image_url');
-  assert.equal(out[4].content[1].type, 'image_url');
-  assert.equal(msgs[1].content[1].type, 'image_url', 'input is not modified');
+  assert.equal(parts(out[1])[1].type, 'text');
+  assert.equal(parts(out[3])[1].type, 'image_url');
+  assert.equal(parts(out[4])[1].type, 'image_url');
+  assert.equal(parts(msgs[1])[1].type, 'image_url', 'input is not modified');
 
   // Cache stability: between two cuts the same old messages are rewritten, so
   // the request prefix does not change from step to step.
   const many = Array.from({ length: 12 }, (_, i) => img(i));
-  const kept = (n) => pruneImages(many.slice(0, n), 3, 4).filter((m) => m.content[1].type === 'image_url').length;
+  const kept = (n: number) => pruneImages(many.slice(0, n), 3, 4).filter((m) => parts(m)[1].type === 'image_url').length;
   assert.deepEqual([3, 4, 6, 7, 8, 11, 12].map(kept), [3, 4, 6, 3, 4, 3, 4]);
   const a = pruneImages(many.slice(0, 8), 3, 4);
   const b = pruneImages(many.slice(0, 9), 3, 4);
@@ -39,44 +42,43 @@ test('LLM tools have unique names; runner tool arguments are checked', () => {
 });
 
 test('retry guard: counts attempts, blocks after the limit, stops long failure runs', () => {
-  const g = CM.createRetryGuard({ maxAttempts: 2, maxErrorsInARow: 3 });
+  const g = createRetryGuard({ maxAttempts: 2, maxErrorsInARow: 3 });
   const bad = { ok: false, error: 'args: bad.' };
   assert.equal(g.before('add_tick', 'p1'), null);
-  assert.match(g.after('add_tick', 'p1', bad).error, /Attempt 1 of 2/);
-  assert.match(g.after('add_tick', 'p1', bad).error, /now blocked/);
-  assert.match(g.before('add_tick', 'p1').error, /blocked for this panel/);
+  assert.match(g.after('add_tick', 'p1', bad).error as string, /Attempt 1 of 2/);
+  assert.match(g.after('add_tick', 'p1', bad).error as string, /now blocked/);
+  assert.match(g.before('add_tick', 'p1')?.error as string, /blocked for this panel/);
   assert.equal(g.before('add_tick', 'p2'), null, 'other panels are not blocked');
   assert.equal(g.after('set_grid', 'p1', { ok: true }).ok, true);
   assert.equal(g.stop, null);
   g.after('a', 'p1', bad);
   g.after('b', 'p1', bad);
   g.after('c', 'p1', bad);
-  assert.match(g.stop, /3 tool calls in a row failed/);
+  assert.match(g.stop as unknown as string, /3 tool calls in a row failed/);
 });
 
 test('normalizeArgs forgives nulls and at+t on add_tick', () => {
-  const r = CM.normalizeArgs('add_tick', { at: { x: 1, y: 2 }, t: 0.5, value: 3, panelId: null });
+  const r = normalizeArgs('add_tick', { at: { x: 1, y: 2 }, t: 0.5, value: 3, panelId: null });
   assert.deepEqual(r.args, { at: { x: 1, y: 2 }, value: 3 });
   assert.match(r.notes[0], /used at/);
-  assert.deepEqual(CM.validateAction('add_tick', r.args), []);
-  assert.match(CM.validateAction('add_tick', { value: 3 })[0], /"at": \{"x": 606/);
-  assert.deepEqual(CM.normalizeArgs('set_review', { status: null }).args, { status: null }, 'null kept where it is a value');
+  assert.deepEqual(validateAction('add_tick', r.args), []);
+  assert.match(validateAction('add_tick', { value: 3 })[0], /"at": \{"x": 606/);
+  assert.deepEqual(normalizeArgs('set_review', { status: null }).args, { status: null }, 'null kept where it is a value');
 });
 
 test('finishCheck refuses to stop after the first heatmap', () => {
-  const { finishCheck, progressNote } = CM;
   const panels = [
     { id: 'a', name: 'Fig 2b', page: 3, ready: true, started: true },
     { id: 'b', name: 'Panel 2', page: 5, ready: false, started: false },
   ];
   const base = { pages: [3, 5], panels, checked: false, refusals: 0 };
-  assert.match(finishCheck({ ...base, viewedPages: new Set([3]) }).message, /page 5 was not looked at/);
+  assert.match(finishCheck({ ...base, viewedPages: new Set([3]) })?.message as string, /page 5 was not looked at/);
   const list = finishCheck({ ...base, viewedPages: new Set([3, 5]) });
-  assert.ok(list.checklist);
-  assert.match(list.message, /page 3: Fig 2b; page 5: no panels/);
+  assert.ok(list?.checklist);
+  assert.match(list?.message as string, /page 3: Fig 2b; page 5: no panels/);
   assert.equal(finishCheck({ ...base, viewedPages: new Set([3, 5]), checked: true, refusals: 1 }), null);
   const partial = [{ ...panels[0], ready: false }];
-  assert.match(finishCheck({ ...base, panels: partial, viewedPages: new Set([3, 5]) }).message, /only partly calibrated/);
+  assert.match(finishCheck({ ...base, panels: partial, viewedPages: new Set([3, 5]) })?.message as string, /only partly calibrated/);
   assert.equal(finishCheck({ ...base, viewedPages: new Set(), refusals: 3 }), null, 'a stuck model can still end');
   assert.match(progressNote({ pages: [3, 5], viewedPages: new Set([3]), panels, currentPage: 3 }), /Page 3 panels: Fig 2b\. .*not looked at yet: 5/);
 });

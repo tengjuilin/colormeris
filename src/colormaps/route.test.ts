@@ -1,11 +1,10 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import CM from '../load.js';
+import { test } from 'vitest';
+import { cmapData } from '../core/colormap-library.ts';
+import { COMPARE_MAX, parseCompare, parseViewerRoute } from './route.ts';
 
-const { cmapData } = CM;
 
 test('parseCompare keeps known names once, in order, up to the cap', () => {
-  const { parseCompare, COMPARE_MAX } = CM;
   const names = ['viridis', 'jet', 'RdBu', 'gray'];
   assert.deepEqual(parseCompare('jet,VIRIDIS, rdbu ,jet,nope,', names), ['jet', 'viridis', 'RdBu']);
   assert.deepEqual(parseCompare(null, names), []);
@@ -17,7 +16,6 @@ test('parseCompare keeps known names once, in order, up to the cap', () => {
 });
 
 test('parseViewerRoute: tab from the hash, map and comparison from the query', () => {
-  const { parseViewerRoute } = CM;
   const names = ['viridis', 'jet', 'RdBu'];
   assert.deepEqual(parseViewerRoute('', '', names), { tab: 'browse', map: null, compare: [] });
   assert.deepEqual(parseViewerRoute('?map=JET', '#browse', names), { tab: 'browse', map: 'jet', compare: [] });

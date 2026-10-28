@@ -1,10 +1,8 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import CM from '../load.js';
+import { test } from 'vitest';
+import { deltaE2000, deltaE76, labToRgb, rgbToHex, rgbToLab } from './color.ts';
 
-const { rgbToLab, labToRgb, deltaE2000, deltaE76, rgbToHex } = CM;
-
-const close = (a, b, eps) => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b}`);
+const close = (a: number, b: number, eps: number) => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b}`);
 
 test('white and black map to L=100 and L=0', () => {
   const w = rgbToLab([255, 255, 255]);

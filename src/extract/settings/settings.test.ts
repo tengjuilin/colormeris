@@ -1,11 +1,8 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import CM from '../load.js';
+import JSZip from 'jszip';
+import { COLOR_DEFAULTS, COLOR_ITEMS, HOTKEY_ACTIONS, HOTKEY_GROUPS, buildSettingsZip, comboFromEvent, defaultSettings, findHotkey, formatCombo, hexToRgb, hotkeyClashes, isMacPlatform, normalizeCombo, normalizeSettings, parseSettings, readSettingsFile, serializeSettings } from './settings.ts';
 
-const { HOTKEY_ACTIONS, defaultSettings, normalizeSettings, normalizeCombo, comboFromEvent, findHotkey, formatCombo, serializeSettings, parseSettings, buildSettingsZip, readSettingsFile } = CM;
-// The vendored UMD build sets globalThis.JSZip when loaded as a module.
-await import('../../assets/vendor/jszip/jszip.min.js');
-const { JSZip } = globalThis;
 
 test('default hotkeys are unique and canonical', () => {
   const all = HOTKEY_ACTIONS.flatMap((a) => a.keys);
@@ -69,9 +66,9 @@ test('findHotkey and formatCombo', () => {
   assert.equal(formatCombo('Mod+Shift+Z', true), '⇧⌘Z');
   assert.equal(formatCombo('Mod+Alt+Shift+K', true), '⌥⇧⌘K');
   assert.equal(formatCombo('Backspace', true), '⌫');
-  assert.equal(CM.isMacPlatform({ userAgentData: { platform: 'macOS' } }), true);
-  assert.equal(CM.isMacPlatform({ platform: 'Win32' }), false);
-  assert.equal(CM.isMacPlatform({ userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)' }), true);
+  assert.equal(isMacPlatform({ userAgentData: { platform: 'macOS' } }), true);
+  assert.equal(isMacPlatform({ platform: 'Win32' }), false);
+  assert.equal(isMacPlatform({ userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)' }), true);
   assert.equal(formatCombo('ArrowLeft'), '←');
 });
 
@@ -104,7 +101,6 @@ test('settings zip round-trips', async () => {
 });
 
 test('hotkeys are grouped and tools may share keys', () => {
-  const { HOTKEY_GROUPS, hotkeyClashes } = CM;
   const groups = new Set(HOTKEY_GROUPS.map((g) => g.id));
   for (const a of HOTKEY_ACTIONS) assert.ok(groups.has(a.group), `${a.id} has a known group`);
   // A ROI and a Map action on the same key: each tool finds its own.
@@ -119,7 +115,6 @@ test('hotkeys are grouped and tools may share keys', () => {
 });
 
 test('colors default, normalize and round-trip', () => {
-  const { COLOR_ITEMS, COLOR_DEFAULTS, hexToRgb } = CM;
   const d = defaultSettings();
   assert.equal(d.colors.grid, '#e22bd0');
   assert.equal(d.colors.roiPalette.length, 8);

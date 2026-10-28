@@ -1,11 +1,10 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupedFigure, makeImage, paintHeatmap, paintDots, setPixel, cmap, VIRIDISH } from '../helpers.js';
-import CM from '../load.js';
+import { test } from 'vitest';
+import type { Corners, Grid, PixelImage, Rgb } from '../types/index.ts';
+import { VIRIDISH, cmap, groupedFigure, makeImage, paintDots, paintHeatmap, setPixel } from '../testing/helpers.ts';
+import { bilinear, cellAt, cornerCellCenters, detectGridSize, dotRadius, fitCellCounts, invertBilinear, outerCorners, readPixel, rectCorners, sampleCell, suppressText } from './grid.ts';
 
-const { rectCorners, bilinear, invertBilinear, cellAt, sampleCell, readPixel, detectGridSize } = CM;
-
-const close = (a, b, eps) => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b}`);
+const close = (a: number, b: number, eps: number) => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b}`);
 const skewed = [{ x: 10, y: 12 }, { x: 110, y: 20 }, { x: 104, y: 220 }, { x: 4, y: 210 }];
 
 test('rectCorners orders corners TL, TR, BR, BL', () => {
@@ -23,7 +22,7 @@ test('invertBilinear inverts bilinear on a skewed quad', () => {
 });
 
 test('cellAt finds the cell and rejects outside points', () => {
-  const grid = { corners: rectCorners({ x: 0, y: 0 }, { x: 100, y: 80 }), rows: 4, cols: 5 };
+  const grid = { corners: rectCorners({ x: 0, y: 0 }, { x: 100, y: 80 }), rows: 4, cols: 5 } as Grid;
   assert.deepEqual(cellAt(grid, { x: 45, y: 70 }), { row: 3, col: 2 });
   assert.equal(cellAt(grid, { x: 120, y: 10 }), null);
 });
@@ -37,16 +36,16 @@ test('sampleCell median ignores sparse outliers', () => {
   const img = makeImage(20, 20, [10, 20, 30, 255]);
   // Sprinkle a few bright outlier pixels inside the sampled area.
   for (const [x, y] of [[8, 8], [9, 10], [11, 9]]) img.data.set([255, 255, 255, 255], (y * 20 + x) * 4);
-  const grid = { corners: rectCorners({ x: 0, y: 0 }, { x: 20, y: 20 }), rows: 1, cols: 1, sampleFraction: 0.5 };
+  const grid = { corners: rectCorners({ x: 0, y: 0 }, { x: 20, y: 20 }), rows: 1, cols: 1, sampleFraction: 0.5 } as Grid;
   assert.deepEqual(sampleCell(img, grid, 0, 0), [10, 20, 30]);
 });
 
-function randomMatrix(rows, cols, seed = 7) {
+function randomMatrix(rows: number, cols: number, seed = 7) {
   const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   return Array.from({ length: rows }, () => Array.from({ length: cols }, () => rand()));
 }
 
-function detectCase(rows, cols, corners, { lines = true, matrix, offset = 0, size = [260, 380] } = {}) {
+function detectCase(rows: number, cols: number, corners: Corners, { lines = true, matrix, offset = 0, size = [260, 380] }: { lines?: boolean; matrix?: number[][]; offset?: number; size?: [number, number] } = {}) {
   const img = makeImage(...size);
   paintHeatmap(img, corners, matrix || randomMatrix(rows, cols), VIRIDISH, { lines });
   const placed = corners.map((c, i) => ({ x: c.x + (i === 0 || i === 3 ? -offset : offset), y: c.y + (i < 2 ? -offset : offset) }));
@@ -89,8 +88,7 @@ test('detectGridSize returns 1 x 1 for a flat block', () => {
 });
 
 test('outerCorners extrapolates half a cell beyond the corner dot centers, and back', () => {
-  const { outerCorners, cornerCellCenters } = CM;
-  const grid = { anchor: 'centers', corners: rectCorners({ x: 20, y: 10 }, { x: 80, y: 50 }), rows: 3, cols: 4 };
+  const grid = { anchor: 'centers', corners: rectCorners({ x: 20, y: 10 }, { x: 80, y: 50 }), rows: 3, cols: 4 } as Grid;
   // Spacing 20 px across, 20 px down.
   outerCorners(grid).forEach((p, i) => {
     const want = rectCorners({ x: 10, y: 0 }, { x: 90, y: 60 })[i];
@@ -98,7 +96,7 @@ test('outerCorners extrapolates half a cell beyond the corner dot centers, and b
     close(p.y, want.y, 1e-9);
   });
   const back = cornerCellCenters(outerCorners(grid), 3, 4);
-  back.forEach((p, i) => (close(p.x, grid.corners[i].x, 1e-9), close(p.y, grid.corners[i].y, 1e-9)));
+  back.forEach((p, i) => (close(p.x, grid.corners![i].x, 1e-9), close(p.y, grid.corners![i].y, 1e-9)));
   assert.equal(outerCorners({ ...grid, anchor: 'corners' }), grid.corners);
 });
 
@@ -106,18 +104,17 @@ test('circle sampling reads a disc inside its cell', () => {
   // A 20 × 20 cell with a red disc of radius 7 on white.
   const img = makeImage(20, 20);
   for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) if ((x + 0.5 - 10) ** 2 + (y + 0.5 - 10) ** 2 <= 49) img.data.set([200, 0, 0, 255], (y * 20 + x) * 4);
-  const grid = { corners: rectCorners({ x: 0, y: 0 }, { x: 20, y: 20 }), rows: 1, cols: 1, sampleFraction: 0.75 };
+  const grid = { corners: rectCorners({ x: 0, y: 0 }, { x: 20, y: 20 }), rows: 1, cols: 1, sampleFraction: 0.75 } as Grid;
   // A 15 px square around a radius-7 disc is about 31 % white per channel; a 15 px circle is about 13 %.
   assert.deepEqual(sampleCell(img, { ...grid, shape: 'circle' }, 0, 0), [200, 0, 0]);
 });
 
 test('dotRadius finds each dot size and no dot in an empty cell', () => {
-  const { dotRadius } = CM;
   const img = makeImage(160, 100);
   const radii = [[3, 6, 9, 0], [3, 6, 9, 0]];
   paintDots(img, { x: 20, y: 30 }, { x: 140, y: 70 }, [[0.2, 0.5, 0.8, 0.5], [0.2, 0.5, 0.8, 0.5]], radii, VIRIDISH);
-  const grid = { anchor: 'centers', corners: rectCorners({ x: 20, y: 30 }, { x: 140, y: 30 + 40 }), rows: 2, cols: 4, sampleFraction: 0.7 };
-  for (let c = 0; c < 3; c++) close(dotRadius(img, grid, 0, c), radii[0][c], 1.01);
+  const grid = { anchor: 'centers', corners: rectCorners({ x: 20, y: 30 }, { x: 140, y: 30 + 40 }), rows: 2, cols: 4, sampleFraction: 0.7 } as Grid;
+  for (let c = 0; c < 3; c++) close(dotRadius(img, grid, 0, c)!, radii[0][c], 1.01);
   assert.equal(dotRadius(img, grid, 0, 3), null);
 });
 
@@ -127,7 +124,7 @@ test('fitCellCounts counts groups of similar cells cell by cell', () => {
   const img = makeImage(300, 160);
   const corners = [{ x: 12, y: 20 }, { x: 288, y: 20 }, { x: 288, y: 140 }, { x: 12, y: 140 }];
   paintHeatmap(img, corners, matrix, VIRIDISH, { lines: false });
-  const fit = CM.fitCellCounts(img, corners);
+  const fit = fitCellCounts(img, corners);
   assert.deepEqual([fit.rows, fit.cols], [5, 12]);
   assert.ok(fit.colScore > 0.7 && fit.rowScore > 0.7);
 });
@@ -138,7 +135,7 @@ test('fitCellCounts takes the full count when coarser counts fit as well', () =>
   const img = makeImage(300, 260);
   const corners = [{ x: 10, y: 10 }, { x: 250, y: 10 }, { x: 250, y: 190 }, { x: 10, y: 190 }];
   paintHeatmap(img, corners, matrix, VIRIDISH, { lines: false });
-  const fit = CM.fitCellCounts(img, corners);
+  const fit = fitCellCounts(img, corners);
   assert.deepEqual([fit.rows, fit.cols], [9, 12]);
 });
 
@@ -146,7 +143,7 @@ test('fitCellCounts fits groups of columns split by white gaps one by one', () =
   // 8 groups of 4 columns, 8 px gaps, 2 px lines: the gaps shift the cells
   // off one even spacing (that fit scored 0.77; detectGridSize says 3).
   const { img, cells } = groupedFigure();
-  const fit = CM.fitCellCounts(img, [{ x: cells.x0, y: cells.y0 }, { x: cells.x1, y: cells.y0 }, { x: cells.x1, y: cells.y1 }, { x: cells.x0, y: cells.y1 }]);
+  const fit = fitCellCounts(img, [{ x: cells.x0, y: cells.y0 }, { x: cells.x1, y: cells.y0 }, { x: cells.x1, y: cells.y1 }, { x: cells.x0, y: cells.y1 }]);
   assert.deepEqual([fit.rows, fit.cols], [12, 32]);
   assert.ok(fit.colScore > 0.85, `colScore ${fit.colScore}`);
 });
@@ -157,17 +154,18 @@ test('fitCellCounts does not take a column of white cells for a gap', () => {
   const corners = [{ x: 20, y: 20 }, { x: 260, y: 20 }, { x: 260, y: 170 }, { x: 20, y: 170 }];
   paintHeatmap(img, corners, matrix, VIRIDISH);
   for (let y = 20; y < 170; y++) for (let x = 110; x < 140; x++) img.data.set([255, 255, 255, 255], (y * 300 + x) * 4);
-  assert.equal(CM.fitCellCounts(img, corners).cols, 8);
+  assert.equal(fitCellCounts(img, corners).cols, 8);
 });
 
 // ---- fitCellCounts on rough boxes (cases from 14 real figures) ----------------
 
-const box = (x0, y0, x1, y1) => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
-const grow = ([x0, y0, x1, y1], [l, t, r, b]) => box(x0 - l, y0 - t, x1 + r, y1 + b);
-const fill = (img, x0, y0, x1, y1, rgb) => {
+type Quad = [number, number, number, number];
+const box = (x0: number, y0: number, x1: number, y1: number): Corners => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+const grow = ([x0, y0, x1, y1]: Quad, [l, t, r, b]: number[]) => box(x0 - l, y0 - t, x1 + r, y1 + b);
+const fill = (img: PixelImage, x0: number, y0: number, x1: number, y1: number, rgb: Rgb) => {
   for (let y = Math.max(0, y0); y < Math.min(img.height, y1); y++) for (let x = Math.max(0, x0); x < Math.min(img.width, x1); x++) setPixel(img, x, y, rgb);
 };
-const frame = (img, [x0, y0, x1, y1], w, rgb = [20, 20, 20]) => {
+const frame = (img: PixelImage, [x0, y0, x1, y1]: Quad, w: number, rgb: Rgb = [20, 20, 20]) => {
   fill(img, x0 - w, y0 - w, x1 + w, y0, rgb);
   fill(img, x0 - w, y1, x1 + w, y1 + w, rgb);
   fill(img, x0 - w, y0, x0, y1, rgb);
@@ -175,7 +173,7 @@ const frame = (img, [x0, y0, x1, y1], w, rgb = [20, 20, 20]) => {
 };
 // Cells of `cw` × `ch` px with `gap` px of `gapRgb` between them, starting at
 // (x0, y0); returns the cell block [x0, y0, x1, y1].
-function paintCells(img, x0, y0, rows, cols, cw, ch, gap, colorAt, gapRgb = [255, 255, 255]) {
+function paintCells(img: PixelImage, x0: number, y0: number, rows: number, cols: number, cw: number, ch: number, gap: number, colorAt: (r: number, c: number) => Rgb, gapRgb: Rgb = [255, 255, 255]): Quad {
   const x1 = x0 + cols * cw + (cols - 1) * gap;
   const y1 = y0 + rows * ch + (rows - 1) * gap;
   fill(img, x0, y0, x1, y1, gapRgb);
@@ -187,15 +185,15 @@ function paintCells(img, x0, y0, rows, cols, cw, ch, gap, colorAt, gapRgb = [255
     }
   return [x0, y0, x1, y1];
 }
-const rand = (seed) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-const viridis = (next) => () => cmap(VIRIDISH, next());
+const rand = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const viridis = (next: () => number) => () => cmap(VIRIDISH, next());
 // Seeded JPEG-like noise of ±amp per channel.
-function addNoise(img, amp, seed = 3) {
+function addNoise(img: PixelImage, amp: number, seed = 3) {
   const next = rand(seed);
   for (let i = 0; i < img.data.length; i += 4) for (let k = 0; k < 3; k++) img.data[i + k] += Math.round((next() * 2 - 1) * amp);
 }
-const counts = (img, corners) => {
-  const f = CM.fitCellCounts(img, corners);
+const counts = (img: PixelImage, corners: Corners) => {
+  const f = fitCellCounts(img, corners);
   return [f.rows, f.cols];
 };
 
@@ -206,7 +204,7 @@ test('fitCellCounts counts a white gap between cells once (5 × 5 cells, 8 px ga
   const cells = paintCells(img, 60, 60, 5, 5, 104, 104, 8, () => color());
   frame(img, cells, 5);
   for (const pad of [[0, 0, 0, 0], [5, 5, 5, 5], [9, 9, 9, 9], [-4, -4, -4, -4], [8, -3, 2, 6]]) assert.deepEqual(counts(img, grow(cells, pad)), [5, 5], `pad ${pad}`);
-  const f = CM.fitCellCounts(img, box(...cells));
+  const f = fitCellCounts(img, box(...cells));
   assert.ok(f.rowScore > 0.7 && f.colScore > 0.7, `scores ${f.rowScore} ${f.colScore}`);
 });
 
@@ -225,7 +223,7 @@ test('fitCellCounts reports where the cells are inside a too large box', () => {
   const color = viridis(rand(2));
   const cells = paintCells(img, 80, 60, 6, 8, 38, 40, 0, () => color());
   frame(img, cells, 2);
-  const f = CM.fitCellCounts(img, grow(cells, [15, 15, 15, 15]));
+  const f = fitCellCounts(img, grow(cells, [15, 15, 15, 15]));
   assert.deepEqual([f.rows, f.cols], [6, 8]);
   // The box spans 334 px across; the cells 304 px from 15 px in.
   close(f.colSpan[0] * 334, 15, 4);
@@ -268,7 +266,7 @@ test('fitCellCounts finds replicate columns without lines between them', () => {
     return base[r][Math.floor(c / 3)].map((v) => Math.max(0, Math.min(255, v + d)));
   });
   frame(img, cells, 1);
-  const f = CM.fitCellCounts(img, box(...cells));
+  const f = fitCellCounts(img, box(...cells));
   assert.deepEqual([f.rows, f.cols], [32, 9]);
 });
 
@@ -281,7 +279,7 @@ test('fitCellCounts keeps a framed row of white cells at the end', () => {
   frame(img, cells, 2);
   for (const pad of [[2, 2, 2, 2], [4, 4, 4, 4], [10, 10, 10, 10]]) assert.deepEqual(counts(img, grow(cells, pad)), [10, 6], `pad ${pad}`);
   // Without the frame in the box it could be margin: left out, but offered.
-  const f = CM.fitCellCounts(img, box(...cells));
+  const f = fitCellCounts(img, box(...cells));
   assert.deepEqual([f.rows, f.rowAlt], [9, 10]);
   assert.match(f.rowReason, /white end cell/);
 });
@@ -290,7 +288,7 @@ test('fitCellCounts gives a low score where no borders can be seen', () => {
   // A smooth strip without cell borders cannot be counted from its pixels.
   const img = makeImage(600, 120);
   for (let x = 20; x < 580; x++) fill(img, x, 30, x + 1, 80, cmap(VIRIDISH, (x - 20) / 560));
-  const f = CM.fitCellCounts(img, box(20, 30, 580, 80));
+  const f = fitCellCounts(img, box(20, 30, 580, 80));
   assert.ok(f.colScore < 0.5, `colScore ${f.colScore}`);
 });
 
@@ -319,10 +317,10 @@ test('suppressText paints over short dark dips and keeps lines dark on every lin
   // sample 20 on every line (a grid line).
   const N = 30;
   const rgb = new Float32Array(4 * N * 3).fill(200);
-  const set = (j, i, v) => rgb.fill(v, (j * N + i) * 3, (j * N + i) * 3 + 3);
+  const set = (j: number, i: number, v: number) => rgb.fill(v, (j * N + i) * 3, (j * N + i) * 3 + 3);
   for (const i of [8, 9, 10]) set(1, i, 20);
   for (let j = 0; j < 4; j++) set(j, 20, 20);
-  const share = CM.suppressText(rgb, N, 4);
+  const share = suppressText(rgb, N, 4);
   assert.ok(share > 0);
   assert.equal(rgb[(1 * N + 9) * 3], 200);
   for (let j = 0; j < 4; j++) assert.equal(rgb[(j * N + 20) * 3], 20);

@@ -1,12 +1,12 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import CM from '../load.js';
+import { test } from 'vitest';
+import { CMAP_REFS, citeFor } from '../colormaps/references.ts';
+import { cmapData } from './colormap-library.ts';
+import { ACHROMAT, CVD_MODELS, CVD_TYPES, grayscale, lightness, lightnessStats, parseHexColors, resolveCvdModel, simulateCvd, simulateCvdColor, simulateCvdPixels } from './cvd.ts';
 
-const { CVD_TYPES, simulateCvd, lightness, grayscale, lightnessStats, parseHexColors, cmapData, citeFor, CMAP_REFS } = CM;
-
-const close = (a, b, eps) => assert.ok(Math.abs(a - b) <= eps, `${a} vs ${b}`);
-const closeRgb = (a, b, eps = 1) => a.forEach((v, i) => close(v, b[i], eps));
-const mapNamed = (name) => cmapData.maps.find((m) => m.name === name);
+const close = (a: number, b: number, eps: number) => assert.ok(Math.abs(a - b) <= eps, `${a} vs ${b}`);
+const closeRgb = (a: number[], b: number[], eps = 1) => a.forEach((v, i) => close(v, b[i], eps));
+const mapNamed = (name: string) => cmapData.maps.find((m) => m.name === name)!;
 
 test('grays stay gray under every CVD view', () => {
   for (const type of CVD_TYPES) {
@@ -36,15 +36,15 @@ test('grayscale keeps L*', () => {
 });
 
 test('lightnessStats: viridis is linear, jet is not', () => {
-  const L = (name) => parseHexColors(mapNamed(name).colors).map(lightness);
+  const L = (name: string) => parseHexColors(mapNamed(name).colors).map(lightness);
   const v = lightnessStats(L('viridis'));
   assert.equal(v.monotonic, true);
-  assert.ok(v.r2 > 0.99, `viridis r2 ${v.r2}`);
+  assert.ok(v.r2! > 0.99, `viridis r2 ${v.r2}`);
   const j = lightnessStats(L('jet'));
   assert.equal(j.monotonic, false);
   assert.ok(j.reversals >= 1);
   assert.ok(j.maxDev > 20);
-  assert.ok(j.r2 >= 0 && j.r2 < 0.5, `jet r2 ${j.r2}`);
+  assert.ok(j.r2! >= 0 && j.r2! < 0.5, `jet r2 ${j.r2}`);
   assert.equal(lightnessStats([50, 50, 50]).r2, null);
 });
 
@@ -90,13 +90,12 @@ test('colormap data: valid colors, groups, sources and citations', () => {
   assert.deepEqual(citeFor('matlab.parula'), ['mathworks']);
   assert.deepEqual(citeFor('ggthemes::Tableau_10'), ['paletteer']);
   for (const m of cmapData.maps.filter((x) => x.source === 'seaborn')) assert.deepEqual(citeFor(m.name), ['seaborn'], m.name);
-  assert.equal(cmapData.maps.find((m) => m.name === 'cmo.oxy').group, 'others');
+  assert.equal(cmapData.maps.find((m) => m.name === 'cmo.oxy')!.group, 'others');
 });
 
 test('image simulation: grays stay gray, severity 0 is the identity', () => {
-  const { simulateCvdColor } = CM;
   for (const type of CVD_TYPES) {
-    for (const model of ['recommended', ...CM.CVD_MODELS]) {
+    for (const model of ['recommended', ...CVD_MODELS]) {
       for (const severity of [0, 0.35, 1]) {
         for (const v of [0, 90, 255]) closeRgb(simulateCvdColor([v, v, v], type, { model, severity }), [v, v, v]);
         if (severity === 0) closeRgb(simulateCvdColor([200, 30, 120], type, { model, severity }), [200, 30, 120], 0);
@@ -108,11 +107,11 @@ test('image simulation: grays stay gray, severity 0 is the identity', () => {
 test('image simulation: Machado at full severity equals the colormap views', () => {
   for (const type of CVD_TYPES) {
     for (const rgb of [[255, 0, 0], [68, 1, 84], [0, 128, 255]]) {
-      assert.deepEqual(CM.simulateCvdColor(rgb, type, { model: 'machado', severity: 1 }), simulateCvd(rgb, type));
+      assert.deepEqual(simulateCvdColor(rgb, type, { model: 'machado', severity: 1 }), simulateCvd(rgb, type));
     }
   }
   // Half severity lies between the original and full.
-  const half = CM.simulateCvdColor([255, 0, 0], 'deuteranopia', { model: 'machado', severity: 0.5 });
+  const half = simulateCvdColor([255, 0, 0], 'deuteranopia', { model: 'machado', severity: 0.5 });
   assert.ok(half[0] < 255 && half[0] > 163 && half[1] > 0 && half[1] < 144);
 });
 
@@ -133,14 +132,13 @@ test('image simulation matches DaltonLens-Python (Brettel 1997, Viénot 1999)', 
   for (const [model, byType] of Object.entries(ref)) {
     for (const [type, bySev] of Object.entries(byType)) {
       for (const [sev, want] of Object.entries(bySev)) {
-        cols.forEach((rgb, i) => closeRgb(CM.simulateCvdColor(rgb, type, { model, severity: Number(sev) }), want[i], 2));
+        cols.forEach((rgb, i) => closeRgb(simulateCvdColor(rgb, type, { model, severity: Number(sev) }), want[i], 2));
       }
     }
   }
 });
 
 test('resolveCvdModel follows the DaltonLens advice', () => {
-  const { resolveCvdModel } = CM;
   assert.equal(resolveCvdModel('tritanopia'), 'brettel');
   assert.equal(resolveCvdModel('protanopia'), 'machado');
   assert.equal(resolveCvdModel('deuteranopia', 'recommended'), 'machado');
@@ -152,22 +150,21 @@ test('resolveCvdModel follows the DaltonLens advice', () => {
 test('simulateCvdPixels keeps alpha, matches the per-color path, and works in chunks', () => {
   const px = new Uint8ClampedArray([255, 0, 0, 255, 30, 200, 90, 128, 255, 0, 0, 0]);
   const opts = { model: 'brettel', severity: 0.7 };
-  const out = CM.simulateCvdPixels(px, 'protanopia', opts);
+  const out = simulateCvdPixels(px, 'protanopia', opts);
   for (let p = 0; p < 3; p++) {
     const o = p * 4;
-    assert.deepEqual([...out.slice(o, o + 3)], CM.simulateCvdColor([...px.slice(o, o + 3)], 'protanopia', opts));
+    assert.deepEqual([...out.slice(o, o + 3)], simulateCvdColor([...px.slice(o, o + 3)], 'protanopia', opts));
     assert.equal(out[o + 3], px[o + 3]);
   }
   const chunked = new Uint8ClampedArray(px.length);
   const cache = new Map();
-  CM.simulateCvdPixels(px, 'protanopia', { ...opts, out: chunked, cache, from: 0, to: 2 });
-  CM.simulateCvdPixels(px, 'protanopia', { ...opts, out: chunked, cache, from: 2, to: 3 });
+  simulateCvdPixels(px, 'protanopia', { ...opts, out: chunked, cache, from: 0, to: 2 });
+  simulateCvdPixels(px, 'protanopia', { ...opts, out: chunked, cache, from: 2, to: 3 });
   assert.deepEqual(chunked, out);
   assert.equal(cache.size, 2); // the two reds share one entry
 });
 
 test('achromatopsia: the gray of the same L*, blended by severity', () => {
-  const { simulateCvdColor, ACHROMAT, resolveCvdModel } = CM;
   assert.equal(resolveCvdModel(ACHROMAT, 'vienot'), 'luminance');
   for (const rgb of [[255, 0, 0], [68, 1, 84], [253, 231, 37], [30, 200, 90]]) {
     const g = simulateCvdColor(rgb, ACHROMAT, { severity: 1 });
@@ -181,16 +178,16 @@ test('achromatopsia: the gray of the same L*, blended by severity', () => {
 
 test('colormap data: CMasher, Crameri, cmocean, colorcet, seaborn, CarbonPlan, NCL, SciVisColor and CARTOColors add only maps that are new', () => {
   // Same colors as another map, or as its reverse, to within 2/255.
-  const same = (a, b) => [b, [...b].reverse()].some((c) => a.every((x, i) => x.every((v, k) => Math.abs(v - c[i][k]) <= 2)));
+  const same = (a: number[][], b: number[][]) => [b, [...b].reverse()].some((c) => a.every((x, i) => x.every((v, k) => Math.abs(v - c[i][k]) <= 2)));
   const cont = cmapData.maps.filter((m) => m.kind === 'continuous').map((m) => ({ ...m, rgbs: parseHexColors(m.colors) }));
   for (const [i, m] of cont.entries()) {
     if (m.source === 'matplotlib') continue;
     for (const o of cont.slice(0, i)) assert.ok(!same(m.rgbs, o.rgbs), `${m.name} = ${o.name}`);
   }
-  const by = (src) => cmapData.maps.filter((m) => m.source === src);
+  const by = (src: string) => cmapData.maps.filter((m) => m.source === src);
   assert.ok(by('cmasher').length >= 50 && by('crameri').length >= 30 && by('carto').length >= 30 && by('cmocean').length >= 20 && by('colorcet').length >= 70 && by('seaborn').length === 12 && by('carbonplan').length >= 50 && by('ncl').length >= 150 && by('sciviz').length >= 100);
   // SciVisColor's discrete palettes list each color twice; only one is kept.
-  const bg = parseHexColors(cmapData.maps.find((m) => m.name === 'sciviz.discrete_Bg').colors);
+  const bg = parseHexColors(cmapData.maps.find((m) => m.name === 'sciviz.discrete_Bg')!.colors);
   assert.ok(bg.every((c, i) => i === 0 || c.some((v, k) => v !== bg[i - 1][k])));
   assert.ok(!cmapData.maps.some((m) => m.name === 'sciviz.test'));
   // NCL copies of matplotlib maps (GMT_gray, matlab_hot, cividis) are left out.
@@ -200,7 +197,7 @@ test('colormap data: CMasher, Crameri, cmocean, colorcet, seaborn, CarbonPlan, N
   const lists = cmapData.maps.filter((m) => m.kind === 'qualitative').map((m) => m.colors);
   assert.equal(new Set(lists).size, lists.length);
   // CARTOColors run through their 7-step palettes, ends included.
-  const burg = parseHexColors(cmapData.maps.find((m) => m.name === 'carto.Burg').colors);
+  const burg = parseHexColors(cmapData.maps.find((m) => m.name === 'carto.Burg')!.colors);
   assert.deepEqual([burg[0], burg[255]], [[0xff, 0xc6, 0xc4], [0x67, 0x20, 0x44]]);
   // Rotated (cmr.infinity_s) or reordered (cmc.batlowS) copies of a base map.
   assert.ok(!by('cmasher').some((m) => m.name.endsWith('_s')));

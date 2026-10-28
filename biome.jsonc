@@ -15,7 +15,19 @@
   },
   "linter": {
     "enabled": true,
-    "rules": { "preset": "recommended" }
+    "rules": {
+      "preset": "recommended",
+      "suspicious": {
+        // Accumulators like `(best ??= x)` and `n += (a = f())` are deliberate in the pixel loops.
+        "noAssignInExpressions": "off",
+        // `xs.forEach((x) => set.add(x))` is idiomatic here; the returned value is ignored on purpose.
+        "useIterableCallbackReturn": "off"
+      },
+      "style": {
+        // `!` marks a fact the code checked earlier (see docs/typescript.md); a cast would say less.
+        "noNonNullAssertion": "off"
+      }
+    }
   },
   "assist": { "enabled": true }
 }

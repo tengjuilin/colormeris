@@ -1,18 +1,18 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import CM from '../load.js';
-
-const { identifyColorbar, identifyColors, matchLevel, parseHexColors, cmapData } = CM;
+import { test } from 'vitest';
+import { cmapData } from './colormap-library.ts';
+import { colormapSamples, identifyColorbar, identifyColors, matchLevel, suggestColormap } from './colormap-match.ts';
+import { parseHexColors } from './cvd.ts';
 
 const maps = cmapData.maps.map((m) => ({ name: m.name, kind: m.kind, rgbs: parseHexColors(m.colors) }));
-const byName = (n) => maps.find((m) => m.name === n);
+const byName = (n: string) => maps.find((m) => m.name === n)!;
 
 // Deterministic noise of ±6 per channel, like JPEG artifacts.
 let seed = 1;
 const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-const noisy = (c) => c.map((v) => Math.max(0, Math.min(255, Math.round(v + rand() * 12 - 6))));
+const noisy = (c: number[]) => c.map((v) => Math.max(0, Math.min(255, Math.round(v + rand() * 12 - 6))));
 
-function bar(name, { n = 180, reversed = false } = {}) {
+function bar(name: string, { n = 180, reversed = false }: { n?: number; reversed?: boolean } = {}) {
   const m = byName(name);
   return Array.from({ length: n }, (_, i) => {
     let t = i / (n - 1);
@@ -59,23 +59,23 @@ test('loose pixels of a heatmap find its map, ignoring the white background', ()
 
 test('suggested reference colormap names the direction by value', () => {
   const s = bar('viridis', { reversed: true });
-  const free = CM.suggestColormap(s);
+  const free = suggestColormap(s)!;
   assert.deepEqual([free.mplName, free.level, free.byValue], ['viridis_r', 'exact', false]);
   // Ticks say the start has the high values: then it is plain viridis.
-  assert.equal(CM.suggestColormap(s, { lowAtStart: false }).mplName, 'viridis');
-  const g = CM.suggestColormap(bar('gray'));
+  assert.equal(suggestColormap(s, { lowAtStart: false })!.mplName, 'viridis');
+  const g = suggestColormap(bar('gray'))!;
   assert.ok(g.same.length >= 2, g.same.join());
 });
 
 test('colormapSamples reads a known map as colorbar samples', () => {
   const v = byName('viridis').rgbs;
-  const s = CM.colormapSamples({ name: 'viridis', reversed: false }, 256);
+  const s = colormapSamples({ name: 'viridis', reversed: false }, 256)!;
   assert.equal(s.length, 256);
   assert.deepEqual([s[0].t, s[255].t], [0, 1]);
   assert.deepEqual(s[0].rgb.map(Math.round), v[0]);
   assert.deepEqual(s[255].rgb.map(Math.round), v.at(-1));
   // Reversed runs from the map's end to its start.
-  const r = CM.colormapSamples({ name: 'viridis', reversed: true }, 256);
+  const r = colormapSamples({ name: 'viridis', reversed: true }, 256)!;
   assert.deepEqual(r[0].rgb.map(Math.round), v.at(-1));
-  assert.equal(CM.colormapSamples({ name: 'no-such-map' }), null);
+  assert.equal(colormapSamples({ name: 'no-such-map' }), null);
 });

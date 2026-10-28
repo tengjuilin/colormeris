@@ -1,19 +1,19 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeImage, setPixel, paintHeatmap, paintColorbar, cmap, VIRIDISH, groupedFigure } from '../helpers.js';
-import CM from '../load.js';
+import { test } from 'vitest';
+import type { Box, PixelImage, Rgb } from '../types/index.ts';
+import { besideBox, besideCheck } from '../agent/decide.ts';
+import { VIRIDISH, cmap, groupedFigure, makeImage, paintColorbar, paintHeatmap, setPixel } from '../testing/helpers.ts';
+import { findColorbars, findStrip, findTickLabels, labelReach, snapBlock, snapEdges, snapStrip, snapStripBox } from './locate.ts';
 
-const { snapBlock, findStrip, findTickLabels, besideBox, besideCheck } = CM;
-
-const fill = (img, x0, y0, x1, y1, rgb = [20, 20, 20]) => {
+const fill = (img: PixelImage, x0: number, y0: number, x1: number, y1: number, rgb: Rgb = [20, 20, 20]) => {
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) setPixel(img, x, y, rgb);
 };
 // A text-like label: `n` character blocks 6 px wide, 10 px tall, 2 px apart.
-const label = (img, x, y, n = 3) => {
+const label = (img: PixelImage, x: number, y: number, n = 3) => {
   for (let i = 0; i < n; i++) fill(img, x + i * 8, y, x + i * 8 + 6, y + 10);
 };
-const matrix = (rows, cols) => Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => ((r * 7 + c * 3) % 10) / 9));
-const rect = (x0, y0, x1, y1) => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+const matrix = (rows: number, cols: number) => Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => ((r * 7 + c * 3) % 10) / 9));
+const rect = (x0: number, y0: number, x1: number, y1: number) => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
 
 // Heatmap cells at x 60–220, y 40–160 with row labels on the left and a
 // colorbar on the right.
@@ -83,8 +83,8 @@ test('labelReach stops at the white gap before the next panel', () => {
   const img = figure();
   // Row labels at x 20–51; another panel's colorbar further left.
   fill(img, 0, 40, 3, 160, [200, 120, 30]);
-  assert.equal(CM.labelReach(img, { x0: 60, y0: 40, x1: 220, y1: 160 }, 'left', 100), 20);
-  assert.equal(CM.labelReach(img, { x0: 60, y0: 40, x1: 220, y1: 160 }, 'below', 50), 160);
+  assert.equal(labelReach(img, { x0: 60, y0: 40, x1: 220, y1: 160 }, 'left', 100), 20);
+  assert.equal(labelReach(img, { x0: 60, y0: 40, x1: 220, y1: 160 }, 'below', 50), 160);
 });
 
 test('labelReach takes a wider gap beside a large heatmap', () => {
@@ -94,7 +94,7 @@ test('labelReach takes a wider gap beside a large heatmap', () => {
   fill(img, 150, 40, 1650, 160, [240, 200, 200]);
   for (let i = 0; i < 4; i++) fill(img, 120, 45 + i * 25, 138, 63 + i * 25);
   for (let i = 0; i < 4; i++) label(img, 50, 48 + i * 25, 6);
-  assert.equal(CM.labelReach(img, { x0: 150, y0: 40, x1: 1650, y1: 160 }, 'left', 300), 50);
+  assert.equal(labelReach(img, { x0: 150, y0: 40, x1: 1650, y1: 160 }, 'left', 300), 50);
 });
 
 test('snapBlock grows over pale cells of a colormap that starts at white', () => {
@@ -158,7 +158,7 @@ test('a horizontal colorbar below grouped cells is found with its tick labels', 
 });
 
 // Real figures are blurred (JPEG, resampling): a 3 × 3 box blur.
-const blur = (img) => {
+const blur = (img: PixelImage) => {
   const src = new Uint8ClampedArray(img.data);
   const { width: W, height: H } = img;
   for (let y = 1; y < H - 1; y++)
@@ -172,7 +172,7 @@ const blur = (img) => {
 };
 // JPEG-like ringing: ±8 levels (a fixed pseudo-random sequence) on every
 // pixel that is not clean page, so a thin white gap is no longer blank.
-const noise = (img) => {
+const noise = (img: PixelImage) => {
   const d = img.data;
   let seed = 7;
   for (let i = 0; i < d.length; i += 4) {
@@ -184,14 +184,14 @@ const noise = (img) => {
   }
   return img;
 };
-const outline = (img, x0, y0, x1, y1, w = 1, rgb = [20, 20, 20]) => {
+const outline = (img: PixelImage, x0: number, y0: number, x1: number, y1: number, w = 1, rgb: Rgb = [20, 20, 20]) => {
   fill(img, x0, y0, x1, y0 + w, rgb);
   fill(img, x0, y1 - w, x1, y1, rgb);
   fill(img, x0, y0, x0 + w, y1, rgb);
   fill(img, x1 - w, y0, x1, y1, rgb);
 };
 // Cells of `m` in a grid with white lines `line` px wide between them.
-const gridCells = (img, x0, y0, rows, cols, size, line, stops, m = matrix(rows, cols)) => {
+const gridCells = (img: PixelImage, x0: number, y0: number, rows: number, cols: number, size: number, line: number, stops: Rgb[], m = matrix(rows, cols)) => {
   for (let r = 0; r < rows; r++)
     for (let c = 0; c < cols; c++) {
       const x = x0 + c * (size + line);
@@ -199,7 +199,7 @@ const gridCells = (img, x0, y0, rows, cols, size, line, stops, m = matrix(rows, 
       paintHeatmap(img, rect(x, y, x + size, y + size), [[m[r][c]]], stops, { lines: false });
     }
 };
-const near = (a, b, tol = 2) => ['x0', 'y0', 'x1', 'y1'].every((k) => Math.abs(a[k] - b[k]) <= tol);
+const near = (a: Box | null, b: Box, tol = 2) => (['x0', 'y0', 'x1', 'y1'] as const).every((k) => Math.abs(a![k] - b[k]) <= tol);
 const RDBU = [[5, 48, 97], [67, 147, 195], [247, 247, 247], [214, 96, 77], [103, 0, 31]];
 
 test('snapBlock stops at a blurred frame with a colorbar right beside it', () => {
@@ -244,7 +244,7 @@ test('snapBlock keeps row labels and rotated text out of pale cells', () => {
   // Test-4/10: label text 14 px left of pale cells with 1 px black borders
   // (white cells among them) and rotated labels below them; sharp, then
   // blurred and noisy.
-  for (const smudge of [(img) => img, (img) => noise(blur(blur(img)))]) {
+  for (const smudge of [(img: PixelImage) => img, (img: PixelImage) => noise(blur(blur(img)))]) {
     const img = makeImage(400, 360);
     const pale = [[255, 255, 255], [250, 220, 215], [215, 230, 245]];
     paintHeatmap(img, rect(100, 40, 340, 240), matrix(8, 6), pale);
@@ -273,11 +273,11 @@ test('snapEdges refines a trusted box without growing into a neighbour', () => {
   gridCells(img, 40, 40, 3, 4, 36, 2, RDBU);
   gridCells(img, 202, 40, 3, 4, 36, 2, RDBU, matrix(3, 4).map((r) => r.map((v) => 1 - v)));
   const cells = { x0: 40, y0: 40, x1: 190, y1: 152 };
-  assert.deepEqual(CM.snapEdges(img, { x0: 43, y0: 37, x1: 187, y1: 155 }), cells);
-  assert.deepEqual(CM.snapEdges(img, { x0: 37, y0: 41, x1: 194, y1: 149 }), cells);
+  assert.deepEqual(snapEdges(img, { x0: 43, y0: 37, x1: 187, y1: 155 }), cells);
+  assert.deepEqual(snapEdges(img, { x0: 37, y0: 41, x1: 194, y1: 149 }), cells);
   // An edge in the middle of a cell, far from any cell edge, stays put;
   // snapBlock would take the whole block.
-  assert.deepEqual(CM.snapEdges(img, { x0: 40, y0: 40, x1: 132, y1: 152 }), { x0: 40, y0: 40, x1: 132, y1: 152 });
+  assert.deepEqual(snapEdges(img, { x0: 40, y0: 40, x1: 132, y1: 152 }), { x0: 40, y0: 40, x1: 132, y1: 152 });
   assert.deepEqual(snapBlock(img, { x0: 40, y0: 40, x1: 132, y1: 152 }), cells);
 });
 
@@ -307,12 +307,12 @@ test('findColorbars lists every colorbar on the page, cells left out', () => {
   fill(img, 30, 240, 50, 340, [27, 158, 119]);
   paintColorbar(img, 400, 419, 40, 179, RDBU);
   paintColorbar(img, 400, 419, 230, 369, VIRIDISH);
-  const bars = CM.findColorbars(img, { exclude: [{ x0: 60, y0: 40, x1: 300, y1: 340 }] });
+  const bars = findColorbars(img, { exclude: [{ x0: 60, y0: 40, x1: 300, y1: 340 }] });
   const boxes = bars.map(({ x0, y0, x1, y1 }) => ({ x0, y0, x1, y1 }));
   assert.equal(bars.length, 3);
   assert.ok(boxes.some((b) => near(b, { x0: 400, y0: 40, x1: 420, y1: 180 })));
   assert.ok(boxes.some((b) => near(b, { x0: 400, y0: 230, x1: 420, y1: 370 })));
-  assert.equal(bars.find((b) => b.x0 < 100).kind, 'categorical');
+  assert.equal(bars.find((b) => b.x0 < 100)!.kind, 'categorical');
   assert.ok(bars.filter((b) => b.x0 > 100).every((b) => b.vertical && b.kind !== 'categorical'));
 });
 
@@ -375,7 +375,7 @@ test('findColorbars calls a row of same-colored label boxes categorical', () => 
     label(img, 52, 35 + i * 44, 2);
   }
   paintColorbar(img, 150, 165, 20, 370, VIRIDISH);
-  const kinds = CM.findColorbars(img).map((b) => `${b.x0}:${b.kind}`);
+  const kinds = findColorbars(img).map((b) => `${b.x0}:${b.kind}`);
   assert.deepEqual(kinds.sort(), ['150:smooth', '40:categorical']);
 });
 
@@ -403,7 +403,7 @@ test('findTickLabels extends a strip to a label past its pale end', () => {
   for (const y of [40, 90, 140, 190, 240]) label(img, 88, y - 5, 2);
   const found = findTickLabels(img, { x0: 60, y0: 40, x1: 80, y1: 220 });
   assert.equal(found.marks.length, 5);
-  assert.equal(found.bar.y1, 241);
+  assert.equal(found.bar!.y1, 241);
 });
 
 test('snapBlock does not join a separately framed block across a gap', () => {
@@ -423,7 +423,7 @@ test('snapEdges moves an edge that cuts into the cells out to their edge', () =>
   const img = makeImage(300, 200);
   paintHeatmap(img, rect(42, 52, 242, 132), matrix(1, 5), VIRIDISH, { lines: false });
   outline(img, 40, 50, 244, 134, 2);
-  const b = CM.snapEdges(img, { x0: 41, y0: 51, x1: 243, y1: 121 });
+  const b = snapEdges(img, { x0: 41, y0: 51, x1: 243, y1: 121 });
   assert.ok(near(b, { x0: 41, y0: 51, x1: 243, y1: 133 }), JSON.stringify(b));
 });
 
@@ -432,7 +432,7 @@ test('snapEdges moves an edge that cuts into the cells out to their edge', () =>
 // Test-18: 5 × 10 cells of 56 px, each in its own 2 px dark frame, 4 px white
 // gaps, a number printed in every cell, the first two columns and part of
 // the top row nearly white. Cells at x 20–616, y 20–316.
-const digits = (img, cx, cy) => {
+const digits = (img: PixelImage, cx: number, cy: number) => {
   for (let g = 0; g < 3; g++) {
     const [x, y] = [cx - 15 + g * 11, cy - 6];
     for (const [a, b, c, d] of [[0, 0, 8, 2], [0, 6, 8, 8], [0, 12, 8, 14], [0, 0, 2, 14], [6, 0, 8, 14]]) fill(img, x + a, y + b, x + c, y + d, [30, 30, 30]);
@@ -478,7 +478,7 @@ test('snapBlock grows over pale cells across white gaps wider than its core allo
 // inside the ends. Beside cells framed by a dashed outline 6 px thick.
 function divergingFigure() {
   const img = makeImage(400, 460);
-  const mix = (a, b, f) => a.map((v, i) => Math.round(v + (b[i] - v) * f));
+  const mix = (a: Rgb, b: Rgb, f: number) => a.map((v, i) => Math.round(v + (b[i] - v) * f));
   for (let y = 40; y <= 425; y++) {
     const s = (y - 40) / 385;
     const middle = Math.abs(s - 0.5) < 0.02;
@@ -497,19 +497,19 @@ function divergingFigure() {
 
 test('findColorbars joins a diverging bar split at its near-white middle and leaves out a dashed outline', () => {
   const { img, cells } = divergingFigure();
-  const bars = CM.findColorbars(img, { exclude: [cells] });
+  const bars = findColorbars(img, { exclude: [cells] });
   assert.equal(bars.length, 1, JSON.stringify(bars));
   assert.ok(near(bars[0], { x0: 300, y0: 40, x1: 342, y1: 426 }), JSON.stringify(bars[0]));
 });
 
 test('snapStripBox joins the halves of a bar in a box and extends a short strip to it', () => {
   const { img } = divergingFigure();
-  assert.ok(near(CM.snapStrip(img, { x0: 296, y0: 36, x1: 345, y1: 430 }), { x0: 300, y0: 40, x1: 342, y1: 224 }, 3));
-  const whole = CM.snapStripBox(img, { x0: 296, y0: 36, x1: 345, y1: 430 });
+  assert.ok(near(snapStrip(img, { x0: 296, y0: 36, x1: 345, y1: 430 }), { x0: 300, y0: 40, x1: 342, y1: 224 }, 3));
+  const whole = snapStripBox(img, { x0: 296, y0: 36, x1: 345, y1: 430 })!;
   assert.ok(near(whole.bar, { x0: 300, y0: 40, x1: 342, y1: 426 }) && !whole.extended, JSON.stringify(whole));
   const short = makeImage(200, 300);
   paintColorbar(short, 80, 100, 100, 199, VIRIDISH);
-  const out = CM.snapStripBox(short, { x0: 76, y0: 98, x1: 104, y1: 260 });
+  const out = snapStripBox(short, { x0: 76, y0: 98, x1: 104, y1: 260 })!;
   assert.ok(out.extended && out.share < 0.7 && out.bar.y1 === 260 && Math.abs(out.bar.y0 - 100) <= 2, JSON.stringify(out));
 });
 
