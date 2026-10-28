@@ -14,3 +14,7 @@ assets/img
 .env
 .env.*
 !.env.example
+
+# Build output and dependencies
+node_modules/
+dist/
