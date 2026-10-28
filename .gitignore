@@ -9,8 +9,13 @@ __pycache__
 
 # temporary excel file
 ~$*
-assets/img
+test-images/
 
 .env
 .env.*
 !.env.example
+
+# Build output and dependencies
+node_modules/
+dist/
+public/pdfjs/

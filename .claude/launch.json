@@ -3,13 +3,10 @@
   "configurations": [
     {
       "name": "colormeris",
-      "runtimeExecutable": "python3",
+      "runtimeExecutable": "npm",
       "runtimeArgs": [
-        "-m",
-        "http.server",
-        "8000",
-        "--bind",
-        "127.0.0.1"
+        "run",
+        "dev"
       ],
       "port": 8000
     },
@@ -18,7 +15,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "exec python3 -m http.server \"${PORT:-8002}\" --bind 127.0.0.1"
+        "exec npx vite --port \"${PORT:-8002}\""
       ],
       "port": 8002,
       "autoPort": true
@@ -30,6 +27,15 @@
         "scripts/openrouter-proxy.mjs"
       ],
       "port": 8787
+    },
+    {
+      "name": "colormeris-build",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "npm run -s build && exec npx vite preview --port 8004"
+      ],
+      "port": 8004
     }
   ]
 }

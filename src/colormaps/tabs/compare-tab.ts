@@ -1,0 +1,907 @@
+import { rgbToHex } from '../../core/color.ts';
+import { lightnessStats } from '../../core/cvd.ts';
+import type { CmapViewerContext, ViewKey } from '../../types/index.ts';
+import { createMapPicker } from '../map-picker.ts';
+import { READ_DE, worstCvd } from '../metrics.ts';
+import { colorsLut, paintValues, sinePattern } from '../recolor.ts';
+import { COMPARE_MAX } from '../route.ts';
+
+// The Compare tab of the colormap viewer (colormaps.html): up to 10 maps
+// side by side as strips, four plots with every map on the same axes, and a
+// sortable table of the numbers, and every map applied to a sine-wave test
+// image. While maps are chosen, a tray at the bottom
+// of the Browse tab lists them. The choice lives in ?compare=.
+
+// Same size and square plot box as the plots of one map, so the four
+// quantities sit in one row; names are in the shared legend below.
+const CMP_METRICS = [
+  { key: 'L', label: 'Lightness L*', yLabel: 'L*' },
+  { key: 'step', label: 'Perceptual step ΔE2000', yLabel: 'ΔE2000 per step' },
+  { key: 'C', label: 'Chroma C*', yLabel: 'C*' },
+  { key: 'h', label: 'Hue h°', yLabel: 'h (°)' },
+];
+
+export function setupCmapCompare(ctx: CmapViewerContext) {
+  const {
+    el,
+    svgEl,
+    pct,
+    VIEWS,
+    state,
+    items,
+    mapByName,
+    viewData,
+    metrics,
+    profile,
+    stepPoints,
+    niceAxis,
+    drawAxes,
+    drawSeries,
+    figure,
+    POS_TICKS,
+    PW,
+    PH,
+    M,
+    HUE_MIN_CHROMA,
+    stripCanvas,
+    makeStrip,
+    showTip,
+    hideTip,
+    ratingPills,
+    ratingCells,
+    headerRow,
+    applyStripView,
+  } = ctx;
+  const MAX_CMP = COMPARE_MAX;
+  const CP = { W: PW, H: PH, m: M };
+  const selected = state.selected;
+  const cmp: Record<string, any> = {}; // elements of the compare view, set by buildCompare
+  let cmpSort: { id: string; dir: number } | null = null; // { id, dir } for the numbers table; null = selection order
+  let allCols = false; // the numbers table shows only the key columns until asked
+  let sinePat = 'waves'; // test image of the sine section: 'waves' or 'bumps'
+  let sineView: ViewKey = 'orig'; // one of VIEWS
+  // Maps flipped here, on top of their Browse direction, so each map can be read either way.
+  const flipped = new Set();
+  const isRev = (map: any) => ctx.isRev(map) !== flipped.has(map.name);
+
+  // Points per map, direction and quantity: a change to one map (reverse,
+  // add, reorder) redraws the plots without rebuilding the others' points.
+  const seriesOf = new Map();
+  function cmpSeries(map: any, key: any) {
+    const id = `${map.name}|${isRev(map)}|${key}`;
+    if (!seriesOf.has(id)) seriesOf.set(id, buildSeries(map, key));
+    return seriesOf.get(id);
+  }
+
+  function buildSeries(map: any, key: any) {
+    const p = profile(map, isRev(map));
+    if (key === 'L')
+      return {
+        points: p.pts(p.Ls, (v: any) => `L* = ${v.toFixed(1)}`),
+        mode: p.qual ? 'dots' : 'line',
+        dotR: p.qual ? 4 : 0,
+      };
+    if (key === 'C')
+      return {
+        points: p.pts(p.C, (v: any) => `C* = ${v.toFixed(1)}`),
+        mode: p.qual ? 'dots' : 'line',
+        dotR: p.qual ? 4 : 0,
+      };
+    if (key === 'h') {
+      return {
+        points: p.pts(
+          p.h,
+          (v: any) => `h = ${v.toFixed(0)}°`,
+          (i: any) => p.C[i] < HUE_MIN_CHROMA,
+        ),
+        mode: 'dots',
+        dotR: p.qual ? 4 : 2.2,
+      };
+    }
+    // Qualitative maps have no neighbors in order, so no steps.
+    if (p.qual) return { points: null };
+    return { points: stepPoints(map, p), mode: 'line', dotR: 0 };
+  }
+
+  function cmpAxis(key: any, series: any) {
+    const ys = series.flatMap((s: any) => (s.points || []).map((p: any) => p.y).filter((y: any) => y != null));
+    const top = Math.max(...ys, 0);
+    if (key === 'L') return { yMax: 100, yTicks: [0, 20, 40, 60, 80, 100] };
+    if (key === 'h') return { yMax: 360, yTicks: [0, 90, 180, 270, 360] };
+    const axis = niceAxis(key === 'C' ? Math.max(100, top * 1.05) : Math.max(top * 1.05, 1));
+    return { yMax: axis.top, yTicks: axis.ticks };
+  }
+
+  // One horizontal gradient per map and direction, shared by the line plots
+  // (they have the same x scale): x is the position, so the color at each
+  // x is the map's color there, as with one segment per sample.
+  const gradDefs = svgEl('svg', { class: 'cmap-grad-defs', 'aria-hidden': 'true', focusable: 'false' });
+  const defs = svgEl('defs');
+  gradDefs.append(defs);
+  const gradIds = new Map();
+  function lineGradient(map: any, px: any) {
+    const key = `${map.name}|${isRev(map)}`;
+    if (gradIds.has(key)) return gradIds.get(key);
+    const id = `cmap-cg-${gradIds.size}`;
+    const colors = viewData(map, 'orig', isRev(map)).colors;
+    const n = colors.length;
+    const g = svgEl('linearGradient', { id, gradientUnits: 'userSpaceOnUse', x1: px(0), x2: px(1), y1: 0, y2: 0 });
+    colors.forEach((c, i) => g.append(svgEl('stop', { offset: n > 1 ? i / (n - 1) : 0, 'stop-color': rgbToHex(c) })));
+    defs.append(g);
+    gradIds.set(key, id);
+    return id;
+  }
+
+  function miniStrip(map: any) {
+    const d = el('span', { class: 'cmap-mini' });
+    d.append(stripCanvas(viewData(map, 'orig', isRev(map)).colors, map.kind === 'qualitative'));
+    return d;
+  }
+
+  // One plot of one quantity with every compared map. `setActive(i)`
+  // highlights map i in all four plots and the legend.
+  function compareFigure(list: any, metric: any, setActive: any) {
+    const { W, H, m } = CP;
+    const key = metric.key;
+    const series = list.map((map: any) => ({ map, ...cmpSeries(map, key) }));
+    const svg = svgEl('svg', {
+      class: 'cmap-plot',
+      viewBox: `0 0 ${W} ${H}`,
+      role: 'img',
+      'aria-label': `${metric.label} of ${list.map((x: any) => x.name).join(', ')} against position`,
+    });
+    const { px, py } = drawAxes(svg, {
+      W,
+      H,
+      m,
+      ...cmpAxis(key, series),
+      xTicks: POS_TICKS,
+      xLabel: 'Position',
+      yLabel: metric.yLabel,
+    });
+
+    const groups = series.map((s: any) => {
+      if (!s.points) return null;
+      const g = svgEl('g', { class: 'cmap-series' });
+      const stroke = s.mode === 'line' ? `url(#${lineGradient(s.map, px)})` : undefined;
+      drawSeries(g, { points: s.points, mode: s.mode, dotR: s.dotR || 3, halo: true, stroke }, px, py);
+      svg.append(g);
+      return g;
+    });
+
+    const guide = svgEl('line', { class: 'cmap-guide', y1: m.t, y2: H - m.b, visibility: 'hidden' });
+    const ring = svgEl('circle', { class: 'cmap-ring', r: 4, visibility: 'hidden' });
+    svg.append(guide, ring);
+
+    // The line closest to the pointer (by y), at the sample closest in x.
+    svg.addEventListener('pointermove', (e) => {
+      const r = svg.getBoundingClientRect();
+      const sx = ((e.clientX - r.left) / r.width) * W;
+      const sy = ((e.clientY - r.top) / r.height) * H;
+      const t = (sx - m.l) / (W - m.l - m.r);
+      let best: any = null;
+      series.forEach((s: any, gi: any) => {
+        if (!s.points) return;
+        let p = null;
+        for (const q of s.points) if (q.y != null && (!p || Math.abs(q.x - t) < Math.abs(p.x - t))) p = q;
+        if (!p) return;
+        const d = Math.abs(py(p.y) - sy);
+        if (!best || d < best.d) best = { gi, p, d, map: s.map };
+      });
+      if (!best) return;
+      setActive(best.gi);
+      guide.setAttribute('x1', px(best.p.x));
+      guide.setAttribute('x2', px(best.p.x));
+      guide.setAttribute('visibility', 'visible');
+      ring.setAttribute('cx', px(best.p.x));
+      ring.setAttribute('cy', py(best.p.y));
+      ring.setAttribute('visibility', 'visible');
+      const hex = rgbToHex(best.p.color);
+      showTip(
+        {
+          hex,
+          title: `${best.map.name} · ${metric.label}`,
+          text: [hex, `rgb(${best.p.color[0]}, ${best.p.color[1]}, ${best.p.color[2]})`, best.p.pos, best.p.value],
+        },
+        e.clientX,
+        e.clientY,
+      );
+    });
+    svg.addEventListener('pointerleave', () => {
+      guide.setAttribute('visibility', 'hidden');
+      ring.setAttribute('visibility', 'hidden');
+      setActive(-1);
+      hideTip();
+    });
+
+    // Same tooltips as the plots of one map, so the plot row stays short.
+    const caps: Record<string, string> = {
+      L: 'A straight rising or falling line reads best, in color and in grayscale.',
+      step: 'ΔE2000 between neighboring colors. A flat line means equal steps in the data look like equal steps in color.',
+      C: 'Colorfulness: 0 is gray.',
+      h: `Hue wraps around at 360°, so it is drawn as dots. Colors with C* < ${HUE_MIN_CHROMA} (grays) are left out, since their hue is not defined.`,
+    };
+    return { fig: figure(metric.label, svg, caps[key], { compact: true }), svg, groups };
+  }
+
+  // The four quantities side by side, with one legend for all of them.
+  function comparePlot(list: any) {
+    const figs: any[] = [];
+    const legend = el('ul', { class: 'cmap-legend' });
+    const lis = list.map((map: any, i: any) => {
+      const li = el('li');
+      li.append(el('span', { class: 'cmap-legend-name' }, map.name), miniStrip(map));
+      li.addEventListener('pointerenter', () => setActive(i));
+      li.addEventListener('pointerleave', () => setActive(-1));
+      legend.append(li);
+      return li;
+    });
+    function setActive(gi: any) {
+      for (const f of figs) {
+        f.svg.classList.toggle('has-active', gi >= 0);
+        f.groups.forEach((g: any, i: any) => g && g.classList.toggle('active', i === gi));
+      }
+      lis.forEach((li: any, i: any) => li.classList.toggle('active', i === gi));
+    }
+    const grid = el('div', { class: 'cmap-plots' });
+    for (const metric of CMP_METRICS) {
+      const f = compareFigure(list, metric, setActive);
+      figs.push(f);
+      grid.append(f.fig);
+    }
+
+    const wrap = el('div', { class: 'cmap-plot-wrap' });
+    wrap.append(grid, legend);
+    const qual = list.filter((map: any) => map.kind === 'qualitative').map((map: any) => map.name);
+    if (qual.length) {
+      wrap.append(
+        el(
+          'p',
+          { class: 'cmap-fig-cap muted' },
+          `Qualitative maps (${qual.join(', ')}) have no order: their colors are spread evenly from 0 to 1 as dots, and they have no step plot.`,
+        ),
+      );
+    }
+    return wrap;
+  }
+
+  // Numbers for the table: get() gives the value to sort and rank by (null = n/a).
+  // `key` columns are shown by default; the rest on "All numbers". Columns of
+  // one group sit next to each other, under one group header.
+  const NUM_COLS: any[] = [
+    { id: 'name', label: 'Colormap', key: true, get: (f: any) => f.map.name.toLowerCase() },
+    {
+      id: 'range',
+      group: 'Lightness',
+      key: true,
+      label: 'L* range',
+      hint: 'Spread of lightness. Wider means more contrast.',
+      best: 'max',
+      dp: 0,
+      get: (f: any) => f.ls.range[1] - f.ls.range[0],
+      show: (f: any) => `${f.ls.range[0].toFixed(0)}–${f.ls.range[1].toFixed(0)}`,
+    },
+    {
+      id: 'mono',
+      group: 'Lightness',
+      label: 'Monotonic',
+      hint: 'Does L* only rise or only fall? Fewer reversals are better.',
+      best: 'min',
+      dp: 0,
+      get: (f: any) => (f.qual ? null : f.ls.reversals),
+      show: (f: any) => (f.qual ? '—' : `${f.ls.monotonic ? 'yes' : 'no'} (${f.ls.reversals})`),
+    },
+    {
+      id: 'r2',
+      group: 'Lightness',
+      label: 'L* R²',
+      hint: 'How close L* is to a straight line. Higher is better.',
+      best: 'max',
+      dp: 3,
+      get: (f: any) => (f.qual ? null : f.ls.r2),
+      show: (f: any) => (f.qual || f.ls.r2 == null ? '—' : f.ls.r2.toFixed(3)),
+    },
+    {
+      id: 'cv',
+      group: 'Uniformity',
+      key: true,
+      label: 'Step CV',
+      hint: 'Variation of the ΔE2000 steps. Lower is better.',
+      best: 'min',
+      dp: 2,
+      get: (f: any) => (f.qual ? null : f.m.stepStats.cv),
+      show: (f: any) => (f.qual ? '—' : f.m.stepStats.cv.toFixed(2)),
+    },
+    {
+      id: 'max',
+      group: 'Uniformity',
+      label: 'Max step ΔE',
+      hint: 'Largest ΔE2000 jump between neighbors. Lower is better.',
+      best: 'min',
+      dp: 2,
+      get: (f: any) => (f.qual ? null : f.m.stepStats.max),
+      show: (f: any) => (f.qual ? '—' : f.m.stepStats.max.toFixed(2)),
+    },
+    {
+      id: 'cvd',
+      group: 'Color vision',
+      key: true,
+      label: 'Worst CVD view',
+      hint: 'Smallest ΔE2000 in the worst color-vision view, and the share of the map’s own separation it keeps. Higher is better.',
+      best: 'max',
+      dp: 1,
+      get: (f: any) => f.m.cvdWorst,
+      show: (f: any) => `${f.worstLabel} ${f.m.cvdWorst.toFixed(1)} ΔE (${pct(f.m.cvdRatio)})`,
+    },
+    {
+      id: 'gray',
+      group: 'Color vision',
+      label: 'Gray min ΔL*',
+      hint: 'Smallest L* difference in grayscale. Higher is better.',
+      best: 'max',
+      dp: 1,
+      get: (f: any) => f.m.separations.gray?.min ?? null,
+      show: (f: any) => (f.m.separations.gray ? f.m.separations.gray.min.toFixed(1) : '—'),
+    },
+    {
+      id: 'levels',
+      group: 'Readability',
+      key: true,
+      label: 'Levels',
+      hint: `Distinguishable levels from end to end (each ${READ_DE} ΔE apart). Higher is better.`,
+      best: 'max',
+      dp: 0,
+      get: (f: any) => f.m.readability?.orig.levels ?? null,
+      show: (f: any) => (f.m.readability ? String(f.m.readability.orig.levels) : '—'),
+    },
+    {
+      id: 'flat',
+      group: 'Readability',
+      label: 'Flat %',
+      hint: 'Share of the map where values 5% apart look almost the same. Lower is better.',
+      best: 'min',
+      dp: 2,
+      get: (f: any) => f.m.readability?.orig.flat ?? null,
+      show: (f: any) => (f.m.readability ? pct(f.m.readability.orig.flat) : '—'),
+    },
+    {
+      id: 'amb',
+      group: 'Readability',
+      key: true,
+      label: 'Ambiguous %',
+      hint: 'Share of the map whose color has a look-alike elsewhere. Lower is better.',
+      best: 'min',
+      dp: 2,
+      get: (f: any) => f.m.readability?.orig.ambiguous ?? null,
+      show: (f: any) => (f.m.readability ? pct(f.m.readability.orig.ambiguous) : '—'),
+    },
+    { id: 'rating', group: 'Ratings', label: 'Ratings', noSort: true },
+  ];
+
+  function facts(map: any) {
+    const m = metrics(map);
+    const worst = worstCvd(m);
+    return {
+      map,
+      m,
+      ls: lightnessStats(viewData(map, 'orig').L!),
+      qual: map.kind === 'qualitative',
+      worstLabel: VIEWS.find((v) => v.key === worst)!.label,
+    };
+  }
+
+  function compareTable(list: any) {
+    const cols = NUM_COLS.filter((c) => allCols || c.key);
+    const rows = list.map(facts);
+    if (cmpSort) {
+      const col = NUM_COLS.find((c) => c.id === cmpSort!.id);
+      const keyed = rows.map((f: any, i: any) => ({ f, i, v: col.get(f) }));
+      keyed.sort((a: any, b: any) => {
+        if ((a.v == null) !== (b.v == null)) return a.v == null ? 1 : -1; // n/a always last
+        if (a.v == null || a.v === b.v) return a.i - b.i;
+        return (a.v < b.v ? -1 : 1) * cmpSort!.dir;
+      });
+      rows.splice(0, rows.length, ...keyed.map((k: any) => k.f));
+    }
+    // Best per column; nothing is marked when all values are equal. Values
+    // are compared as shown (rounded to dp), so ties that look equal count as equal.
+    const rnd = (c: any, v: any) => Math.round(v * 10 ** c.dp) / 10 ** c.dp;
+    const best: Record<string, number> = {};
+    for (const c of cols) {
+      if (!c.best) continue;
+      const vals = rows
+        .map((f: any) => c.get(f))
+        .filter((v: any) => v != null)
+        .map((v: any) => rnd(c, v));
+      if (vals.length < 2) continue;
+      const b = c.best === 'max' ? Math.max(...vals) : Math.min(...vals);
+      if (vals.some((v: any) => v !== b)) best[c.id] = b;
+    }
+
+    const table = el('table', { class: 'cmap-nums' });
+    // Group headers over runs of columns of the same group.
+    const groupRow = el('tr', { class: 'cmap-groups' });
+    for (let i = 0; i < cols.length; ) {
+      let j = i + 1;
+      while (j < cols.length && cols[j].group && cols[j].group === cols[i].group) j++;
+      groupRow.append(el('th', { scope: 'colgroup', colspan: String(j - i) }, cols[i].group || ''));
+      i = j;
+    }
+    const head = el('tr');
+    for (const c of cols) {
+      const th = el('th', { scope: 'col', 'data-col': c.id });
+      if (c.noSort) {
+        th.textContent = c.label;
+      } else {
+        th.setAttribute('aria-sort', cmpSort?.id === c.id ? (cmpSort!.dir > 0 ? 'ascending' : 'descending') : 'none');
+        const b = el(
+          'button',
+          { type: 'button', class: 'cmap-th', title: `${c.hint ? `${c.hint} ` : ''}Click to sort.` },
+          c.label,
+        );
+        b.addEventListener('click', () => {
+          // none -> ascending -> descending -> back to selection order
+          if (cmpSort?.id !== c.id) cmpSort = { id: c.id, dir: 1 };
+          else cmpSort = cmpSort!.dir > 0 ? { id: c.id, dir: -1 } : null;
+          renderTable(list);
+          cmp.table.querySelector(`th[data-col="${c.id}"] button`)?.focus();
+        });
+        th.append(b);
+      }
+      if (c.hint && c.noSort) th.title = c.hint;
+      head.append(th);
+    }
+    const thead = el('thead');
+    thead.append(groupRow, head);
+    const tbody = el('tbody');
+    for (const f of rows) {
+      const tr = el('tr');
+      const th = el('th', { scope: 'row' });
+      th.append(el('code', {}, f.map.name), miniStrip(f.map));
+      tr.append(th);
+      for (const c of cols.slice(1)) {
+        const td = el('td');
+        if (c.id === 'rating') {
+          td.append(ratingPills(f.map));
+        } else {
+          td.textContent = c.show(f);
+          if (best[c.id] != null && c.get(f) != null && rnd(c, c.get(f)) === best[c.id]) {
+            td.className = 'best';
+            td.title = 'Best in this column';
+            td.append(el('span', { class: 'sr-only' }, ' (best)'));
+          }
+        }
+        tr.append(td);
+      }
+      tbody.append(tr);
+    }
+    table.append(thead, tbody);
+    return table;
+  }
+
+  function compareRow(map: any, i: any, list: any) {
+    const row = el('div', { class: 'cmap-row' });
+    const name = el('div', { class: 'cmap-name' });
+    name.append(el('code', {}, map.name), ratingPills(map));
+    row.append(name);
+    VIEWS.forEach((v, j) => {
+      const cell = el('div', { class: j === 0 ? 'cmap-cell main' : 'cmap-cell', 'data-view': v.key });
+      cell.append(el('span', { class: 'cmap-cap' }, v.label), makeStrip(map, v, true, isRev(map)));
+      row.append(cell);
+    });
+    row.append(...ratingCells(map));
+    const actions = el('div', { class: 'cmap-actions' });
+    const btn = (act: any, label: any, path: any) => {
+      const b = el('button', {
+        class: 'cmap-toggle cmap-sm',
+        type: 'button',
+        title: `${label} ${map.name}`,
+        'aria-label': `${label} ${map.name}`,
+        'data-act': act,
+        'data-name': map.name,
+      });
+      b.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${path}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      actions.append(b);
+      return b;
+    };
+    // Drag to reorder; arrow keys move the focused handle for keyboard users.
+    const grip = btn(
+      'drag',
+      'Drag to reorder (or press ↑ ↓):',
+      'M6 3.5v.01M10 3.5v.01M6 8v.01M10 8v.01M6 12.5v.01M10 12.5v.01',
+    );
+    grip.classList.add('cmap-grip');
+    row.prepend(grip); // first column, before the name
+    grip.querySelector('path').setAttribute('stroke-width', '2.6');
+    grip.addEventListener('pointerdown', (e: any) => startDrag(e, row, i));
+    grip.addEventListener('keydown', (e: any) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      moveCompared(map.name, e.key === 'ArrowUp' ? -1 : 1);
+    });
+    const flip = btn('rev', 'Reverse', 'M3 6h9l-2.5-2.5M13 10H4l2.5 2.5');
+    flip.setAttribute('aria-pressed', String(isRev(map)));
+    flip.title = `${isRev(map) ? 'Reversed: show' : 'Reverse'} ${map.name}${isRev(map) ? ' in its original direction' : ' in the plots and test images'}`;
+    flip.addEventListener('click', () => toggleReversed(map.name));
+    btn('remove', 'Remove from comparison:', 'M4 4l8 8M12 4l-8 8').addEventListener('click', () =>
+      removeCompared(map.name),
+    );
+    row.append(actions);
+    return row;
+  }
+
+  // ---- sine-wave test images ----
+
+  const SINE_N = 256; // pixels per side
+  const SINE_PATTERNS = [
+    {
+      key: 'waves',
+      label: 'Sine waves',
+      cap: 'Two tilted sine waves and rings around an off-center point, added up and stretched to the whole range: smooth hills (high values), dips (low values) and saddles that never repeat. The data has no edges, so any edge or band you see comes from the colormap.',
+    },
+    {
+      key: 'bumps',
+      label: 'Equal bumps',
+      cap: 'A smooth ramp from low (top left) to high (bottom right) with 36 bumps of exactly the same height, one at every level. A perceptually uniform sequential map shows every bump equally clearly and the ramp without bands. Other maps hide bumps where they are flat and make others stand out, so equal changes look unequal.',
+    },
+  ];
+  const sineValues = new Map<string, any>(); // pattern key -> values, computed once
+
+  function sineCanvas(map: any, values: any) {
+    const qual = map.kind === 'qualitative';
+    const colors = viewData(map, sineView, isRev(map)).colors;
+    const cv = el('canvas', {
+      class: 'cmap-sine-img',
+      width: String(SINE_N),
+      height: String(SINE_N),
+      role: 'img',
+      'aria-label': `${map.name} applied to the ${SINE_PATTERNS.find((p) => p.key === sinePat)!.label.toLowerCase()} test image`,
+    });
+    const g = cv.getContext('2d');
+    const img = g.createImageData(SINE_N, SINE_N);
+    paintValues(values, colorsLut(colors, qual), img.data);
+    g.putImageData(img, 0, 0);
+    cv.addEventListener('pointermove', (e: any) => {
+      const r = cv.getBoundingClientRect();
+      const i = Math.min(SINE_N - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * SINE_N)));
+      const j = Math.min(SINE_N - 1, Math.max(0, Math.floor(((e.clientY - r.top) / r.height) * SINE_N)));
+      const k = (j * SINE_N + i) * 4;
+      const c = [img.data[k], img.data[k + 1], img.data[k + 2]];
+      const hex = rgbToHex(c);
+      showTip(
+        {
+          hex,
+          title: map.name,
+          text: [`value ${values[j * SINE_N + i].toFixed(3)}`, hex, `rgb(${c[0]}, ${c[1]}, ${c[2]})`],
+        },
+        e.clientX,
+        e.clientY,
+      );
+    });
+    cv.addEventListener('pointerleave', hideTip);
+    return cv;
+  }
+
+  function renderSine(list: any) {
+    if (!sineValues.has(sinePat)) sineValues.set(sinePat, sinePattern(SINE_N, sinePat));
+    const values = sineValues.get(sinePat);
+    const grid = el('div', { class: 'cmap-sine-grid' });
+    for (const map of list) {
+      const fig = el('figure', { class: 'cmap-sine-fig' });
+      const cap = el('figcaption');
+      cap.append(el('code', {}, map.name));
+      fig.append(sineCanvas(map, values), cap);
+      grid.append(fig);
+    }
+    cmp.sineCap.textContent = SINE_PATTERNS.find((p) => p.key === sinePat)!.cap;
+    cmp.sine.replaceChildren(grid);
+  }
+
+  // A row of pressed-state buttons; `onPick(key)` after the choice changes.
+  function choiceTabs(label: any, options: any, current: any, onPick: any) {
+    const tabs = el('div', { class: 'cmap-tabs', role: 'group', 'aria-label': label });
+    for (const o of options) {
+      const b = el('button', { type: 'button', 'aria-pressed': String(o.key === current) }, o.label);
+      b.addEventListener('click', () => {
+        for (const x of tabs.children) x.setAttribute('aria-pressed', String(x === b));
+        onPick(o.key);
+      });
+      tabs.append(b);
+    }
+    return tabs;
+  }
+
+  function renderStrips(list: any) {
+    const box = el('div', { class: 'cmap-compare-rows' });
+    const head = headerRow();
+    head.prepend(el('span'));
+    box.append(head);
+    list.forEach((map: any, i: any) => {
+      const item = el('div', { class: 'cmap-item' });
+      item.append(compareRow(map, i, list));
+      box.append(item);
+    });
+    applyStripView(box);
+    cmp.strips.replaceChildren(box);
+  }
+
+  function renderTable(list: any) {
+    const wrap = el('div', { class: 'cmap-table-wrap' });
+    wrap.append(compareTable(list));
+    cmp.table.replaceChildren(wrap);
+  }
+
+  // The view is rebuilt only while the tab is shown. Changes made from
+  // Browse (the +, Reverse, the tray) mark it stale, and show() catches up.
+  let stale = true;
+
+  function show() {
+    if (stale) render();
+  }
+
+  function render() {
+    if (state.tab !== 'compare') {
+      stale = true;
+      return;
+    }
+    stale = false;
+    const list = selected.map((n) => mapByName.get(n));
+    cmp.count.textContent = list.length ? `Comparing ${list.length} of up to ${MAX_CMP}` : 'Compare';
+    cmp.empty.hidden = list.length > 0;
+    cmp.body.hidden = !list.length;
+    cmp.clear.disabled = cmp.copyLink.disabled = !list.length;
+    const full = list.length >= MAX_CMP;
+    cmp.picker.disabled = full;
+    cmp.picker.title = full ? `Up to ${MAX_CMP} maps can be compared` : '';
+    hideTip();
+    if (!list.length) {
+      for (const k of ['strips', 'plot', 'table', 'sine']) cmp[k].replaceChildren();
+      return;
+    }
+    renderStrips(list);
+    cmp.plot.replaceChildren(comparePlot(list));
+    renderTable(list);
+    renderSine(list);
+  }
+
+  // One Browse row; rows not built yet only get the tint (buildRow syncs the rest).
+  function syncButton(e: any) {
+    const on = selected.includes(e.map.name);
+    e.item.classList.toggle('compared', on);
+    if (!e.cmpBtn) return;
+    const full = selected.length >= MAX_CMP;
+    e.cmpBtn.setAttribute('aria-pressed', String(on));
+    e.cmpBtn.disabled = !on && full;
+    e.cmpBtn.title = on
+      ? `Remove ${e.map.name} from comparison`
+      : full
+        ? `Up to ${MAX_CMP} maps can be compared`
+        : `Add ${e.map.name} to comparison`;
+  }
+
+  function syncButtons() {
+    for (const e of items) syncButton(e);
+  }
+
+  // ---- tray (Browse tab) ----
+
+  const tray = el('div', { class: 'cmap-tray', hidden: '', role: 'region', 'aria-label': 'Comparison' });
+  const trayChips = el('div', { class: 'cmap-tray-chips' });
+  const trayOpen = el('a', { class: 'btn small primary', href: '#compare' }, 'Open comparison');
+  const trayClear = el('button', { type: 'button', class: 'btn small' }, 'Clear');
+  trayClear.addEventListener('click', () => {
+    selected.length = 0;
+    commit();
+  });
+  tray.append(el('span', { class: 'cmap-tray-label' }, 'Comparing'), trayChips, trayOpen, trayClear);
+
+  function syncTray() {
+    tray.hidden = !(selected.length && state.tab === 'browse');
+    document.body.classList.toggle('cmap-tray-on', !tray.hidden);
+    trayChips.replaceChildren(
+      ...selected.map((name) => {
+        const chip = el('span', { class: 'cmap-chip' });
+        chip.append(miniStrip(mapByName.get(name)), el('code', {}, name));
+        const x = el(
+          'button',
+          { type: 'button', class: 'cmap-chip-x', 'aria-label': `Remove ${name} from comparison`, title: 'Remove' },
+          '×',
+        );
+        x.addEventListener('click', () => {
+          removeCompared(name);
+          // Keep the keyboard in the tray: on the next chip, or on Clear.
+          (trayChips.querySelector('.cmap-chip-x') || (tray.hidden ? null : trayClear))?.focus();
+        });
+        chip.append(x);
+        return chip;
+      }),
+    );
+  }
+
+  // `focus` names the button to focus again, since the view is rebuilt.
+  function commit(focus?: any) {
+    ctx.updateUrl();
+    syncButtons();
+    render();
+    syncTray();
+    ctx.onCompareChange();
+    if (!focus) return;
+    const q = (act: any) => cmp.sec.querySelector(`button[data-act="${act}"][data-name="${CSS.escape(focus.name)}"]`);
+    (q(focus.act) || cmp.count).focus();
+  }
+
+  function setCompared(name: any, on: any) {
+    const i = selected.indexOf(name);
+    if (on && i < 0 && selected.length < MAX_CMP) selected.push(name);
+    else if (!on && i >= 0) selected.splice(i, 1);
+    else return;
+    commit();
+  }
+
+  function moveCompared(name: any, d: any) {
+    const i = selected.indexOf(name);
+    const j = i + d;
+    if (i < 0 || j < 0 || j >= selected.length) return;
+    [selected[i], selected[j]] = [selected[j], selected[i]];
+    commit({ name, act: 'drag' });
+  }
+
+  function toggleReversed(name: any) {
+    if (!flipped.delete(name)) flipped.add(name);
+    commit({ name, act: 'rev' });
+  }
+
+  // Pointer-based drag (works for touch too): the row follows the pointer and
+  // a line shows where it will land; the order changes on release.
+  function startDrag(e: any, row: any, from: any) {
+    if (e.button > 0) return;
+    e.preventDefault();
+    const grip = e.currentTarget;
+    const items = [...cmp.strips.querySelectorAll('.cmap-item')];
+    const item = items[from];
+    const mids = items.map((x) => {
+      const r = x.getBoundingClientRect();
+      return r.top + r.height / 2;
+    });
+    let to = from;
+    grip.setPointerCapture(e.pointerId);
+    item.classList.add('dragging');
+    const mark = () =>
+      items.forEach((x, k) => {
+        x.classList.toggle('drop-before', k === to && to < from);
+        x.classList.toggle('drop-after', k === to && to > from);
+      });
+    const move = (ev: any) => {
+      item.style.transform = `translateY(${ev.clientY - e.clientY}px)`;
+      to = mids.reduce((best, m, k) => (Math.abs(m - ev.clientY) < Math.abs(mids[best] - ev.clientY) ? k : best), 0);
+      mark();
+    };
+    const end = (ev: any) => {
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', end);
+      grip.removeEventListener('pointercancel', end);
+      item.classList.remove('dragging');
+      item.style.transform = '';
+      items.forEach((x) => x.classList.remove('drop-before', 'drop-after'));
+      if (ev.type === 'pointerup' && to !== from) {
+        const [name] = selected.splice(from, 1);
+        selected.splice(to, 0, name);
+        commit({ name, act: 'drag' });
+      }
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+  }
+
+  function removeCompared(name: any) {
+    const i = selected.indexOf(name);
+    if (i < 0) return;
+    selected.splice(i, 1);
+    commit(
+      state.tab === 'compare' && selected.length
+        ? { name: selected[Math.min(i, selected.length - 1)], act: 'remove' }
+        : null,
+    );
+  }
+
+  function buildCompare() {
+    const sec = el('section', {
+      class: 'cmap-compare',
+      id: 'cmap-compare',
+      'aria-labelledby': 'cmap-compare-count',
+      hidden: '',
+    });
+    const head = el('div', { class: 'cmap-compare-head' });
+    const count = el('h2', { id: 'cmap-compare-count', tabindex: '-1' });
+    const clear = el('button', { type: 'button', class: 'btn small' }, 'Clear');
+    const copyLink = el('button', { type: 'button', class: 'btn small' }, 'Copy link');
+    clear.addEventListener('click', () => {
+      selected.length = 0;
+      commit();
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    copyLink.addEventListener('click', async () => {
+      let msg = 'Copied';
+      try {
+        await navigator.clipboard.writeText(location.href);
+      } catch (err) {
+        console.warn('Could not copy', err);
+        msg = 'Copy failed';
+      }
+      copyLink.textContent = msg;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        copyLink.textContent = 'Copy link';
+      }, 1500);
+    });
+    head.append(count, clear, copyLink);
+
+    // Add maps by name, as an alternative to the + in Browse.
+    const picker = createMapPicker(ctx, {
+      id: 'cmap-cmp',
+      label: 'Add a colormap',
+      placeholder: 'Add a colormap: type to search',
+      current: () => null,
+      onChoose: (name: any) => setCompared(name, true),
+    });
+    const add = el('div', { class: 'cmap-compare-add' });
+    add.append(picker.box);
+
+    const empty = el('p', { class: 'muted' });
+    const link = el('a', { href: '#browse' }, 'Browse');
+    empty.append('No colormaps chosen yet. In ', link, ', press + on a row to add it (up to 10).');
+
+    const strips = el('div');
+    const plot = el('div');
+    const table = el('div');
+    const numsHead = el('div', { class: 'cmap-nums-head' });
+    const allBtn = el('button', { type: 'button', class: 'btn small', 'aria-pressed': 'false' }, 'All numbers');
+    allBtn.addEventListener('click', () => {
+      allCols = !allCols;
+      allBtn.setAttribute('aria-pressed', String(allCols));
+      allBtn.classList.toggle('active', allCols);
+      renderTable(selected.map((n) => mapByName.get(n)));
+    });
+    numsHead.append(el('h3', {}, 'Numbers'), allBtn);
+
+    const sine = el('div');
+    const sineCap = el('p', { class: 'cmap-fig-cap muted' });
+    const current = () => selected.map((n) => mapByName.get(n));
+    const sineHead = el('div', { class: 'cmap-sine-head' });
+    sineHead.append(
+      el('h3', {}, 'Sine wave test'),
+      choiceTabs('Test image', SINE_PATTERNS, sinePat, (k: any) => {
+        sinePat = k;
+        renderSine(current());
+      }),
+      choiceTabs('View', VIEWS, sineView, (k: ViewKey) => {
+        sineView = k;
+        renderSine(current());
+      }),
+    );
+
+    const body = el('div', { class: 'cmap-compare-body' });
+    const h3 = (t: any) => el('h3', {}, t);
+    body.append(h3('Colormaps'), strips, h3('Profiles'), plot, numsHead, table, sineHead, sineCap, sine);
+    sec.append(head, add, empty, body, gradDefs);
+    Object.assign(cmp, {
+      sec,
+      picker: picker.input,
+      count,
+      strips,
+      plot,
+      table,
+      sine,
+      sineCap,
+      empty,
+      body,
+      clear,
+      copyLink,
+    });
+    return sec;
+  }
+
+  buildCompare();
+  return { sec: cmp.sec, tray, render, show, syncButton, syncButtons, syncTray, setCompared };
+}

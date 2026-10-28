@@ -6,55 +6,9 @@
   <title>Colormeris</title>
   <meta name="description" content="Turn colors in scientific figures back into numbers: heatmap grids and signal inside regions of interest (ROI).">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%23dfe3ff'/%3E%3Crect x='8' width='8' height='8' fill='%235560f0'/%3E%3Crect y='8' width='8' height='8' fill='%232530e0'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23a3a9ff'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="assets/css/base.css?v=9">
-  <link rel="stylesheet" href="assets/css/extract.css?v=14">
-  <script src="assets/vendor/jszip/jszip.min.js" defer></script>
-  <!-- Classic (non-module) scripts so the page also works when opened from disk. Order matters. -->
-  <script src="assets/js/core/color.js?v=2" defer></script>
-  <script src="assets/js/core/grid.js?v=9" defer></script>
-  <script src="assets/js/core/colorbar.js?v=5" defer></script>
-  <script src="assets/js/core/locate.js?v=11" defer></script>
-  <script src="assets/js/core/colormap-library.js?v=8" defer></script>
-  <script src="assets/js/core/colormap-match.js?v=3" defer></script>
-  <script src="assets/js/extract/project.js?v=7" defer></script>
-  <script src="assets/js/extract/heatmap/sampling.js?v=5" defer></script>
-  <script src="assets/js/extract/project-files.js?v=9" defer></script>
-  <script src="assets/js/extract/pdf-loader.js?v=1" defer></script>
-  <script src="assets/js/extract/viewer.js?v=4" defer></script>
-  <script src="assets/js/extract/roi/geometry.js?v=2" defer></script>
-  <script src="assets/js/extract/roi/quantify.js?v=4" defer></script>
-  <script src="assets/js/extract/map/field.js?v=13" defer></script>
-  <script src="assets/js/extract/settings.js?v=10" defer></script>
-  <script src="assets/js/extract/workspace/history.js?v=1" defer></script>
-  <script src="assets/js/extract/workspace/overlay.js?v=5" defer></script>
-  <script src="assets/js/extract/workspace/interact.js?v=7" defer></script>
-  <script src="assets/js/extract/workspace/grid-card.js?v=5" defer></script>
-  <script src="assets/js/colormaps/map-picker.js?v=2" defer></script>
-  <script src="assets/js/extract/workspace/colorbar-card.js?v=9" defer></script>
-  <script src="assets/js/extract/workspace/panels.js?v=4" defer></script>
-  <script src="assets/js/extract/workspace/source.js?v=2" defer></script>
-  <script src="assets/js/extract/workspace/export.js?v=1" defer></script>
-  <script src="assets/js/extract/workspace/hotkeys.js?v=5" defer></script>
-  <script src="assets/js/extract/workspace/workspace.js?v=8" defer></script>
-  <script src="assets/js/extract/heatmap/heatmap-tool.js?v=8" defer></script>
-  <script src="assets/js/extract/scale-bar.js?v=2" defer></script>
-  <script src="assets/js/extract/roi/roi-overlay.js?v=4" defer></script>
-  <script src="assets/js/extract/roi/roi-sidebar.js?v=5" defer></script>
-  <script src="assets/js/extract/roi/roi-tool.js?v=4" defer></script>
-  <script src="assets/js/extract/map/map-sidebar.js?v=18" defer></script>
-  <script src="assets/js/extract/map/map-tool.js?v=16" defer></script>
-  <script src="assets/js/agent/schema.js?v=6" defer></script>
-  <script src="assets/js/agent/api.js?v=4" defer></script>
-  <script src="assets/js/agent/llm.js?v=3" defer></script>
-  <script src="assets/js/agent/decide.js?v=9" defer></script>
-  <script src="assets/js/agent/decision-tools.js?v=16" defer></script>
-  <script src="assets/js/agent/runner.js?v=11" defer></script>
-  <script src="assets/js/agent/labels.js?v=3" defer></script>
-  <script src="assets/js/agent/openrouter-client.js?v=3" defer></script>
-  <script src="assets/js/agent/labels-reader.js?v=3" defer></script>
-  <script src="assets/js/agent/agent-card.js?v=10" defer></script>
-  <script src="assets/js/extract/settings-dialog.js?v=9" defer></script>
-  <script src="assets/js/extract/main.js?v=4" defer></script>
+  <link rel="stylesheet" href="/src/styles/base.css">
+  <link rel="stylesheet" href="/src/styles/extract.css">
+  <script type="module" src="/src/pages/extract.ts"></script>
 </head>
 <body class="extract">
   <header class="topbar">
@@ -478,8 +432,8 @@
             </div>
             <div class="empty-card examples">
               <p><b>Or try an example</b></p>
-              <button class="btn" type="button" data-example="assets/examples/example.pdf" data-example-type="application/pdf">Example PDF</button>
-              <button class="btn" type="button" data-example="assets/examples/example-jet.png" data-example-type="image/png">Example image (jet)</button>
+              <button class="btn" type="button" data-example="examples/example.pdf" data-example-type="application/pdf">Example PDF</button>
+              <button class="btn" type="button" data-example="examples/example-jet.png" data-example-type="image/png">Example image (jet)</button>
             </div>
           </div>
         </div>

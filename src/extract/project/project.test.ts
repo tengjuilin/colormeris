@@ -1,0 +1,345 @@
+import assert from 'node:assert/strict';
+import { test } from 'vitest';
+import { SCALES } from '../../core/colorbar.ts';
+import { rectCorners } from '../../core/grid.ts';
+import type { ColorbarScale, HeatmapResult, PolygonGeom, SourceInfo } from '../../types/index.ts';
+import {
+  createAxisTick,
+  createPanel,
+  createProfile,
+  createProject,
+  createRoi,
+  effectiveLabels,
+  parseLabelText,
+  parseProject,
+  rescalePanel,
+  serializeProject,
+  ticksWithT,
+} from './project.ts';
+import { csvEscape, formatNumber, safeFileName, toLongCsv, toWideCsv } from './project-files.ts';
+
+test('effectiveLabels pads with defaults', () => {
+  assert.deepEqual(effectiveLabels(['a', '', 'c'], 4, 'R'), ['a', 'R2', 'c', 'R4']);
+});
+
+test('parseLabelText splits on newlines or commas', () => {
+  assert.deepEqual(parseLabelText('a1\na2\n a3 '), ['a1', 'a2', 'a3']);
+  assert.deepEqual(parseLabelText('A, B,C'), ['A', 'B', 'C']);
+  assert.deepEqual(parseLabelText('  '), []);
+});
+
+test('project serializes and parses back', () => {
+  const project = createProject();
+  project.source = {
+    fileName: 'fig.pdf',
+    mime: 'application/pdf',
+    page: 3,
+    renderScale: 3,
+    width: 800,
+    height: 1000,
+  } as SourceInfo;
+  const p = project.panels[0];
+  p.name = 'e';
+  p.grid.corners = rectCorners({ x: 10, y: 10 }, { x: 110, y: 210 });
+  p.grid.rows = 16;
+  p.grid.rowLabels = ['a1', 'a2'];
+  p.colorbar.start = { x: 150, y: 210 };
+  p.colorbar.end = { x: 150, y: 10 };
+  p.colorbar.ticks = [{ x: 150, y: 110, value: 5 }];
+  p.colorbar.scale = 'log10';
+  const json = JSON.parse(JSON.stringify(serializeProject(project)));
+  assert.equal(json.panels[0].colorbar.ticks[0].t, 0.5);
+  assert.equal(json.panels[0].grid.rowLabels.length, 16);
+  const back = parseProject(json);
+  assert.equal(back.source!.page, 3);
+  const q = back.panels[0];
+  assert.equal(q.name, 'e');
+  assert.deepEqual(q.grid.corners, p.grid.corners);
+  assert.equal(q.grid.rows, 16);
+  assert.equal(q.grid.rowLabels[1], 'a2');
+  assert.equal(q.colorbar.scale, 'log10');
+  assert.deepEqual(q.colorbar.ticks, [{ x: 150, y: 110, value: 5 }]);
+});
+
+test('parseProject rejects foreign or future files', () => {
+  assert.throws(() => parseProject({ schema: 'other' }), /schema/);
+  assert.throws(() => parseProject({ schema: 'colormeris-project', version: 99, panels: [{}] }), /version/);
+  assert.throws(() => parseProject({ schema: 'colormeris-project', version: 1, panels: [] }), /no panels/);
+});
+
+test('rescalePanel scales every coordinate', () => {
+  const p = createPanel();
+  p.grid.corners = rectCorners({ x: 1, y: 2 }, { x: 3, y: 4 });
+  p.colorbar.start = { x: 5, y: 6 };
+  p.colorbar.end = { x: 7, y: 8 };
+  p.colorbar.ticks = [{ x: 5, y: 7, value: 1 }];
+  rescalePanel(p, 2);
+  assert.deepEqual(p.grid.corners[2], { x: 6, y: 8 });
+  assert.deepEqual(p.colorbar.end, { x: 14, y: 16 });
+  assert.deepEqual(p.colorbar.ticks[0], { x: 10, y: 14, value: 1 });
+  assert.equal(p.colorbar.halfWidth, 4);
+});
+
+test('CSV helpers', () => {
+  assert.equal(csvEscape('a,"b"'), '"a,""b"""');
+  assert.equal(formatNumber(1 / 3), '0.333333');
+  assert.equal(formatNumber(NaN), '');
+  assert.equal(safeFileName(' Panel e / thiol '), 'Panel_e_thiol');
+
+  const panel = createPanel('e');
+  panel.grid.rows = 2;
+  panel.grid.cols = 2;
+  panel.grid.colLabels = ['A', 'B'];
+  const cell = (value: number) => ({ value, rgb: [1, 2, 3], deltaE: 0.5, flagged: false });
+  const result = {
+    rows: 2,
+    cols: 2,
+    cells: [
+      [cell(1), cell(2)],
+      [cell(3), cell(4.5)],
+    ],
+  } as unknown as HeatmapResult;
+  assert.equal(toWideCsv(panel, result), 'row\\col,A,B\nR1,1,2\nR2,3,4.5\n');
+  const long = toLongCsv([{ panel, result }]).trim().split('\n');
+  assert.equal(long.length, 5);
+  assert.equal(long[0], 'panel,page,row,col,value,r,g,b,deltaE,flagged,status,bound,reason');
+  assert.equal(long[4], 'e,1,R2,B,4.5,1,2,3,0.50,0,ok,,');
+  // Off-map cells have no value and say why; bounds say which way.
+  const off = { value: NaN, rgb: [128, 128, 128], deltaE: 7.2, flagged: true, status: 'off-map', reason: 'gray' };
+  const low = {
+    value: 0,
+    rgb: [250, 250, 250],
+    deltaE: 4,
+    flagged: false,
+    status: 'clamped',
+    end: 'start',
+    open: 'below',
+  };
+  const lines = toLongCsv([{ panel, result: { rows: 1, cols: 2, cells: [[off, low]] } as unknown as HeatmapResult }])
+    .trim()
+    .split('\n');
+  assert.equal(lines[1], 'e,1,R1,A,,128,128,128,7.20,1,off-map,,gray');
+  assert.equal(lines[2], 'e,1,R1,B,0,250,250,250,4.00,0,clamped,<=,');
+});
+
+test('panels keep their page; older files fall back to source.page', () => {
+  const project = createProject();
+  project.source = { fileName: 'fig.pdf', page: 3, renderScale: 3, width: 10, height: 10 } as SourceInfo;
+  project.panels[0].page = 3;
+  project.panels.push(createPanel('g', 5));
+  const json = JSON.parse(JSON.stringify(serializeProject(project)));
+  assert.deepEqual(
+    json.panels.map((p: { page: number }) => p.page),
+    [3, 5],
+  );
+  assert.deepEqual(
+    parseProject(json).panels.map((p) => p.page),
+    [3, 5],
+  );
+  json.panels.forEach((p: { page?: number }) => {
+    delete p.page;
+  });
+  assert.deepEqual(
+    parseProject(json).panels.map((p) => p.page),
+    [3, 3],
+  );
+});
+
+test('map panels keep their scale bar and units', () => {
+  const project = createProject('map');
+  const p = project.panels[0];
+  p.scale = { p1: { x: 10, y: 5 }, p2: { x: 110, y: 5 }, length: 20, unit: 'µm' };
+  p.map.units = 'length';
+  const q = parseProject(JSON.parse(JSON.stringify(serializeProject(project)))).panels[0];
+  assert.deepEqual(q.scale, p.scale);
+  assert.equal(q.map.units, 'length');
+});
+
+test('ROI panels keep their tool, regions, nudges and scale', () => {
+  const project = createProject('roi');
+  project.source = { fileName: 'fig.pdf', page: 3 } as SourceInfo;
+  const p = project.panels[0];
+  p.grid.boxLabels = ['B-a11', 'B-a16'];
+  p.rois.push(createRoi('ellipse', { cx: 0.5, cy: 0.4, rx: 0.2, ry: 0.1 }, { name: 'liver' }));
+  p.rois[0].offsets['1,2'] = { dx: 0.05, dy: -0.02 };
+  p.rois.push(
+    createRoi(
+      'polygon',
+      {
+        points: [
+          { x: 1, y: 2 },
+          { x: 5, y: 2 },
+          { x: 3, y: 6 },
+        ],
+      },
+      { name: 'tumour', replicate: false },
+    ),
+  );
+  p.scale = { p1: { x: 0, y: 0 }, p2: { x: 100, y: 0 }, length: 1, unit: 'cm' };
+  const json = JSON.parse(JSON.stringify(serializeProject(project)));
+  assert.equal(json.version, 2);
+  assert.equal(json.panels[0].tool, 'roi');
+  const back = parseProject(json);
+  const q = back.panels[0];
+  assert.equal(q.tool, 'roi');
+  assert.deepEqual(q.grid.boxLabels, ['B-a11', 'B-a16']);
+  assert.deepEqual(
+    q.rois.map((r) => [r.name, r.shape, r.replicate]),
+    [
+      ['liver', 'ellipse', true],
+      ['tumour', 'polygon', false],
+    ],
+  );
+  assert.deepEqual(q.rois[0].offsets, { '1,2': { dx: 0.05, dy: -0.02 } });
+  assert.deepEqual(q.scale, { p1: { x: 0, y: 0 }, p2: { x: 100, y: 0 }, length: 1, unit: 'cm' });
+  // Rescaling moves pixel regions and the scale bar, not box-relative regions.
+  rescalePanel(q, 2);
+  assert.deepEqual(q.rois[0].geom, { cx: 0.5, cy: 0.4, rx: 0.2, ry: 0.1 });
+  assert.deepEqual((q.rois[1].geom as PolygonGeom).points[0], { x: 2, y: 4 });
+  assert.deepEqual(q.scale.p2, { x: 200, y: 0 });
+});
+
+test('new ROI projects use background and flag defaults suited to photos', () => {
+  assert.deepEqual(
+    [createProject('roi').panels[0].settings.grayChroma, createProject('roi').panels[0].settings.maxDeltaE],
+    [20, 20],
+  );
+  assert.equal(createProject().panels[0].settings.maxDeltaE, 10);
+});
+
+test('one project holds heatmap and ROI panels', () => {
+  const project = createProject('heatmap');
+  project.panels.push(createPanel('mice', 1, 'roi'));
+  project.panels[1].rois.push(createRoi('rect', { cx: 1, cy: 1, rx: 1, ry: 1 }, { replicate: false }));
+  const json = JSON.parse(JSON.stringify(serializeProject(project)));
+  assert.deepEqual(
+    json.panels.map((p: { tool: string }) => p.tool),
+    ['heatmap', 'roi'],
+  );
+  assert.equal(json.panels[0].rois, undefined); // regions are only stored for ROI panels
+  const back = parseProject(json);
+  assert.deepEqual(
+    back.panels.map((p) => [p.tool, p.rois.length]),
+    [
+      ['heatmap', 0],
+      ['roi', 1],
+    ],
+  );
+});
+
+test('version 1 files: kind applies to every panel, missing kind means heatmap', () => {
+  const v1 = (extra: object) => ({
+    schema: 'colormeris-project',
+    version: 1,
+    ...extra,
+    panels: [{ name: 'a' }, { name: 'b', rois: [] }],
+  });
+  assert.deepEqual(
+    parseProject(v1({ kind: 'roi' })).panels.map((p) => p.tool),
+    ['roi', 'roi'],
+  );
+  assert.deepEqual(
+    parseProject(v1({})).panels.map((p) => p.tool),
+    ['heatmap', 'heatmap'],
+  );
+  assert.throws(() => parseProject(v1({ kind: 'ivis' })), /unknown tool "ivis"/);
+  assert.throws(() => parseProject({ schema: 'colormeris-project', version: 3, panels: [{}] }), /version/);
+});
+
+test('version 2 panels with an unknown tool are refused', () => {
+  const json = { schema: 'colormeris-project', version: 2, panels: [{ name: 'a', tool: 'ivis' }] };
+  assert.throws(() => parseProject(json), /unknown tool "ivis"/);
+});
+
+test('map panels keep their bin, axes and profiles', () => {
+  const project = createProject('map');
+  const p = project.panels[0];
+  assert.deepEqual([p.grid.rows, p.grid.cols, p.grid.sampleFraction], [1, 1, 1]);
+  p.grid.corners = rectCorners({ x: 10, y: 20 }, { x: 110, y: 70 });
+  p.map.bin = 4;
+  p.map.x.ticks.push(createAxisTick({ x: 10, y: 75 }, 400), createAxisTick({ x: 110, y: 75 }, 700));
+  p.map.y.scale = 'log10';
+  p.map.y.ticks.push(createAxisTick({ x: 5, y: 20 }, 1000), createAxisTick({ x: 5, y: 70 }));
+  p.map.profiles.push(createProfile({ x: 10, y: 40 }, { x: 110, y: 40 }, { name: 'λ slice', halfWidth: 2 }));
+  const json = JSON.parse(JSON.stringify(serializeProject(project)));
+  assert.equal(json.panels[0].tool, 'map');
+  assert.equal(json.panels[0].map.y.ticks[1].value, null); // a tick without a value yet
+  const q = parseProject(json).panels[0];
+  assert.equal(q.tool, 'map');
+  assert.equal(q.map.bin, 4);
+  assert.equal(q.map.y.scale, 'log10');
+  assert.deepEqual(
+    q.map.x.ticks.map((k) => [k.x, k.y, k.value]),
+    [
+      [10, 75, 400],
+      [110, 75, 700],
+    ],
+  );
+  assert.ok(Number.isNaN(q.map.y.ticks[1].value));
+  assert.deepEqual(
+    [q.map.profiles[0].name, q.map.profiles[0].a, q.map.profiles[0].halfWidth],
+    ['λ slice', { x: 10, y: 40 }, 2],
+  );
+  // Rescaling moves ticks and profiles; the bin stays in rendered pixels.
+  rescalePanel(q, 2);
+  assert.deepEqual([q.map.x.ticks[1].x, q.map.x.ticks[1].y], [220, 150]);
+  assert.deepEqual([q.map.profiles[0].b, q.map.profiles[0].halfWidth], [{ x: 220, y: 80 }, 4]);
+  assert.equal(q.map.bin, 4);
+  // Map data is only stored for map panels.
+  assert.equal(serializeProject(createProject('heatmap')).panels[0].map, undefined);
+});
+
+test('a known colormap and typed tick positions survive a round trip', () => {
+  const project = createProject();
+  const cb = project.panels[0].colorbar;
+  cb.colormap = { name: 'magma', reversed: true };
+  cb.ticks = [
+    { id: 'a', t: 0, value: 1 },
+    { id: 'b', t: 0.75, value: NaN },
+  ];
+  const json = JSON.parse(JSON.stringify(serializeProject(project)));
+  assert.deepEqual(json.panels[0].colorbar.colormap, { name: 'magma', reversed: true });
+  assert.deepEqual(json.panels[0].colorbar.ticks[1], { x: null, y: null, t: 0.75, value: null });
+  const back = parseProject(json).panels[0].colorbar;
+  assert.deepEqual(back.colormap, { name: 'magma', reversed: true });
+  assert.deepEqual(back.ticks[0], { t: 0, value: 1 });
+  // A tick saved before its value was typed stays empty, not 0.
+  assert.ok(Number.isNaN(back.ticks[1].value));
+  assert.deepEqual(
+    ticksWithT(back).map((k) => k.t),
+    [0, 0.75],
+  );
+  // Typed ticks have no page position, so rescaling leaves them alone.
+  const q = parseProject(json).panels[0];
+  rescalePanel(q, 2);
+  assert.deepEqual(q.colorbar.ticks[0], { t: 0, value: 1 });
+  assert.equal(serializeProject(createProject()).panels[0].colorbar.colormap, undefined);
+});
+
+test('grid anchor and shape round-trip; unknown or missing values fall back to corners and square', () => {
+  const project = createProject();
+  const p = project.panels[0];
+  Object.assign(p.grid, {
+    anchor: 'centers',
+    shape: 'circle',
+    corners: rectCorners({ x: 10, y: 10 }, { x: 110, y: 210 }),
+  });
+  const json = JSON.parse(JSON.stringify(serializeProject(project)));
+  const q = parseProject(json).panels[0];
+  assert.equal(q.grid.anchor, 'centers');
+  assert.equal(q.grid.shape, 'circle');
+  json.panels[0].grid.anchor = 'middle';
+  delete json.panels[0].grid.shape;
+  const r = parseProject(json).panels[0];
+  assert.equal(r.grid.anchor, 'corners');
+  assert.equal(r.grid.shape, 'square');
+});
+
+test('every colorbar scale survives a round trip; unknown ones fall back to linear', () => {
+  for (const scale of [...SCALES, 'cubic']) {
+    const project = createProject();
+    project.panels[0].colorbar.scale = scale as ColorbarScale;
+    const back = parseProject(JSON.parse(JSON.stringify(serializeProject(project)))).panels[0].colorbar;
+    assert.equal(back.scale, scale === 'cubic' ? 'linear' : scale);
+  }
+});
