@@ -1,521 +1,580 @@
-(function (CM) {
-  'use strict';
-  const {
-    extractField,
-    sampleProfiles,
-    mapProblem,
-    mapAt,
-    mapCoord,
-    axisT,
-    onAxisEdge,
-    mapPanelFiles,
-    createAxisTick,
-    createProfile,
-    pastedProfiles,
-    bilinear,
-    invertBilinear,
-    hexToRgb,
-    reconPixels,
-    formatNumber,
-    FLAG_DELTA_E,
-    FLAG_LOW,
-    FLAG_HIGH,
-    setupMapSidebar,
-    scaleBarClick,
-    drawScaleBar,
-    drawScalePreview,
-  } = CM;
+import { bilinear, invertBilinear } from '../../core/grid.ts';
+import type { Cell, Handle, MapField, MapResult, ErrorResult, Mode, Panel, PixelImage, Point, Profile, ToolHooks, ViewerApi, Workspace } from '../../types/index.ts';
+import { createAxisTick, createProfile } from '../project/project.ts';
+import { formatNumber, mapPanelFiles } from '../project/project-files.ts';
+import { drawScaleBar, drawScalePreview, scaleBarClick } from '../scale-bar.ts';
+import { hexToRgb } from '../settings/settings.ts';
+import {
+  FLAG_DELTA_E,
+  FLAG_HIGH,
+  FLAG_LOW,
+  type AxisKey,
+  axisT,
+  extractField,
+  mapAt,
+  mapCoord,
+  mapProblem,
+  onAxisEdge,
+  pastedProfiles,
+  reconPixels,
+  sampleProfiles,
+} from './field.ts';
+import { setupMapSidebar } from './map-sidebar.ts';
 
-  // Map tool: read near-continuous fields (spectroscopy maps, fluorescence
-  // images) as a dense value matrix with axis coordinates, plus line profiles.
-  // The grid is the plot area (TOOL_HOOKS plotArea), sampled in bins of
-  // map.bin pixels (see map/field.js).
-  //
-  // This file sets up the tool, draws over the image and handles clicks and
-  // drags; map-sidebar.js renders the cards. They share `mctx`.
+/** A handle from hitTest: a profile end, a whole profile (with the drag's start) or an axis tick. */
+type MapHandle = Handle & { key: AxisKey; id: string; end: 'a' | 'b'; start: Point; a: Point; b: Point; started?: boolean };
+
+/** The edited profile moving across the plot (map-sidebar.ts sweep). */
+export interface MapSweep {
+  frame: number;
+  panelId: string;
+  id: string;
+  a0: Point;
+  b0: Point;
+  /** Unit normal of the profile and the range it moves over (sweepRange). */
+  n: Point;
+  min: number;
+  max: number;
+  s: number;
+  dir: 1 | -1;
+  last: number | null;
+  /** Fixed value axis of the plot while sweeping; widened by drawProfiles. */
+  yRange: [number, number] | null;
+  /** The line as the sweep last set it; anything else moving it ends the sweep. */
+  set: { a: Point; b: Point };
+}
+
+/** Offscreen layers of a field, one pixel per bin. */
+export interface FieldLayers {
+  recon?: HTMLCanvasElement;
+  flags?: HTMLCanvasElement;
+  flagKey?: string;
+}
+
+export interface MapToolState {
+  /** Selected profile, edited in the card. */
+  selectedId: string | null;
+  /** More selected profiles, plotted with it. */
+  overlay: Set<string>;
+  /** Profile plot and CSV: 'raw', or divided by each 'max' or 'mean'. */
+  profileNorm: string;
+  /** Traced sample of a profile. */
+  trace: { id: string; i: number } | null;
+  sweep: MapSweep | null;
+  showRecon: boolean;
+  showFlags: boolean;
+  /** Panel id → cached field. */
+  field: Map<string, { key: string; image: ImageData | PixelImage; result: MapField | ErrorResult }>;
+  /** Field values array → {recon, flags} canvases. */
+  layers: WeakMap<Float64Array, FieldLayers>;
+}
+
+/**
+ * What map-tool.ts shares with map-sidebar.ts. deleteSelected and toggleMode
+ * are added after the sidebar is set up and looked up at call time.
+ */
+export interface MapToolContext {
+  ws: Workspace;
+  state: MapToolState;
+  selectedProfile: () => Profile | null;
+  selectedProfiles: () => Profile[];
+  isSelected: (id: string) => boolean;
+  selectProfile: (id: string | null, opts?: { add?: boolean }) => void;
+  profileColor: (panel: Panel, profile: Profile) => string;
+  AXIS_COLORS: { readonly x: string; readonly y: string };
+  deleteSelected: () => void;
+  toggleMode: (type: string) => void;
+}
+
+// Map tool: read near-continuous fields (spectroscopy maps, fluorescence
+// images) as a dense value matrix with axis coordinates, plus line profiles.
+// The grid is the plot area (TOOL_HOOKS plotArea), sampled in bins of
+// map.bin pixels (see map/field.js).
+//
+// This file sets up the tool, draws over the image and handles clicks and
+// drags; map-sidebar.js renders the cards. They share `mctx`.
 
 
-  // setupMapTool(ws) registers the tool with a workspace (workspace/workspace.js).
-  function setupMapTool(ws) {
-  const { $, app, viewer } = ws;
-  const state = {
-    selectedId: null, // selected profile, edited in the card
-    overlay: new Set(), // more selected profiles, plotted with it
-    profileNorm: 'raw', // profile plot and CSV: 'raw', or divided by each 'max' or 'mean'
-    trace: null, // {id, i}: traced sample of a profile (see map-sidebar.js)
-    sweep: null, // the edited profile moving across the plot (see map-sidebar.js)
-    showRecon: false,
-    showFlags: false,
-    field: new Map(), // panel id → {key, image, result}
-    layers: new WeakMap(), // field values array → {recon, flags} canvases
-  };
-  const selectedProfile = () => ws.activePanel().map.profiles.find((l) => l.id === state.selectedId) || null;
-  const isSelected = (id) => id === state.selectedId || state.overlay.has(id);
-  // All selected profiles, in list order.
-  const selectedProfiles = () => ws.activePanel().map.profiles.filter((l) => isSelected(l.id));
-  // Colors come from the Settings dialog (colors.*), read at draw time.
-  const AXIS_COLORS = {
-    get x() {
-      return ws.color('axisX');
-    },
-    get y() {
-      return ws.color('axisY');
-    },
-  };
-  // One color per profile, by its place in the list: on the image, on its
-  // chip and in the plot. The defaults are mid-tones that read on images and
-  // on the light or dark plot, with no red (flagged samples) or yellow (the trace).
-  const profileColorAt = (i) => {
-    const palette = ws.color('profilePalette');
-    return palette[Math.max(0, i) % palette.length];
-  };
-  const profileColor = (panel, l) => profileColorAt(panel.map.profiles.indexOf(l));
+// setupMapTool(ws) registers the tool with a workspace (workspace/workspace.js).
+export function setupMapTool(ws: Workspace) {
+const { $, app, viewer } = ws;
+const state: MapToolState = {
+  selectedId: null, // selected profile, edited in the card
+  overlay: new Set(), // more selected profiles, plotted with it
+  profileNorm: 'raw', // profile plot and CSV: 'raw', or divided by each 'max' or 'mean'
+  trace: null, // {id, i}: traced sample of a profile (see map-sidebar.js)
+  sweep: null, // the edited profile moving across the plot (see map-sidebar.js)
+  showRecon: false,
+  showFlags: false,
+  field: new Map(), // panel id → {key, image, result}
+  layers: new WeakMap(), // field values array → {recon, flags} canvases
+};
+const selectedProfile = () => ws.activePanel().map.profiles.find((l) => l.id === state.selectedId) || null;
+const isSelected = (id: string) => id === state.selectedId || state.overlay.has(id);
+// All selected profiles, in list order.
+const selectedProfiles = () => ws.activePanel().map.profiles.filter((l) => isSelected(l.id));
+// Colors come from the Settings dialog (colors.*), read at draw time.
+const AXIS_COLORS = {
+  get x() {
+    return ws.color('axisX') as string;
+  },
+  get y() {
+    return ws.color('axisY') as string;
+  },
+};
+// One color per profile, by its place in the list: on the image, on its
+// chip and in the plot. The defaults are mid-tones that read on images and
+// on the light or dark plot, with no red (flagged samples) or yellow (the trace).
+const profileColorAt = (i: number) => {
+  const palette = ws.color('profilePalette') as string[];
+  return palette[Math.max(0, i) % palette.length];
+};
+const profileColor = (panel: Panel, l: Profile) => profileColorAt(panel.map.profiles.indexOf(l));
 
-  // Select profile id (null: none). With add, toggle it in the selection
-  // instead; a profile added becomes the one edited.
-  function selectProfile(id, { add = false } = {}) {
-    if (!add || !id) {
-      state.selectedId = id;
-      state.overlay.clear();
-    } else if (isSelected(id)) {
-      state.overlay.delete(id);
-      if (state.selectedId === id) {
-        state.selectedId = [...state.overlay].pop() ?? null;
-        state.overlay.delete(state.selectedId);
-      }
-    } else {
-      if (state.selectedId) state.overlay.add(state.selectedId);
-      state.selectedId = id;
+// Select profile id (null: none). With add, toggle it in the selection
+// instead; a profile added becomes the one edited.
+function selectProfile(id: string | null, { add = false }: { add?: boolean } = {}) {
+  if (!add || !id) {
+    state.selectedId = id;
+    state.overlay.clear();
+  } else if (isSelected(id)) {
+    state.overlay.delete(id);
+    if (state.selectedId === id) {
+      state.selectedId = [...state.overlay].pop() ?? null;
+      state.overlay.delete(state.selectedId!);
     }
-    ws.changed();
+  } else {
+    if (state.selectedId) state.overlay.add(state.selectedId!);
+    state.selectedId = id;
   }
+  ws.changed();
+}
 
-  const mctx = { ws, state, selectedProfile, selectedProfiles, isSelected, selectProfile, profileColor, AXIS_COLORS };
-  const { renderSidebar, focusAxisTick, setTrace, stopSweep, toggleSweep } = setupMapSidebar(mctx);
+const mctx = { ws, state, selectedProfile, selectedProfiles, isSelected, selectProfile, profileColor, AXIS_COLORS } as MapToolContext;
+const { renderSidebar, focusAxisTick, setTrace, stopSweep, toggleSweep } = setupMapSidebar(mctx);
 
-  // The field is the slow part (every pixel goes through the colorbar), so it
-  // is cached apart from the profiles: drawing or dragging a profile must not
-  // read the whole map again.
-  function computeResult(panel, image) {
-    const key = JSON.stringify([panel.grid.corners, panel.colorbar, panel.settings, panel.map.bin, panel.map.x, panel.map.y, panel.map.units, panel.scale]);
-    let hit = state.field.get(panel.id);
-    if (!hit || hit.key !== key || hit.image !== image) {
-      hit = { key, image, result: extractField(image, panel) };
-      state.field.set(panel.id, hit);
-    }
-    return { ...hit.result, profiles: sampleProfiles(image, panel) };
+// The field is the slow part (every pixel goes through the colorbar), so it
+// is cached apart from the profiles: drawing or dragging a profile must not
+// read the whole map again.
+function computeResult(panel: Panel, image: ImageData | PixelImage) {
+  const key = JSON.stringify([panel.grid.corners, panel.colorbar, panel.settings, panel.map.bin, panel.map.x, panel.map.y, panel.map.units, panel.scale]);
+  let hit = state.field.get(panel.id);
+  if (!hit || hit.key !== key || hit.image !== image) {
+    hit = { key, image, result: extractField(image, panel) };
+    state.field.set(panel.id, hit);
   }
+  return { ...hit.result, profiles: sampleProfiles(image, panel) };
+}
 
-  ws.addTool({
-    kind: 'map',
-    label: 'Map',
-    title: 'Colormeris · Map',
-    plotArea: true,
-    computeResult,
-    resultKey: (panel) => [panel.grid.corners, panel.colorbar, panel.settings, panel.map, panel.scale],
-    panelProblem: mapProblem,
-    panelFiles: (panels, results, bases) => panels.flatMap((p, i) => mapPanelFiles(p, results[i], bases[i])),
-    hasCalibration: (p) => p.map.x.ticks.length > 0 || p.map.y.ticks.length > 0 || p.map.profiles.length > 0 || !!p.scale,
-    sections: ['sec-scale', 'sec-axes', 'sec-profiles', 'sec-map-results'],
-    gridTexts: ['Click the top-left corner of the plot area (inside the axes).', 'Click the bottom-right corner.'],
-    modeTexts: {
-      xtick: ['Click a labelled tick on the x axis, then type its value. Press Done when finished.'],
-      ytick: ['Click a labelled tick on the y axis, then type its value. Press Done when finished.'],
-      profile: ['Click the start of the profile line.', 'Click its end. Hold Alt to disable axis snapping.'],
-      scale: ['Click one end of the scale bar.', 'Click the other end. Hold Alt to disable axis snapping.'],
-    },
-    onModeChange,
-    onClick,
-    hitTest,
-    onHandleDrag,
-    drawUnderGrid,
-    drawOverGrid,
-    drawOverlay,
-    drawModePreview,
-    hoverText,
-    onKey,
-    renderSidebar,
-  });
+ws.addTool({
+  kind: 'map',
+  label: 'Map',
+  title: 'Colormeris · Map',
+  plotArea: true,
+  computeResult,
+  resultKey: (panel) => [panel.grid.corners, panel.colorbar, panel.settings, panel.map, panel.scale],
+  panelProblem: mapProblem,
+  panelFiles: (panels, results, bases) => panels.flatMap((p, i) => mapPanelFiles(p, results[i] as MapResult, bases[i])),
+  hasCalibration: (p) => p.map.x.ticks.length > 0 || p.map.y.ticks.length > 0 || p.map.profiles.length > 0 || !!p.scale,
+  sections: ['sec-scale', 'sec-axes', 'sec-profiles', 'sec-map-results'],
+  gridTexts: ['Click the top-left corner of the plot area (inside the axes).', 'Click the bottom-right corner.'],
+  modeTexts: {
+    xtick: ['Click a labelled tick on the x axis, then type its value. Press Done when finished.'],
+    ytick: ['Click a labelled tick on the y axis, then type its value. Press Done when finished.'],
+    profile: ['Click the start of the profile line.', 'Click its end. Hold Alt to disable axis snapping.'],
+    scale: ['Click one end of the scale bar.', 'Click the other end. Hold Alt to disable axis snapping.'],
+  },
+  onModeChange,
+  onClick,
+  hitTest,
+  onHandleDrag,
+  drawUnderGrid,
+  drawOverGrid,
+  drawOverlay,
+  drawModePreview,
+  hoverText,
+  onKey,
+  renderSidebar,
+} satisfies ToolHooks);
 
-  // ---------------------------------------------------------------- overlay
+// ---------------------------------------------------------------- overlay
 
-  // Offscreen layers of a field, one pixel per bin: the reconstruction (each
-  // value repainted with its colorbar color) and the flags.
-  function layersFor(result) {
-    let hit = state.layers.get(result.values);
-    // The flag colors are settings; a change repaints the flags.
-    const flagKey = ['mapFlag', 'mapHigh', 'mapLow'].map(ws.color).join();
-    if (hit && hit.flagKey !== flagKey) delete hit.flags;
-    if (!hit) {
-      hit = {};
-      state.layers.set(result.values, hit);
-    }
-    if (state.showRecon && !hit.recon) {
-      hit.recon = paintLayer(result, reconPixels(result));
-    }
-    if (state.showFlags && !hit.flags) {
-      hit.flagKey = flagKey;
-      const colors = [
-        [FLAG_DELTA_E, [...hexToRgb(ws.color('mapFlag')), 200]],
-        [FLAG_HIGH, [...hexToRgb(ws.color('mapHigh')), 170]],
-        [FLAG_LOW, [...hexToRgb(ws.color('mapLow')), 170]],
-      ].map(([flag, rgba]) => [flag, new Uint32Array(new Uint8ClampedArray(rgba).buffer)[0]]);
-      const out = new Uint8ClampedArray(result.flags.length * 4);
-      const px = new Uint32Array(out.buffer);
-      result.flags.forEach((f, i) => {
-        if (f) px[i] = colors.find(([flag]) => f & flag)?.[1] ?? 0;
-      });
-      hit.flags = paintLayer(result, out);
-    }
-    return hit;
+// Offscreen layers of a field, one pixel per bin: the reconstruction (each
+// value repainted with its colorbar color) and the flags.
+function layersFor(result: MapField) {
+  let hit = state.layers.get(result.values);
+  // The flag colors are settings; a change repaints the flags.
+  const flagKey = ['mapFlag', 'mapHigh', 'mapLow'].map((id) => ws.color(id)).join();
+  if (hit && hit.flagKey !== flagKey) delete hit.flags;
+  if (!hit) {
+    hit = {} as FieldLayers;
+    state.layers.set(result.values, hit);
   }
-
-  // A canvas of result.cols × result.rows from RGBA pixels.
-  function paintLayer(result, pixels) {
-    const canvas = document.createElement('canvas');
-    canvas.width = result.cols;
-    canvas.height = result.rows;
-    canvas.getContext('2d').putImageData(new ImageData(pixels, result.cols, result.rows), 0, 0);
-    return canvas;
+  if (state.showRecon && !hit.recon) {
+    hit.recon = paintLayer(result, reconPixels(result));
   }
-
-  // Draw a one-pixel-per-bin layer over the plot area, mapping its corners to
-  // the plot's top-left, top-right and bottom-left corners.
-  function drawLayer(ctx, v, panel, layer) {
-    const [tl, tr, , bl] = panel.grid.corners.map((q) => v.toScreen(q));
-    ctx.save();
-    ctx.transform((tr.x - tl.x) / layer.width, (tr.y - tl.y) / layer.width, (bl.x - tl.x) / layer.height, (bl.y - tl.y) / layer.height, tl.x, tl.y);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(layer, 0, 0);
-    ctx.restore();
+  if (state.showFlags && !hit.flags) {
+    hit.flagKey = flagKey;
+    const colors = ([
+      [FLAG_DELTA_E, [...hexToRgb(ws.color('mapFlag') as string), 200]],
+      [FLAG_HIGH, [...hexToRgb(ws.color('mapHigh') as string), 170]],
+      [FLAG_LOW, [...hexToRgb(ws.color('mapLow') as string), 170]],
+    ] as [number, number[]][]).map(([flag, rgba]) => [flag, new Uint32Array(new Uint8ClampedArray(rgba).buffer)[0]]);
+    const out = new Uint8ClampedArray(result.flags.length * 4);
+    const px = new Uint32Array(out.buffer);
+    result.flags.forEach((f, i) => {
+      if (f) px[i] = colors.find(([flag]) => f & flag)?.[1] ?? 0;
+    });
+    hit.flags = paintLayer(result, out);
   }
+  return hit;
+}
 
-  function drawUnderGrid(ctx, v, panel, active) {
-    if (!active || !state.showRecon) return;
-    const result = ws.resultFor(panel);
-    if (!result.error) drawLayer(ctx, v, panel, layersFor(result).recon);
-  }
+// A canvas of result.cols × result.rows from RGBA pixels.
+function paintLayer(result: MapField, pixels: Uint8ClampedArray<ArrayBuffer>) {
+  const canvas = document.createElement('canvas');
+  canvas.width = result.cols;
+  canvas.height = result.rows;
+  canvas.getContext('2d')!.putImageData(new ImageData(pixels, result.cols, result.rows), 0, 0);
+  return canvas;
+}
 
-  function drawOverGrid(ctx, v, panel, active) {
-    if (!active || !state.showFlags) return;
-    const result = ws.resultFor(panel);
-    if (!result.error) drawLayer(ctx, v, panel, layersFor(result).flags);
-  }
+// Draw a one-pixel-per-bin layer over the plot area, mapping its corners to
+// the plot's top-left, top-right and bottom-left corners.
+function drawLayer(ctx: CanvasRenderingContext2D, v: ViewerApi, panel: Panel, layer: HTMLCanvasElement) {
+  const [tl, tr, , bl] = panel.grid.corners!.map((q) => v.toScreen(q));
+  ctx.save();
+  ctx.transform((tr.x - tl.x) / layer.width, (tr.y - tl.y) / layer.width, (bl.x - tl.x) / layer.height, (bl.y - tl.y) / layer.height, tl.x, tl.y);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(layer, 0, 0);
+  ctx.restore();
+}
 
-  function drawOverlay(ctx, v, panel) {
-    ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
-    ctx.textBaseline = 'bottom';
-    for (const key of ['x', 'y']) {
-      for (const k of panel.map[key].ticks) {
-        const q = onAxisEdge(panel, key, k);
-        ws.drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
-        if (Number.isFinite(k.value)) label(ctx, v.toScreen(q), formatNumber(k.value), AXIS_COLORS[key], key === 'x' ? 'below' : 'left');
-      }
-    }
-    for (const l of panel.map.profiles) {
-      const a = v.toScreen(l.a);
-      const b = v.toScreen(l.b);
-      const color = profileColor(panel, l);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ws.strokeDual(ctx, color, isSelected(l.id) ? 2.5 : 1.5);
-      ws.drawHandle(ctx, v, l.a, color, 'square');
-      ws.drawHandle(ctx, v, l.b, color, 'circle');
-      label(ctx, a, l.name, color, 'above');
-    }
-    if (panel.scale) drawScaleBar(ws, ctx, v, panel.scale);
-    drawTrace(ctx, v, panel);
-  }
+function drawUnderGrid(ctx: CanvasRenderingContext2D, v: ViewerApi, panel: Panel, active: boolean) {
+  if (!active || !state.showRecon) return;
+  const result = ws.resultFor(panel) as MapField;
+  if (!result.error) drawLayer(ctx, v, panel, layersFor(result).recon!);
+}
 
-  // The traced sample of the selected profile: a ring on the line and its value.
-  function drawTrace(ctx, v, panel) {
-    const samples = state.trace && panel.map.profiles.some((l) => l.id === state.trace.id) ? ws.resultFor(panel).profiles?.[state.trace.id] : null;
-    const s = Array.isArray(samples) ? samples[state.trace.i] : null;
-    if (!s || s.outside) return;
-    const q = v.toScreen({ x: s.px, y: s.py });
-    ctx.beginPath();
-    ctx.arc(q.x, q.y, 6, 0, 2 * Math.PI);
-    ws.strokeDual(ctx, ws.color('trace'), 2);
-    // Four significant digits, as in the profile plot's readout.
-    label(ctx, { x: q.x + 10, y: q.y + 4 }, String(Number(s.value.toPrecision(4))), ws.color('trace'), 'above');
-  }
+function drawOverGrid(ctx: CanvasRenderingContext2D, v: ViewerApi, panel: Panel, active: boolean) {
+  if (!active || !state.showFlags) return;
+  const result = ws.resultFor(panel) as MapField;
+  if (!result.error) drawLayer(ctx, v, panel, layersFor(result).flags!);
+}
 
-  // Pointer over the image near a selected profile → trace the nearest
-  // sample of the closest one.
-  function traceFromImage(panel, p) {
-    if (app.mode) return setTrace(null);
-    let best = null;
-    for (const l of selectedProfiles()) {
-      const samples = ws.resultFor(panel).profiles?.[l.id];
-      if (!Array.isArray(samples) || samples.length < 2) continue;
-      const dx = l.b.x - l.a.x;
-      const dy = l.b.y - l.a.y;
-      const len2 = dx * dx + dy * dy;
-      const t = ((p.x - l.a.x) * dx + (p.y - l.a.y) * dy) / len2;
-      const dist = Math.abs((p.x - l.a.x) * dy - (p.y - l.a.y) * dx) / Math.sqrt(len2);
-      if (t < 0 || t > 1 || dist > Math.max(l.halfWidth, 0) + 8 / viewer.scale) continue;
-      const i = Math.round(t * (samples.length - 1));
-      if (samples[i].outside) continue;
-      if (!best || dist < best.dist) best = { dist, trace: { id: l.id, i } };
-    }
-    setTrace(best ? best.trace : null);
-  }
-
-  function label(ctx, s, text, color, where) {
-    const w = ctx.measureText(text).width;
-    const x = where === 'left' ? s.x - w - 8 : s.x - (where === 'above' ? 0 : w / 2);
-    const y = where === 'below' ? s.y + 18 : where === 'left' ? s.y + 5 : s.y - 6;
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-    ctx.strokeText(text, x, y);
-    ctx.fillStyle = color;
-    ctx.fillText(text, x, y);
-  }
-
-  function drawModePreview(ctx, v, m, hover) {
-    if (!hover) return;
-    const panel = ws.activePanel();
-    if ((m.type === 'xtick' || m.type === 'ytick') && panel.grid.corners) {
-      // The line through the plot at the pointer's axis position, and where
-      // the tick will go on the edge.
-      const key = m.type[0];
-      const q = onAxisEdge(panel, key, hover);
-      const t = axisT(panel, key, q);
-      const c = panel.grid.corners;
-      const [a, b] = key === 'x' ? [bilinear(c, t, 0), q] : [q, bilinear(c, 1, t)];
-      line(ctx, v, a, b, AXIS_COLORS[key]);
+function drawOverlay(ctx: CanvasRenderingContext2D, v: ViewerApi, panel: Panel) {
+  ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
+  ctx.textBaseline = 'bottom';
+  for (const key of ['x', 'y'] as const) {
+    for (const k of panel.map[key].ticks) {
+      const q = onAxisEdge(panel, key, k);
       ws.drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
-    } else if (m.type === 'profile' && m.points.length === 1) {
-      // In the color the new profile will get.
-      line(ctx, v, m.points[0], ws.snapAxis(m.points[0], hover), profileColorAt(panel.map.profiles.length));
-    } else {
-      drawScalePreview(ws, ctx, v, m, hover);
+      if (Number.isFinite(k.value)) label(ctx, v.toScreen(q), formatNumber(k.value), AXIS_COLORS[key], key === 'x' ? 'below' : 'left');
     }
   }
-
-  function line(ctx, v, p, q, color) {
-    const a = v.toScreen(p);
-    const b = v.toScreen(q);
+  for (const l of panel.map.profiles) {
+    const a = v.toScreen(l.a);
+    const b = v.toScreen(l.b);
+    const color = profileColor(panel, l);
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
-    ws.strokeDual(ctx, color, 1.5, [6, 4]);
+    ws.strokeDual(ctx, color, isSelected(l.id) ? 2.5 : 1.5);
+    ws.drawHandle(ctx, v, l.a, color, 'square');
+    ws.drawHandle(ctx, v, l.b, color, 'circle');
+    label(ctx, a, l.name, color, 'above');
   }
+  if (panel.scale) drawScaleBar(ws, ctx, v, panel.scale);
+  drawTrace(ctx, v, panel);
+}
 
-  function hoverText(panel, cell, p) {
-    traceFromImage(panel, p);
-    if (!panel.grid.corners) return '';
-    const { u, v } = invertBilinear(panel.grid.corners, p);
-    if (u < 0 || u >= 1 || v < 0 || v >= 1) return '';
-    // As in the CSVs (Coordinates in the Results card).
-    const coord = (key, t) => {
-      const c = mapCoord(panel, key);
-      const unit = c.kind === 'px' ? ' px' : c.kind === 'length' ? ` ${panel.scale.unit}` : '';
-      return `${key} ${c.kind === 'px' ? c.at(t).toFixed(1) : formatNumber(c.at(t))}${unit}`;
-    };
-    const x = coord('x', u);
-    const y = coord('y', v);
-    const hit = mapAt(ws.resultFor(panel), panel, p);
-    if (!hit) return `${x}, ${y}`;
-    const end = hit.flags & FLAG_HIGH ? ' · at colorbar top' : hit.flags & FLAG_LOW ? ' · at colorbar bottom' : '';
-    return `${x}, ${y}: ${formatNumber(hit.value)}  (ΔE ${hit.deltaE.toFixed(1)}${end})`;
+// The traced sample of the selected profile: a ring on the line and its value.
+function drawTrace(ctx: CanvasRenderingContext2D, v: ViewerApi, panel: Panel) {
+  const samples = state.trace && panel.map.profiles.some((l) => l.id === state.trace!.id) ? (ws.resultFor(panel) as MapResult).profiles?.[state.trace.id] : null;
+  const s = Array.isArray(samples) ? samples[state.trace!.i] : null;
+  if (!s || s.outside) return;
+  const q = v.toScreen({ x: s.px, y: s.py });
+  ctx.beginPath();
+  ctx.arc(q.x, q.y, 6, 0, 2 * Math.PI);
+  ws.strokeDual(ctx, ws.color('trace') as string, 2);
+  // Four significant digits, as in the profile plot's readout.
+  label(ctx, { x: q.x + 10, y: q.y + 4 }, String(Number(s.value.toPrecision(4))), ws.color('trace') as string, 'above');
+}
+
+// Pointer over the image near a selected profile → trace the nearest
+// sample of the closest one.
+function traceFromImage(panel: Panel, p: Point) {
+  if (app.mode) return setTrace(null);
+  let best: { dist: number; trace: { id: string; i: number } } | null = null;
+  for (const l of selectedProfiles()) {
+    const samples = (ws.resultFor(panel) as MapResult).profiles?.[l.id];
+    if (!Array.isArray(samples) || samples.length < 2) continue;
+    const dx = l.b.x - l.a.x;
+    const dy = l.b.y - l.a.y;
+    const len2 = dx * dx + dy * dy;
+    const t = ((p.x - l.a.x) * dx + (p.y - l.a.y) * dy) / len2;
+    const dist = Math.abs((p.x - l.a.x) * dy - (p.y - l.a.y) * dx) / Math.sqrt(len2);
+    if (t < 0 || t > 1 || dist > Math.max(l.halfWidth, 0) + 8 / viewer.scale) continue;
+    const i = Math.round(t * (samples.length - 1));
+    if (samples[i].outside) continue;
+    if (!best || dist < best.dist) best = { dist, trace: { id: l.id, i } };
   }
+  setTrace(best ? best.trace : null);
+}
 
-  // ---------------------------------------------------------------- clicks and drags
+function label(ctx: CanvasRenderingContext2D, s: Point, text: string, color: string, where: 'above' | 'below' | 'left') {
+  const w = ctx.measureText(text).width;
+  const x = where === 'left' ? s.x - w - 8 : s.x - (where === 'above' ? 0 : w / 2);
+  const y = where === 'below' ? s.y + 18 : where === 'left' ? s.y + 5 : s.y - 6;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
 
-  function onModeChange(type) {
-    if (type) stopSweep();
-    ws.setPressed($('axis-x-add'), type === 'xtick');
-    ws.setPressed($('axis-y-add'), type === 'ytick');
-    ws.setPressed($('profile-add'), type === 'profile');
-    ws.setPressed($('scale-place'), type === 'scale');
+function drawModePreview(ctx: CanvasRenderingContext2D, v: ViewerApi, m: Mode, hover: Point | undefined) {
+  if (!hover) return;
+  const panel = ws.activePanel();
+  if ((m.type === 'xtick' || m.type === 'ytick') && panel.grid.corners) {
+    // The line through the plot at the pointer's axis position, and where
+    // the tick will go on the edge.
+    const key = m.type[0] as AxisKey;
+    const q = onAxisEdge(panel, key, hover);
+    const t = axisT(panel, key, q);
+    const c = panel.grid.corners;
+    const [a, b] = key === 'x' ? [bilinear(c, t, 0), q] : [q, bilinear(c, 1, t)];
+    line(ctx, v, a, b, AXIS_COLORS[key]);
+    ws.drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
+  } else if (m.type === 'profile' && m.points.length === 1) {
+    // In the color the new profile will get.
+    line(ctx, v, m.points[0], ws.snapAxis(m.points[0], hover), profileColorAt(panel.map.profiles.length));
+  } else {
+    drawScalePreview(ws, ctx, v, m, hover);
   }
+}
 
-  function nextProfileName(panel) {
-    let n = 1;
-    const used = new Set(panel.map.profiles.map((l) => l.name));
-    while (used.has(`Profile ${n}`)) n++;
-    return `Profile ${n}`;
-  }
+function line(ctx: CanvasRenderingContext2D, v: ViewerApi, p: Point, q: Point, color: string) {
+  const a = v.toScreen(p);
+  const b = v.toScreen(q);
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ws.strokeDual(ctx, color, 1.5, [6, 4]);
+}
 
-  function onClick(mode, p, e) {
-    if (mode?.type === 'xtick' || mode?.type === 'ytick') {
-      const key = mode.type[0];
-      const tick = createAxisTick(onAxisEdge(ws.activePanel(), key, p));
-      ws.commit((pn) => pn.map[key].ticks.push(tick));
-      focusAxisTick(key, tick.id);
-      return true;
-    }
-    if (mode?.type === 'scale') return scaleBarClick(ws, mode, p, e);
-    if (mode?.type === 'profile') {
-      const q = mode.points.length === 1 && !e.altKey ? ws.snapAxis(mode.points[0], p) : p;
-      mode.points.push(q);
-      if (mode.points.length < 2) {
-        ws.updateModebar();
-        return true;
-      }
-      const [a, b] = mode.points;
-      if (Math.hypot(b.x - a.x, b.y - a.y) < 3) {
-        mode.points.pop();
-        ws.toast('Too short; click the other end of the profile.', true);
-        return true;
-      }
-      ws.setMode(null);
-      const profile = createProfile(a, b, { name: nextProfileName(ws.activePanel()) });
-      ws.commit((pn) => pn.map.profiles.push(profile));
-      selectProfile(profile.id);
-      return true;
-    }
-    if (mode) return false;
-    // No mode: clicking a profile selects it; Shift- or Cmd-click adds it to
-    // the selection (or takes it out), to overlay several in the plot.
-    const hit = profileAt(p, 6 / viewer.scale);
-    const add = e.shiftKey || e.metaKey || e.ctrlKey;
-    if (add && !hit) return true;
-    selectProfile(hit ? hit.id : null, { add });
+function hoverText(panel: Panel, _cell: Cell | null, p: Point) {
+  traceFromImage(panel, p);
+  if (!panel.grid.corners) return '';
+  const { u, v } = invertBilinear(panel.grid.corners, p);
+  if (u < 0 || u >= 1 || v < 0 || v >= 1) return '';
+  // As in the CSVs (Coordinates in the Results card).
+  const coord = (key: AxisKey, t: number) => {
+    const c = mapCoord(panel, key);
+    const unit = c.kind === 'px' ? ' px' : c.kind === 'length' ? ` ${panel.scale!.unit}` : '';
+    return `${key} ${c.kind === 'px' ? c.at!(t).toFixed(1) : formatNumber(c.at!(t))}${unit}`;
+  };
+  const x = coord('x', u);
+  const y = coord('y', v);
+  const hit = mapAt(ws.resultFor(panel) as MapResult, panel, p);
+  if (!hit) return `${x}, ${y}`;
+  const end = hit.flags & FLAG_HIGH ? ' · at colorbar top' : hit.flags & FLAG_LOW ? ' · at colorbar bottom' : '';
+  return `${x}, ${y}: ${formatNumber(hit.value)}  (ΔE ${hit.deltaE.toFixed(1)}${end})`;
+}
+
+// ---------------------------------------------------------------- clicks and drags
+
+function onModeChange(type: string | null) {
+  if (type) stopSweep();
+  ws.setPressed($('axis-x-add'), type === 'xtick');
+  ws.setPressed($('axis-y-add'), type === 'ytick');
+  ws.setPressed($('profile-add'), type === 'profile');
+  ws.setPressed($('scale-place'), type === 'scale');
+}
+
+function nextProfileName(panel: Panel) {
+  let n = 1;
+  const used = new Set(panel.map.profiles.map((l) => l.name));
+  while (used.has(`Profile ${n}`)) n++;
+  return `Profile ${n}`;
+}
+
+function onClick(mode: Mode | null, p: Point, e: PointerEvent) {
+  if (mode?.type === 'xtick' || mode?.type === 'ytick') {
+    const key = mode.type[0] as AxisKey;
+    const tick = createAxisTick(onAxisEdge(ws.activePanel(), key, p));
+    ws.commit((pn) => pn.map[key].ticks.push(tick));
+    focusAxisTick(key, tick.id);
     return true;
   }
-
-  function profileAt(p, tol) {
-    for (const l of ws.activePanel().map.profiles) {
-      const dx = l.b.x - l.a.x;
-      const dy = l.b.y - l.a.y;
-      const len2 = dx * dx + dy * dy || 1;
-      const t = Math.min(1, Math.max(0, ((p.x - l.a.x) * dx + (p.y - l.a.y) * dy) / len2));
-      if (Math.hypot(l.a.x + t * dx - p.x, l.a.y + t * dy - p.y) <= tol) return l;
-    }
-    return null;
-  }
-
-  function hitTest(p, tol) {
-    if (app.mode) return null;
-    const panel = ws.activePanel();
-    const near = (q) => Math.hypot(q.x - p.x, q.y - p.y) <= tol;
-    for (const l of panel.map.profiles) {
-      if (near(l.a)) return { kind: 'profileEnd', id: l.id, end: 'a' };
-      if (near(l.b)) return { kind: 'profileEnd', id: l.id, end: 'b' };
-    }
-    for (const key of ['x', 'y']) for (const k of panel.map[key].ticks) if (near(onAxisEdge(panel, key, k))) return { kind: 'axisTick', key, id: k.id };
-    const l = profileAt(p, tol);
-    return l ? { kind: 'profileMove', id: l.id, start: p, a: l.a, b: l.b } : null;
-  }
-
-  function onHandleDrag(handle, p, e) {
-    // The drag takes the line; a sweep would pull it back each frame.
-    stopSweep();
-    const panel = ws.activePanel();
-    if (handle.kind === 'axisTick') {
-      const k = panel.map[handle.key].ticks.find((x) => x.id === handle.id);
-      if (k) Object.assign(k, onAxisEdge(panel, handle.key, p));
-    } else {
-      // Ctrl- or Cmd-dragging a line moves a copy of it and leaves the original.
-      if (handle.kind === 'profileMove' && !handle.started) {
-        handle.started = true;
-        const src = panel.map.profiles.find((x) => x.id === handle.id);
-        if (src && (e.ctrlKey || e.metaKey)) {
-          const [copy] = pastedProfiles(panel, [src], null);
-          panel.map.profiles.push(copy);
-          handle.id = copy.id;
-          state.overlay.clear();
-        }
-      }
-      const l = panel.map.profiles.find((x) => x.id === handle.id);
-      if (!l) return;
-      // Dragging a selected profile keeps the selection; it becomes the one edited.
-      if (!isSelected(l.id)) state.overlay.clear();
-      else if (state.selectedId !== l.id) {
-        state.overlay.delete(l.id);
-        state.overlay.add(state.selectedId);
-      }
-      state.selectedId = l.id;
-      if (handle.kind === 'profileEnd') {
-        const other = handle.end === 'a' ? l.b : l.a;
-        l[handle.end] = e.altKey ? p : ws.snapAxis(other, p);
-      } else {
-        // Moved by the offset from where the drag started; with Shift only
-        // along its larger component, so the line moves straight across or down.
-        let dx = p.x - handle.start.x;
-        let dy = p.y - handle.start.y;
-        if (e.shiftKey) {
-          if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
-          else dx = 0;
-        }
-        l.a = { x: handle.a.x + dx, y: handle.a.y + dy };
-        l.b = { x: handle.b.x + dx, y: handle.b.y + dy };
-      }
-    }
-    ws.changed({ light: true });
-  }
-
-  // Deletes every selected profile.
-  function deleteSelected() {
-    const ids = new Set(selectedProfiles().map((l) => l.id));
-    if (!ids.size) return;
-    ws.commit((p) => (p.map.profiles = p.map.profiles.filter((x) => !ids.has(x.id))));
-    selectProfile(null);
-  }
-  mctx.deleteSelected = deleteSelected;
-
-  function onKey(e) {
-    const t = e.target;
-    const typing = t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && t.type !== 'checkbox' && t.type !== 'range';
-    if (typing || e.metaKey || e.ctrlKey || !app.sourceCanvas) return false;
-    if (!app.mode && (e.key === 'Delete' || e.key === 'Backspace') && selectedProfile()) {
-      e.preventDefault();
-      deleteSelected();
+  if (mode?.type === 'scale') return scaleBarClick(ws, mode, p, e);
+  if (mode?.type === 'profile') {
+    const q = mode.points.length === 1 && !e.altKey ? ws.snapAxis(mode.points[0], p) : p;
+    mode.points.push(q);
+    if (mode.points.length < 2) {
+      ws.updateModebar();
       return true;
     }
-    return false;
-  }
-
-  $('viewer').addEventListener('pointerleave', () => ws.tool().kind === 'map' && setTrace(null));
-
-  // Axis ticks need the plot area: their position is measured along it.
-  function toggleMode(type) {
-    if (app.mode?.type === type) return ws.setMode(null);
-    if ((type === 'xtick' || type === 'ytick') && !ws.activePanel().grid.corners) {
-      ws.toast('Place the plot area first.', true);
-      return;
+    const [a, b] = mode.points;
+    if (Math.hypot(b.x - a.x, b.y - a.y) < 3) {
+      mode.points.pop();
+      ws.toast('Too short; click the other end of the profile.', true);
+      return true;
     }
-    ws.setMode(type);
-    // Ticks are added until Done, like colorbar ticks.
-    if (type !== 'profile') {
-      app.mode.done = true;
-      ws.updateModebar();
+    ws.setMode(null);
+    const profile = createProfile(a, b, { name: nextProfileName(ws.activePanel()) });
+    ws.commit((pn) => pn.map.profiles.push(profile));
+    selectProfile(profile.id);
+    return true;
+  }
+  if (mode) return false;
+  // No mode: clicking a profile selects it; Shift- or Cmd-click adds it to
+  // the selection (or takes it out), to overlay several in the plot.
+  const hit = profileAt(p, 6 / viewer.scale);
+  const add = e.shiftKey || e.metaKey || e.ctrlKey;
+  if (add && !hit) return true;
+  selectProfile(hit ? hit.id : null, { add });
+  return true;
+}
+
+function profileAt(p: Point, tol: number) {
+  for (const l of ws.activePanel().map.profiles) {
+    const dx = l.b.x - l.a.x;
+    const dy = l.b.y - l.a.y;
+    const len2 = dx * dx + dy * dy || 1;
+    const t = Math.min(1, Math.max(0, ((p.x - l.a.x) * dx + (p.y - l.a.y) * dy) / len2));
+    if (Math.hypot(l.a.x + t * dx - p.x, l.a.y + t * dy - p.y) <= tol) return l;
+  }
+  return null;
+}
+
+function hitTest(p: Point, tol: number): Handle | null {
+  if (app.mode) return null;
+  const panel = ws.activePanel();
+  const near = (q: Point) => Math.hypot(q.x - p.x, q.y - p.y) <= tol;
+  for (const l of panel.map.profiles) {
+    if (near(l.a)) return { kind: 'profileEnd', id: l.id, end: 'a' };
+    if (near(l.b)) return { kind: 'profileEnd', id: l.id, end: 'b' };
+  }
+  for (const key of ['x', 'y'] as const) for (const k of panel.map[key].ticks) if (near(onAxisEdge(panel, key, k))) return { kind: 'axisTick', key, id: k.id };
+  const l = profileAt(p, tol);
+  return l ? { kind: 'profileMove', id: l.id, start: p, a: l.a, b: l.b } : null;
+}
+
+function onHandleDrag(h: Handle, p: Point, e: PointerEvent) {
+  const handle = h as MapHandle;
+  // The drag takes the line; a sweep would pull it back each frame.
+  stopSweep();
+  const panel = ws.activePanel();
+  if (handle.kind === 'axisTick') {
+    const k = panel.map[handle.key].ticks.find((x) => x.id === handle.id);
+    if (k) Object.assign(k, onAxisEdge(panel, handle.key, p));
+  } else {
+    // Ctrl- or Cmd-dragging a line moves a copy of it and leaves the original.
+    if (handle.kind === 'profileMove' && !handle.started) {
+      handle.started = true;
+      const src = panel.map.profiles.find((x) => x.id === handle.id);
+      if (src && (e.ctrlKey || e.metaKey)) {
+        const [copy] = pastedProfiles(panel, [src], null);
+        panel.map.profiles.push(copy);
+        handle.id = copy.id;
+        state.overlay.clear();
+      }
+    }
+    const l = panel.map.profiles.find((x) => x.id === handle.id);
+    if (!l) return;
+    // Dragging a selected profile keeps the selection; it becomes the one edited.
+    if (!isSelected(l.id)) state.overlay.clear();
+    else if (state.selectedId !== l.id) {
+      state.overlay.delete(l.id);
+      state.overlay.add(state.selectedId!);
+    }
+    state.selectedId = l.id;
+    if (handle.kind === 'profileEnd') {
+      const other = handle.end === 'a' ? l.b : l.a;
+      l[handle.end] = e.altKey ? p : ws.snapAxis(other, p);
+    } else {
+      // Moved by the offset from where the drag started; with Shift only
+      // along its larger component, so the line moves straight across or down.
+      let dx = p.x - handle.start.x;
+      let dy = p.y - handle.start.y;
+      if (e.shiftKey) {
+        if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
+        else dx = 0;
+      }
+      l.a = { x: handle.a.x + dx, y: handle.a.y + dy };
+      l.b = { x: handle.b.x + dx, y: handle.b.y + dy };
     }
   }
-  mctx.toggleMode = toggleMode;
-  for (const type of ['xtick', 'ytick', 'profile']) ws.addHotkey(type, () => toggleMode(type), { tool: 'map' });
+  ws.changed({ light: true });
+}
 
-  // Copy and paste profiles, also between panels and pages. The clipboard is
-  // this tab's, not the system's: profiles mean nothing outside a figure.
-  let clipboard = null; // {panelId, corners, profiles, pastes}
-  function copyProfiles() {
-    const profiles = selectedProfiles();
-    if (!profiles.length || app.mode) return false;
-    const panel = ws.activePanel();
-    clipboard = { panelId: panel.id, corners: structuredClone(panel.grid.corners), profiles: structuredClone(profiles), pastes: 0 };
-    ws.toast(`Copied ${profiles.length} profile${profiles.length === 1 ? '' : 's'}.`);
-  }
-  function pasteProfiles() {
-    if (!clipboard || app.mode) return false;
-    const panel = ws.activePanel();
-    // In the panel they came from, each paste lands a bit lower and to the
-    // right (12 screen px), so copies do not hide the original.
-    const step = panel.id === clipboard.panelId ? (12 * ++clipboard.pastes) / viewer.scale : 0;
-    const copies = pastedProfiles(panel, clipboard.profiles, panel.id === clipboard.panelId ? null : clipboard.corners, { x: step, y: step });
-    ws.commit((p) => p.map.profiles.push(...copies));
-    state.selectedId = copies.at(-1).id;
-    state.overlay.clear();
-    for (const l of copies.slice(0, -1)) state.overlay.add(l.id);
-    ws.changed();
-    ws.toast(`Pasted ${copies.length} profile${copies.length === 1 ? '' : 's'}.`);
-  }
-  ws.addHotkey('copyProfiles', copyProfiles, { tool: 'map' });
-  ws.addHotkey('pasteProfiles', pasteProfiles, { tool: 'map' });
-  ws.addHotkey('sweepProfile', () => (selectedProfile() && !app.mode ? toggleSweep() : false), { tool: 'map' });
-  }
+// Deletes every selected profile.
+function deleteSelected() {
+  const ids = new Set(selectedProfiles().map((l) => l.id));
+  if (!ids.size) return;
+  ws.commit((p) => (p.map.profiles = p.map.profiles.filter((x) => !ids.has(x.id))));
+  selectProfile(null);
+}
+mctx.deleteSelected = deleteSelected;
 
-  Object.assign(CM, { setupMapTool });
-})((globalThis.Colormeris ??= {}));
+function onKey(e: KeyboardEvent) {
+  const t = e.target;
+  const typing = t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && (t as HTMLInputElement).type !== 'checkbox' && (t as HTMLInputElement).type !== 'range';
+  if (typing || e.metaKey || e.ctrlKey || !app.sourceCanvas) return false;
+  if (!app.mode && (e.key === 'Delete' || e.key === 'Backspace') && selectedProfile()) {
+    e.preventDefault();
+    deleteSelected();
+    return true;
+  }
+  return false;
+}
+
+$('viewer').addEventListener('pointerleave', () => ws.tool().kind === 'map' && setTrace(null));
+
+// Axis ticks need the plot area: their position is measured along it.
+function toggleMode(type: string) {
+  if (app.mode?.type === type) return ws.setMode(null);
+  if ((type === 'xtick' || type === 'ytick') && !ws.activePanel().grid.corners) {
+    ws.toast('Place the plot area first.', true);
+    return;
+  }
+  ws.setMode(type);
+  // Ticks are added until Done, like colorbar ticks.
+  if (type !== 'profile') {
+    app.mode!.done = true;
+    ws.updateModebar();
+  }
+}
+mctx.toggleMode = toggleMode;
+for (const type of ['xtick', 'ytick', 'profile']) ws.addHotkey(type, () => toggleMode(type), { tool: 'map' });
+
+// Copy and paste profiles, also between panels and pages. The clipboard is
+// this tab's, not the system's: profiles mean nothing outside a figure.
+let clipboard: { panelId: string; corners: Point[] | null; profiles: Profile[]; pastes: number } | null = null; // {panelId, corners, profiles, pastes}
+function copyProfiles() {
+  const profiles = selectedProfiles();
+  if (!profiles.length || app.mode) return false;
+  const panel = ws.activePanel();
+  clipboard = { panelId: panel.id, corners: structuredClone(panel.grid.corners), profiles: structuredClone(profiles), pastes: 0 };
+  ws.toast(`Copied ${profiles.length} profile${profiles.length === 1 ? '' : 's'}.`);
+}
+function pasteProfiles() {
+  if (!clipboard || app.mode) return false;
+  const panel = ws.activePanel();
+  // In the panel they came from, each paste lands a bit lower and to the
+  // right (12 screen px), so copies do not hide the original.
+  const step = panel.id === clipboard.panelId ? (12 * ++clipboard.pastes) / viewer.scale : 0;
+  const copies = pastedProfiles(panel, clipboard.profiles, panel.id === clipboard.panelId ? null : clipboard.corners, { x: step, y: step });
+  ws.commit((p) => p.map.profiles.push(...copies));
+  state.selectedId = copies.at(-1)!.id;
+  state.overlay.clear();
+  for (const l of copies.slice(0, -1)) state.overlay.add(l.id);
+  ws.changed();
+  ws.toast(`Pasted ${copies.length} profile${copies.length === 1 ? '' : 's'}.`);
+}
+ws.addHotkey('copyProfiles', copyProfiles, { tool: 'map' });
+ws.addHotkey('pasteProfiles', pasteProfiles, { tool: 'map' });
+ws.addHotkey('sweepProfile', () => (selectedProfile() && !app.mode ? toggleSweep() : false), { tool: 'map' });
+}
+

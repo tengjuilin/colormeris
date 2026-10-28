@@ -27,6 +27,15 @@
         "scripts/openrouter-proxy.mjs"
       ],
       "port": 8787
+    },
+    {
+      "name": "colormeris-build",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "npm run -s build && exec npx vite preview --port 8004"
+      ],
+      "port": 8004
     }
   ]
 }

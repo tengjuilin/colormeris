@@ -5,7 +5,7 @@
 import type JSZipType from 'jszip';
 import type { ChatClient, ColormerisApi } from './agent.ts';
 
-/** The vendored OpenRouter SDK bundle (assets/vendor/openrouter), loaded lazily by agent/openrouter-client.ts. */
+/** The OpenRouter SDK module (npm @openrouter/sdk), loaded lazily by agent/openrouter-client.ts; tests and mocks may set globalThis.OpenRouterSDK. */
 export interface OpenRouterSdk {
   OpenRouter: new (opts: { apiKey: string; appTitle?: string; httpReferer?: string; serverURL?: string }) => ChatClient;
 }
@@ -24,6 +24,8 @@ declare global {
     JSZip?: typeof JSZipType;
   }
   // `var` is how a global property is declared for globalThis.
+  /** Dev only (pages/extract.ts): the exports of the pure modules, for console debugging. */
+  var Colormeris: Readonly<Record<string, unknown>> | undefined;
   var OpenRouterSDK: OpenRouterSdk | undefined;
   var ColormerisPdfjsSource: PdfjsSource | undefined;
   var pdfjsWorker: unknown;

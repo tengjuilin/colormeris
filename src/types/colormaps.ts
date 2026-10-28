@@ -67,7 +67,7 @@ export interface CmapViewerState {
   open: string | null;
   tab: string;
   stripView: string;
-  sort: string | null;
+  sort: { key: string; dir: number } | null;
   /** Maps shown the other way round in Browse. */
   flipped: Set<string>;
 }
@@ -91,7 +91,8 @@ export interface CmapListItem {
  */
 export interface CmapViewerContext {
   // ---- common.ts helpers and constants
-  el: (tag: string, attrs?: Record<string, unknown> | null, text?: unknown) => HTMLElement;
+  // biome-ignore lint/suspicious/noExplicitAny: TODO(types) DOM seam, see common.ts el
+  el: (tag: string, attrs?: Record<string, unknown> | null, text?: unknown) => any;
   svgEl: (tag: string, attrs?: Record<string, unknown>) => SVGElement;
   pct: (v: number) => string;
   clamp8: (v: number) => number;
@@ -111,7 +112,7 @@ export interface CmapViewerContext {
   viewData: (map: ColormapEntry, view: ViewKey, reversed?: boolean) => ViewData;
   // biome-ignore lint/suspicious/noExplicitAny: TODO(types) colormaps/metrics.ts colormapMetrics result
   metrics: (map: ColormapEntry) => any;
-  sepOf: (map: ColormapEntry, key: string) => { min: number; t: number[] } | undefined;
+  sepOf: (map: ColormapEntry, key: string) => { min: number; t: number[] } | null | undefined;
   rev: <T>(a: T[], reversed?: boolean) => T[];
   isRev: (map: ColormapEntry) => boolean;
   ratingPills: (map: ColormapEntry) => HTMLElement;
@@ -123,6 +124,8 @@ export interface CmapViewerContext {
   openDetail: (name: string) => void;
   recolorFigure: (file: File, line?: unknown) => void;
   showRow: (name: string, opts?: { smooth?: boolean }) => void;
+  // ---- strips.ts members used by the map picker
+  stripCanvas: (colors: Rgb[], qualitative: boolean) => HTMLCanvasElement;
   // ---- added by the modules: strips.ts (stripCanvas, renderStrip, makeStrip,
   // showTip, hideTip), plots.ts, footer.ts (refNumber, methodList,
   // buildFooter, …), browse-tab.ts (headerRow, applyStripView, buildRow),

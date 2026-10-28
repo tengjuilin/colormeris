@@ -18,3 +18,4 @@ assets/img
 # Build output and dependencies
 node_modules/
 dist/
+public/pdfjs/

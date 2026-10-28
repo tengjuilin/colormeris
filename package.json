@@ -5,7 +5,9 @@
   "description": "Static web app that turns colors in scientific figures back into numbers (heatmap, ROI and map tools) and browses colormaps.",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-pdfjs-assets.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-pdfjs-assets.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc",

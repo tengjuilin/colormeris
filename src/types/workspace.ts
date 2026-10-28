@@ -132,6 +132,8 @@ export interface ViewerApi {
   toImage(sx: number, sy: number): Point;
   toScreen(p: Point): Point;
   requestDraw(): void;
+  /** Draws now (requestDraw waits for the next frame). */
+  draw(): void;
 }
 
 /** Mode bar texts: one per click so far, or a function of the mode. */
@@ -280,7 +282,7 @@ export interface WorkspaceContext {
 
   // ---- panels.ts
   renderPanels: (active: Panel) => void;
-  removePanel: (panel: Panel) => void;
+  removePanel: (panel: Panel) => { cleared: boolean };
   isEmptyPanel: (panel: Panel) => boolean;
   ensurePagePanel: (page: number, settings?: Partial<PanelSettings>) => void;
 

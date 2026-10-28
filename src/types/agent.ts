@@ -227,7 +227,8 @@ export interface ChatRequest {
   model: string;
   messages: ChatMessage[];
   tools?: LlmTool[];
-  toolChoice?: 'auto' | 'none' | 'required';
+  toolChoice?: 'auto' | 'none' | 'required' | { type: 'function'; function: { name: string } };
+  temperature?: number;
   maxTokens?: number;
   cacheControl?: { type: 'ephemeral'; ttl?: string };
   sessionId?: string;
