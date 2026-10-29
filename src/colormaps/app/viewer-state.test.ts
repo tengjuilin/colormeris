@@ -213,3 +213,23 @@ test('the pure comparison helpers return the same list when nothing changes', ()
   assert.equal(comparedReordered(l, 1, 1), l);
   assert.deepEqual(comparedReordered(l, 0, 2), ['b', 'c', 'a']);
 });
+
+test('SET_COMPARE_LIST: replaces the list, caps it, keeps identity when unchanged', () => {
+  const s = start('?compare=jet,viridis');
+  const same = viewerReducer(s, { type: 'SET_COMPARE_LIST', names: ['jet', 'viridis'] });
+  assert.equal(same, s);
+  const next = viewerReducer(s, { type: 'SET_COMPARE_LIST', names: ['gray', 'jet'] });
+  assert.deepEqual(next.compare, ['gray', 'jet']);
+  assert.equal(next.history, 'replace');
+  const many = viewerReducer(s, { type: 'SET_COMPARE_LIST', names: names.slice(0, COMPARE_MAX + 3) });
+  assert.equal(many.compare.length, COMPARE_MAX);
+  assert.deepEqual(viewerReducer(s, { type: 'SET_COMPARE_LIST', names: [] }).compare, []);
+});
+
+test('ROUTE_FROM_URL: a link that says what the state is returns the same state', () => {
+  const s = run(start('?compare=jet'), { type: 'OPEN', name: 'viridis' });
+  const same = run(s, { type: 'ROUTE_FROM_URL', route: { tab: s.tab, map: 'viridis', compare: ['jet'] } });
+  assert.equal(same, s);
+  const moved = run(s, { type: 'ROUTE_FROM_URL', route: { tab: s.tab, map: 'viridis', compare: ['jet', 'gray'] } });
+  assert.notEqual(moved, s);
+});

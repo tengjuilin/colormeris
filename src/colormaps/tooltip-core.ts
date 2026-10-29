@@ -1,7 +1,7 @@
 import { rgbToHex } from '../core/color.ts';
 import type { ColormapEntry, Rgb } from '../types/index.ts';
 
-// The pure parts of the colormap tooltip, shared by strips.ts and the React
+// The pure parts of the colormap tooltip, shared by the React
 // TooltipProvider: what it says about one color, and where it goes.
 
 export interface TipInfo {

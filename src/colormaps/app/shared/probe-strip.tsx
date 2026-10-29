@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type MouseEvent, type PointerEvent, useRef } from 'react';
+import { type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, useRef } from 'react';
 import type { ColormapEntry, ViewKey } from '../../../types/index.ts';
 import { VIEWS } from '../../common.ts';
 import { viewData } from '../../library-cache.ts';
@@ -6,19 +6,20 @@ import { tipInfo } from '../../tooltip-core.ts';
 import { Strip } from './strip.tsx';
 import { useTooltip } from './tooltip.tsx';
 
-// A colormap strip you can probe, with the markup of strips.ts makeStrip:
+// A colormap strip you can probe, (role, keys and tooltip as the old imperative strip had them):
 // hover shows the color's hex, rgb, position and L* in the page tooltip,
 // click (or Enter / c) copies the hex, the arrow keys move by one sample
-// (Shift by ten), Home and End jump. It has no `_cm` bag, so the viewer's
-// delegated handlers (strips.ts) leave it alone.
+// (Shift by ten), Home and End jump.
 
 export interface ProbeStripProps {
   map: ColormapEntry;
   view: ViewKey;
   reversed: boolean;
+  /** Extra marks inside the strip, after the probe marker (the detail view's `.cmap-pair` lines). */
+  children?: ReactNode;
 }
 
-export function ProbeStrip({ map, view, reversed }: ProbeStripProps) {
+export function ProbeStrip({ map, view, reversed, children }: ProbeStripProps) {
   const tip = useTooltip();
   const probed = useRef<number | null>(null);
   const lastHex = useRef('');
@@ -86,6 +87,7 @@ export function ProbeStrip({ map, view, reversed }: ProbeStripProps) {
     >
       <Strip colors={vd.colors} qualitative={map.kind === 'qualitative'} />
       <div className="cmap-marker" ref={marker} hidden />
+      {children}
     </div>
   );
 }

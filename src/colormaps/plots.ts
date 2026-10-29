@@ -1,12 +1,12 @@
 import { rgbToHex } from '../core/color.ts';
-import type { CmapViewerContext, ColormapEntry, ViewData, ViewKey } from '../types/index.ts';
+import type { ColormapEntry, ViewData, ViewKey } from '../types/index.ts';
 import type { Tooltip } from './tooltip-element.ts';
 
 // SVG plots of the colormap viewer: axes, line and dot series with a
 // hover guide, figures with captions, and the per-position profile of a map
 // (L*, chroma, hue, ΔE2000 steps) used by the detail view and Compare.
 // createPlots takes what it needs as arguments (the tooltip among them), so
-// React components can use it; setupCmapPlots is the same with the viewer's ctx.
+// React components use it.
 
 export interface PlotDeps {
   // biome-ignore lint/suspicious/noExplicitAny: TODO(types) DOM seam, see common.ts el
@@ -19,11 +19,6 @@ export interface PlotDeps {
   isRev: (map: ColormapEntry) => boolean;
   showTip: Tooltip['showTip'];
   hideTip: Tooltip['hideTip'];
-}
-
-export function setupCmapPlots(ctx: CmapViewerContext) {
-  const { el, svgEl, viewData, metrics, rev, isRev, showTip, hideTip } = ctx;
-  return createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip, hideTip });
 }
 
 export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip, hideTip }: PlotDeps) {

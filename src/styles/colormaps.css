@@ -370,7 +370,7 @@ input.cmap-search {
   padding: 3px 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
-/* Rows are filled in near the viewport (browse-tab.js); until then they hold
+/* Rows are filled in near the viewport (app/browse/row.tsx); until then they hold
    about their height, so the scrollbar and opening a section barely shift. */
 .cmap-browse .cmap-item:not(.built) > .cmap-row {
   min-height: var(--cmap-row-h, 28px);

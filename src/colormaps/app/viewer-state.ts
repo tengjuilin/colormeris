@@ -3,8 +3,8 @@ import { COMPARE_MAX, VIEWER_TABS } from '../route.ts';
 
 // Pure state of the colormaps page: a reducer with no DOM and no React, so
 // every rule (comparison cap, sort cycle, what SHOW_ROW clears) is unit
-// tested. It mirrors what viewer.ts, browse-tab.ts and compare-tab.ts keep in
-// `state` and in closures today. The link (tab, comparison, open map) is
+// tested. It holds what the old viewer.ts, browse-tab.ts and compare-tab.ts kept in
+// `state` and in closures. The link (tab, comparison, open map) is
 // written from this state by useUrlSync with formatViewerUrl (route.ts); sort,
 // reversed, flipped and the strip view stay out of the URL.
 
@@ -52,6 +52,7 @@ export type ViewerAction =
   | { type: 'SET_COMPARED'; name: string; on: boolean }
   | { type: 'MOVE_COMPARED'; name: string; d: number }
   | { type: 'REORDER_COMPARED'; from: number; to: number }
+  | { type: 'SET_COMPARE_LIST'; names: readonly string[] }
   | { type: 'CLEAR_COMPARED' }
   | { type: 'TOGGLE_COMPARE_REV'; name: string }
   | { type: 'SET_REVERSED'; on: boolean }
@@ -165,13 +166,15 @@ export function filtering(s: Pick<ViewerState, 'query' | 'filters'>): boolean {
 export function viewerReducer(s: ViewerState, a: ViewerAction): ViewerState {
   const replace = <T extends Partial<ViewerState>>(patch: T): ViewerState => ({ ...s, ...patch, history: 'replace' });
   switch (a.type) {
-    case 'ROUTE_FROM_URL':
-      // A hash such as #ref-… leaves the tab alone (tab: null). Nothing is written back.
-      return replace({
-        tab: a.route.tab && VIEWER_TABS.includes(a.route.tab) ? a.route.tab : s.tab,
-        open: a.route.map,
-        compare: a.route.compare.slice(0, COMPARE_MAX),
-      });
+    case 'ROUTE_FROM_URL': // A hash such as #ref-… leaves the tab alone (tab: null). Nothing is written back.
+      // The same state when the link says what the state already is (a link click fires hashchange and popstate).
+      {
+        const tab = a.route.tab && VIEWER_TABS.includes(a.route.tab) ? a.route.tab : s.tab;
+        const compare = a.route.compare.slice(0, COMPARE_MAX);
+        const same = compare.length === s.compare.length && compare.every((n, i) => n === s.compare[i]);
+        if (tab === s.tab && a.route.map === s.open && same) return s;
+        return replace({ tab, open: a.route.map, compare: same ? s.compare : compare });
+      }
     case 'GO_TAB':
       if (!VIEWER_TABS.includes(a.tab)) return s;
       // From code (Identify's Show button, SHOW_ROW) a tab change is a history entry.
@@ -189,6 +192,12 @@ export function viewerReducer(s: ViewerState, a: ViewerAction): ViewerState {
     case 'REORDER_COMPARED': {
       const next = comparedReordered(s.compare, a.from, a.to);
       return next === s.compare ? s : replace({ compare: next });
+    }
+    case 'SET_COMPARE_LIST': {
+      // The whole list at once (Compare's own link handling); capped, and the same list when unchanged.
+      const names = a.names.slice(0, COMPARE_MAX);
+      const same = names.length === s.compare.length && names.every((n, i) => n === s.compare[i]);
+      return same ? s : replace({ compare: names });
     }
     case 'CLEAR_COMPARED':
       return s.compare.length ? replace({ compare: [] }) : s;

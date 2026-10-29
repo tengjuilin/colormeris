@@ -3,7 +3,7 @@ import type { ColormapEntry } from '../../../types/index.ts';
 import { GLYPH, PILL, RATING_COLS } from '../../common.ts';
 import { notesOf } from '../../library-cache.ts';
 
-// The rating marks of a map, with the markup of viewer.ts ratingPills / ratingCells.
+// The rating marks of a map: pills (phones, comparison) and table cells.
 
 /** Pills under the name: on phones in the list, and in the comparison table. */
 export const RatingPills = memo(function RatingPills({ map }: { map: ColormapEntry }) {

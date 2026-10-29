@@ -1,7 +1,7 @@
 import type { Rgb } from '../types/index.ts';
 
 // Paints a colormap strip: one canvas pixel per color, stretched by CSS. Shared by
-// strips.ts (imperative strips) and app/shared/strip.tsx (React). Returns false when
+// app/shared/strip.tsx. Returns false when
 // there is no 2D context (jsdom), so tests can render strips without a canvas.
 export function paintStrip(canvas: HTMLCanvasElement, colors: Rgb[]): boolean {
   const g = canvas.getContext('2d');
@@ -13,7 +13,7 @@ export function paintStrip(canvas: HTMLCanvasElement, colors: Rgb[]): boolean {
   return true;
 }
 
-/** A strip canvas for imperative code (plot legends): `paintStrip` on a new canvas, as <Strip> renders it. */
+/** A strip canvas for plot legends: `paintStrip` on a new canvas, as <Strip> renders it. */
 export function stripCanvasEl(colors: Rgb[], qualitative: boolean): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.className = qualitative ? 'cmap-paint qual' : 'cmap-paint';

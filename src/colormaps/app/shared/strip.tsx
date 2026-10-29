@@ -3,7 +3,7 @@ import type { Rgb } from '../../../types/index.ts';
 import { paintStrip } from '../../strip-paint.ts';
 
 // One strip canvas: a pixel per color, stretched by CSS (smoothed, or in blocks for
-// qualitative maps). Same element and drawing as strips.ts `stripCanvas`. Pass
+// qualitative maps). Drawn by strip-paint.ts `paintStrip`. Pass
 // the cached color arrays from library-cache.ts, so the memo holds and the canvas
 // is only painted again when the colors change.
 
@@ -19,7 +19,7 @@ export const Strip = memo(function Strip({ colors, qualitative = false }: StripP
     if (ref.current) paintStrip(ref.current, colors);
   }, [colors]);
   return (
-    // biome-ignore lint/a11y/noAriaHiddenOnFocusable: a canvas is not focusable; decorative, as strips.ts stripCanvas
+    // biome-ignore lint/a11y/noAriaHiddenOnFocusable: a canvas is not focusable; decorative
     <canvas
       ref={ref}
       className={qualitative ? 'cmap-paint qual' : 'cmap-paint'}

@@ -1,7 +1,7 @@
 import type { Rgb, ViewKey } from '../types/index.ts';
 
 // DOM helpers and constants shared by the colormap viewer's modules
-// (colormaps.html). The modules get them through ctx (viewer.js).
+// (colormaps.html). The React app and plots.ts import them.
 
 export const VIEWS: { key: ViewKey; label: string; short: string }[] = [
   { key: 'orig', label: 'Colormap', short: 'Colormap' },
@@ -50,7 +50,7 @@ export function svgEl(tag: string, attrs?: Record<string, unknown>) {
 // Native popovers open in the middle of the screen; put them under their
 // button (above it when there is more room there) and keep them there while
 // the page scrolls or resizes. A popover whose button leaves the screen closes.
-export function anchorPopover(btn: HTMLElement, pop: HTMLElement) {
+export function anchorPopover(btn: HTMLElement, pop: HTMLElement): () => void {
   btn.setAttribute('popovertarget', pop.id);
   const GAP = 6;
   const EDGE = 8;
@@ -82,11 +82,11 @@ export function anchorPopover(btn: HTMLElement, pop: HTMLElement) {
   const onScroll = (e: Event) => {
     if (!pop.contains(e.target as Node)) place();
   };
-  pop.addEventListener('beforetoggle', (e) => {
+  const onBeforeToggle = (e: Event) => {
     if ((e as ToggleEvent).newState === 'open') place();
-  });
-  pop.addEventListener('toggle', (e) => {
-    const open = e.newState === 'open';
+  };
+  const onToggle = (e: Event) => {
+    const open = (e as ToggleEvent).newState === 'open';
     btn.setAttribute('aria-expanded', String(open));
     if (open) {
       place(); // again, now that its width is known
@@ -96,5 +96,14 @@ export function anchorPopover(btn: HTMLElement, pop: HTMLElement) {
       document.removeEventListener('scroll', onScroll, { capture: true });
       window.removeEventListener('resize', place);
     }
-  });
+  };
+  pop.addEventListener('beforetoggle', onBeforeToggle);
+  pop.addEventListener('toggle', onToggle);
+  // Removes what this added (the React popovers call it when they unmount).
+  return () => {
+    pop.removeEventListener('beforetoggle', onBeforeToggle);
+    pop.removeEventListener('toggle', onToggle);
+    document.removeEventListener('scroll', onScroll, { capture: true });
+    window.removeEventListener('resize', place);
+  };
 }

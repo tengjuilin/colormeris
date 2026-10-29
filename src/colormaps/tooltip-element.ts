@@ -1,7 +1,7 @@
 import { type TipInfo, tipPosition } from './tooltip-core.ts';
 
 // The page's one colormap tooltip (.cmap-tip), a singleton created on first use.
-// The imperative strips (strips.ts) and the React TooltipProvider both drive it,
+// The React TooltipProvider and the probe strips drive it,
 // so there is never a second element. Updated by hand: moving the pointer must
 // not render anything.
 
