@@ -8,6 +8,7 @@ import type {
   PanelResult,
   PanelSettings,
   Point,
+  SettingsSource,
   ToolHooks,
   ToolKind,
   ViewerApi,
@@ -16,6 +17,7 @@ import type {
   WorkspaceCore,
 } from '../../types/index.ts';
 import { createProject } from '../project/project.ts';
+import { mountCards } from '../react/mount-cards.tsx';
 import { COLOR_DEFAULTS, defaultSettings } from '../settings/settings.ts';
 import { Viewer } from '../viewer.ts';
 import { setupWorkspaceColorbarCard } from './colorbar-card.ts';
@@ -27,6 +29,7 @@ import { setupWorkspaceInteract } from './interact.ts';
 import { setupWorkspaceOverlay } from './overlay.ts';
 import { setupWorkspacePanels } from './panels.ts';
 import { setupWorkspaceSource } from './source.ts';
+import { notify } from './store.ts';
 
 // Shared workspace for the Colormeris tools (extract.html): source loading
 // and PDF pages, the zoomable viewer, panels, the grid and colorbar
@@ -185,6 +188,8 @@ export function createWorkspace(): Workspace {
     setPressed($('tick-add'), type === 'tick');
     tool.onModeChange?.(type);
     viewer.requestDraw();
+    // Light: nearly every caller follows with changed(), whose full notify renders once.
+    notify({ light: true });
   }
 
   function updateModebar() {
@@ -210,8 +215,14 @@ export function createWorkspace(): Workspace {
     for (const fn of changeListeners) fn();
   }
 
-  let helpLoaded: boolean | null = null;
+  // The DOM render, then React is told (store.ts) so migrated cards follow.
   function renderSidebar(light = false) {
+    renderSidebarDom(light);
+    notify({ light });
+  }
+
+  let helpLoaded: boolean | null = null;
+  function renderSidebarDom(light: boolean) {
     const loaded = !!app.sourceCanvas;
     for (const t of Object.values(tools)) for (const id of t.sections || []) $(id).hidden = true;
     for (const id of ['sec-panels', 'sec-grid', 'sec-colorbar', ...(tool.sections || [])]) $(id).hidden = !loaded;
@@ -346,6 +357,7 @@ export function createWorkspace(): Workspace {
       const remembered = app.lastActive.get(activeKey());
       app.project.activePanelId = pagePanels().some((p) => p.id === remembered) ? remembered! : pagePanels()[0].id;
     }
+    notify({ light: true }); // after `tool` and the active panel are switched; changed() below renders in full
     if (!quiet) changed();
   }
 
@@ -450,6 +462,7 @@ export function createWorkspace(): Workspace {
     drawHandle: w.drawHandle,
     snapAxis: w.snapAxis,
     render: () => renderSidebar(),
+    mountCards: (settings: SettingsSource) => mountCards({ ws, w }, settings),
     // Used by the agent API (agent/api.js).
     openFile: w.openFile,
     goToPage: w.goToPage,

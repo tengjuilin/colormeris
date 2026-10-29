@@ -22,6 +22,7 @@ import {
   HOTKEY_ACTIONS,
   HOTKEY_GROUPS,
   hotkeyClashes,
+  hotkeyTitle,
   isMacPlatform,
   MATCHING_DEFAULTS,
   normalizeCombo,
@@ -69,7 +70,7 @@ export function setupSettings(ws: Workspace): SettingsUi {
   }
   function changed() {
     save();
-    for (const fn of listeners) fn(settings);
+    for (const fn of [...listeners]) fn(settings);
   }
 
   // Replace every value (import, reset) in place, so ws.settings stays the same object.
@@ -134,7 +135,7 @@ export function setupSettings(ws: Workspace): SettingsUi {
 
   $('agent-key').addEventListener('input', () => {
     settings.agent.key = $('agent-key').value.trim();
-    for (const fn of listeners) fn(settings);
+    for (const fn of [...listeners]) fn(settings);
   });
   $('agent-key').addEventListener('change', changed);
   $('agent-remember').addEventListener('change', () => {
@@ -143,7 +144,7 @@ export function setupSettings(ws: Workspace): SettingsUi {
   });
   $('agent-base').addEventListener('input', () => {
     settings.agent.base = $('agent-base').value.trim();
-    for (const fn of listeners) fn(settings);
+    for (const fn of [...listeners]) fn(settings);
   });
   $('agent-base').addEventListener('change', changed);
   // Prompts show the built-in text when not customized; saving it unchanged
@@ -360,18 +361,11 @@ export function setupSettings(ws: Workspace): SettingsUi {
   // (otherwise they are added in parentheses). Buttons also show the first
   // key as a key cap (data-key, drawn by CSS).
   function updateTitles() {
-    for (const el of document.querySelectorAll<HTMLElement>('[data-hotkey]')) {
-      const combos = settings.hotkeys[el.dataset.hotkey!] || [];
-      el.dataset.key = combos.length ? label(combos[0]) : '';
-      const keys = combos.map(label).join(' or ');
-      const base = el.dataset.title || '';
-      el.title = base.includes('{key}')
-        ? keys
-          ? base.replace('{key}', keys)
-          : base.replace(/\s*[:(]?\s*\{key\}\)?/, '')
-        : keys
-          ? `${base} (${keys})`
-          : base;
+    // Buttons rendered by React (data-react) write their own title and key cap.
+    for (const el of document.querySelectorAll<HTMLElement>('[data-hotkey]:not([data-react])')) {
+      const { title, key } = hotkeyTitle(el.dataset.title || '', settings.hotkeys[el.dataset.hotkey!] || [], label);
+      el.dataset.key = key;
+      el.title = title;
     }
   }
   listeners.push(updateTitles);
@@ -496,6 +490,10 @@ export function setupSettings(ws: Workspace): SettingsUi {
     open,
     onChange: (fn) => {
       listeners.push(fn);
+      return () => {
+        const i = listeners.indexOf(fn);
+        if (i >= 0) listeners.splice(i, 1);
+      };
     },
   };
 }

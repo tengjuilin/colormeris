@@ -1,7 +1,7 @@
 import { rgbToHex } from '../../core/color.ts';
 import { lightnessStats } from '../../core/cvd.ts';
 import type { CmapViewerContext, ViewKey } from '../../types/index.ts';
-import { createMapPicker } from '../map-picker.ts';
+import { mountMapPicker } from '../map-picker.tsx';
 import { READ_DE, worstCvd } from '../metrics.ts';
 import { colorsLut, paintValues, sinePattern } from '../recolor.ts';
 import { COMPARE_MAX } from '../route.ts';
@@ -651,8 +651,7 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     cmp.body.hidden = !list.length;
     cmp.clear.disabled = cmp.copyLink.disabled = !list.length;
     const full = list.length >= MAX_CMP;
-    cmp.picker.disabled = full;
-    cmp.picker.title = full ? `Up to ${MAX_CMP} maps can be compared` : '';
+    cmp.picker.update({ disabled: full, title: full ? `Up to ${MAX_CMP} maps can be compared` : '' });
     hideTip();
     if (!list.length) {
       for (const k of ['strips', 'plot', 'table', 'sine']) cmp[k].replaceChildren();
@@ -838,15 +837,15 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     head.append(count, clear, copyLink);
 
     // Add maps by name, as an alternative to the + in Browse.
-    const picker = createMapPicker(ctx, {
+    const pickerBox = el('div');
+    const picker = mountMapPicker(pickerBox, {
       id: 'cmap-cmp',
       label: 'Add a colormap',
       placeholder: 'Add a colormap: type to search',
-      current: () => null,
       onChoose: (name: any) => setCompared(name, true),
     });
     const add = el('div', { class: 'cmap-compare-add' });
-    add.append(picker.box);
+    add.append(pickerBox);
 
     const empty = el('p', { class: 'muted' });
     const link = el('a', { href: '#browse' }, 'Browse');
@@ -887,7 +886,7 @@ export function setupCmapCompare(ctx: CmapViewerContext) {
     sec.append(head, add, empty, body, gradDefs);
     Object.assign(cmp, {
       sec,
-      picker: picker.input,
+      picker,
       count,
       strips,
       plot,

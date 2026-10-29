@@ -315,6 +315,22 @@ export function formatCombo(combo: string, mac = false) {
   return [...parts.map((m) => (m === 'Mod' ? 'Ctrl' : m)), KEY_NAMES[key] || key].join('+');
 }
 
+// Tooltip and key cap of a button bound to hotkeys. `base` is the button's
+// data-title: "Shortcut: {key}" puts the keys where {key} is, any other text
+// gets them in parentheses. `key` is the first combo, for the key cap.
+export function hotkeyTitle(base: string, combos: string[], label: (combo: string) => string) {
+  const key = combos.length ? label(combos[0]) : '';
+  const keys = combos.map(label).join(' or ');
+  const title = base.includes('{key}')
+    ? keys
+      ? base.replace('{key}', keys)
+      : base.replace(/\s*[:(]?\s*\{key\}\)?/, '')
+    : keys
+      ? `${base} (${keys})`
+      : base;
+  return { title, key };
+}
+
 // ---------------------------------------------------------------- file
 
 // JSON of a settings file. The API key is only included when asked for.

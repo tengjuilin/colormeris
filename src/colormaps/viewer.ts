@@ -1,20 +1,17 @@
 import { cmapData } from '../core/colormap-library.ts';
-import { CVD_TYPES, grayscale, lightness, parseHexColors, simulateCvd } from '../core/cvd.ts';
-import type {
-  CmapListItem,
-  CmapViewerContext,
-  CmapViewerState,
-  ColormapEntry,
-  Rgb,
-  ViewData,
-  ViewKey,
-} from '../types/index.ts';
+import type { CmapListItem, CmapViewerContext, CmapViewerState, ColormapEntry, ViewKey } from '../types/index.ts';
 import { anchorPopover, clamp8, el, GLYPH, PILL, pct, RATING_COLS, roundRgb, svgEl, VIEWS } from './common.ts';
 import { setupCmapFooter } from './footer.ts';
-import type { ColormapMetrics } from './metrics.ts';
-import { colormapMetrics, ratingNotes } from './metrics.ts';
+import {
+  base,
+  sepOf as cachedSepOf,
+  viewData as cachedViewData,
+  isRev as directionOf,
+  metrics,
+  notesOf,
+} from './library-cache.ts';
 import { setupCmapPlots } from './plots.ts';
-import { parseViewerRoute, VIEWER_TABS } from './route.ts';
+import { formatViewerUrl, parseViewerRoute, VIEWER_TABS } from './route.ts';
 import { keepPlaceOnResize } from './scroll-anchor.ts';
 import { setupCmapStrips } from './strips.ts';
 import { setupCmapBrowse } from './tabs/browse-tab.ts';
@@ -67,64 +64,18 @@ export function setupColormapViewer(root: HTMLElement) {
     flipped: new Set(data.maps.filter((m) => m.flip).map((m) => m.name)),
   };
   // A map's direction in Browse: its own toggle, then the global Reversed.
-  const isRev = (map: ColormapEntry) => state.reversed !== state.flipped.has(map.name);
-  const cache = new Map<string, Record<string, ViewData>>(); // `${name}|${reversed}` -> { view key -> { colors, L } }
-  const baseOf = new Map<string, Rgb[]>(); // name -> original colors, parsed once
+  const isRev = (map: ColormapEntry) => directionOf(state, map.name);
   const items: CmapListItem[] = []; // { map, item, strips: [el], panel, button, cmpBtn, order }
   const mapByName = new Map(data.maps.map((m) => [m.name, m]));
 
-  // ---- colors per view (computed once per map and direction) ----
-
-  function base(map: ColormapEntry) {
-    if (!baseOf.has(map.name)) baseOf.set(map.name, parseHexColors(map.colors));
-    return baseOf.get(map.name)!;
-  }
-
+  // Colors, metrics and notes are module-level caches (library-cache.ts); the
+  // members below add the viewer's state, the default direction of a map.
   // `reversed` defaults to the map's Browse direction; the Compare tab passes its own.
-  function viewData(map: ColormapEntry, view: ViewKey, reversed = isRev(map)) {
-    const key = `${map.name}|${reversed}`;
-    let entry = cache.get(key)!;
-    if (!entry) {
-      let orig = base(map);
-      if (reversed) orig = orig.slice().reverse();
-      entry = { orig: { colors: orig } };
-      for (const type of CVD_TYPES) entry[type] = { colors: orig.map((c) => roundRgb(simulateCvd(c, type))) };
-      entry.gray = { colors: orig.map((c) => roundRgb(grayscale(c))) };
-      cache.set(key, entry);
-    }
-    const v = entry[view];
-    if (!v.L) v.L = v.colors.map((c) => lightness(c));
-    return v;
-  }
-
-  // ---- metrics (computed once per map, on the original colors) ----
-
-  const metricsOf = new Map<string, ColormapMetrics>();
-  function metrics(map: ColormapEntry): ColormapMetrics {
-    let m = metricsOf.get(map.name);
-    if (!m) {
-      m = colormapMetrics(base(map), { kind: map.kind, cyclic: map.group === 'cyclic' });
-      metricsOf.set(map.name, m);
-    }
-    return m;
-  }
-
+  const viewData = (map: ColormapEntry, view: ViewKey, reversed = isRev(map)) => cachedViewData(map, view, reversed);
+  const sepOf = (map: ColormapEntry, key: string) => cachedSepOf(map, key, isRev(map));
   const rev = <T>(a: T[], reversed = state.reversed) => (reversed ? a.slice().reverse() : a);
 
-  // Smallest separation in one view, with positions that follow Reversed.
-  function sepOf(map: ColormapEntry, key: string) {
-    const s = (metrics(map).separations as Record<string, { min: number; t: number[] } | null | undefined>)[key];
-    if (!s || !isRev(map)) return s;
-    if (map.kind === 'qualitative') {
-      const n = base(map).length;
-      return { min: s.min, t: [n - 1 - s.t[1], n - 1 - s.t[0]] };
-    }
-    return { min: s.min, t: [1 - s.t[1], 1 - s.t[0]] };
-  }
-
   // ---- ratings ----
-
-  const notesOf = (map: ColormapEntry) => ratingNotes(metrics(map), { qual: map.kind === 'qualitative' });
 
   // Pills under the name: on phones in the list, and in the comparison table.
   function ratingPills(map: ColormapEntry) {
@@ -222,16 +173,9 @@ export function setupColormapViewer(root: HTMLElement) {
   // The link carries the tab, the comparison and the open map, so any view
   // can be shared as is.
   function updateUrl() {
-    const params = new URLSearchParams(location.search);
-    params.delete('compare');
-    params.delete('map');
-    const mine = [
-      state.selected.length ? `compare=${state.selected.map(encodeURIComponent).join(',')}` : '',
-      state.open ? `map=${encodeURIComponent(state.open)}` : '',
-    ];
-    const qs = [params.toString(), ...mine].filter(Boolean).join('&');
+    const url = formatViewerUrl(state, location);
     try {
-      history.replaceState(history.state, '', `${location.pathname}${qs ? `?${qs}` : ''}${location.hash}`);
+      history.replaceState(history.state, '', url);
     } catch (err) {
       console.warn('Could not update the link', err); // for example some file:// setups
     }

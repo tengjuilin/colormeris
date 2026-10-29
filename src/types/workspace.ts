@@ -8,7 +8,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { Box, PixelImage, Point } from './image.ts';
 import type { Panel, PanelSettings, Project, ReviewStatus, ToolKind } from './project.ts';
 import type { PanelResult } from './results.ts';
-import type { ColorValue, Settings } from './settings.ts';
+import type { ColorValue, Settings, SettingsSource } from './settings.ts';
 
 /**
  * What `$` returns. Sidebar code reads value, checked, options and max on
@@ -373,6 +373,8 @@ export interface Workspace {
   snapAxis: WorkspaceContext['snapAxis'];
   /** Full sidebar render. */
   render: () => void;
+  /** Mounts the React cards into their section shells (extract/react/mount-cards.tsx); call once after the tools are set up. */
+  mountCards: (settings: SettingsSource) => void;
   // Used by the agent API.
   openFile: WorkspaceContext['openFile'];
   goToPage: WorkspaceContext['goToPage'];

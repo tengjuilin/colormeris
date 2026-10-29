@@ -1,4 +1,4 @@
-import { createMapPicker } from '../../colormaps/map-picker.ts';
+import { mountMapPicker } from '../../colormaps/map-picker.tsx';
 import { rgbToHex } from '../../core/color.ts';
 import { colorAtT, isLogScale, makeValueFn, pointAtT, sampleColorbar } from '../../core/colorbar.ts';
 import { cmapData } from '../../core/colormap-library.ts';
@@ -271,51 +271,20 @@ export function setupWorkspaceColorbarCard(w: WorkspaceContext): ColorbarCardMem
   $('tick-add').addEventListener('click', () => w.setMode(app.mode?.type === 'tick' ? null : 'tick'));
   // ---------------------------------------------------------------- known colormap
 
-  // The colormap viewer's picker (colormaps/map-picker.js) needs a few of the
-  // viewer's helpers; these are the small versions for this page.
-  const pickerCtx = {
-    el(tag: string, attrs?: Record<string, unknown> | null, text?: unknown) {
-      const e = document.createElement(tag);
-      for (const [k, v] of Object.entries(attrs || {})) {
-        if (k === 'class') e.className = String(v);
-        else e.setAttribute(k, String(v));
-      }
-      if (text != null) e.textContent = String(text);
-      return e;
-    },
-    data: cmapData,
-    mapByName: new Map(cmapData.maps.map((m) => [m.name, m])),
-    base: (m: ColormapEntry) => cmapRgbs(m.name) || [],
-    stripCanvas(colors: Rgb[], qualitative: boolean) {
-      const n = Math.max(1, colors.length);
-      const canvas = Object.assign(document.createElement('canvas'), {
-        className: qualitative ? 'cmap-paint qual' : 'cmap-paint',
-        width: n,
-        height: 1,
-      });
-      const img = new ImageData(n, 1);
-      colors.forEach((c, i) => img.data.set([c[0], c[1], c[2], 255], i * 4));
-      canvas.getContext('2d')!.putImageData(img, 0, 0);
-      return canvas;
-    },
-  };
-  const picker = createMapPicker(pickerCtx, {
+  const picker = mountMapPicker($('bar-cmap-pick'), {
     id: 'bar-cmap-picker',
     label: 'Colormap',
     placeholder: 'Type to search',
-    // Called while the picker is built too, before any tool is set.
-    current: () => (w.tool() ? w.activePanel()?.colorbar.colormap?.name || null : null),
     onChoose: (name: string, typedReversed?: boolean) =>
       chooseColormap(name, typedReversed || $('bar-cmap-rev').checked),
   });
-  $('bar-cmap-pick').append(picker.box);
 
   function renderSource(cb: Colorbar) {
     w.setValue($('bar-source'), cb.colormap ? 'colormap' : 'figure');
     $('bar-cmap').hidden = !cb.colormap;
+    picker.update({ value: cb.colormap?.name ?? null });
     if (!cb.colormap) return;
     $('bar-cmap-rev').checked = !!cb.colormap.reversed;
-    if (document.activeElement !== picker.input) picker.input.value = cb.colormap.name;
   }
 
   // Pick a known colormap. A panel without ticks gets one at each end, valued

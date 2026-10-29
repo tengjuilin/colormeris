@@ -3,7 +3,7 @@ import { colorAtT, refineColorbar, sampleColorbar } from '../../core/colorbar.ts
 import { identifyColorbar, matchLevel } from '../../core/colormap-match.ts';
 import type { CmapViewerContext } from '../../types/index.ts';
 import { createFigureInput } from '../figure-input.ts';
-import { createMapPicker } from '../map-picker.ts';
+import { mountMapPicker } from '../map-picker.tsx';
 import { createIndexer, newColorAt, recolorPixels, regionMask, similarMask, tAtPixel } from '../recolor.ts';
 
 // The Recolor tab of the colormap viewer (colormaps.html): load a figure,
@@ -44,13 +44,15 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
   const revBox = el('input', { type: 'checkbox' });
   const revLabel = el('label', { class: 'cmap-rc-check' });
   revLabel.append(revBox, ' Reversed');
-  const picker = createMapPicker(ctx, {
+  const pickerBox = el('div');
+  const picker = mountMapPicker(pickerBox, {
     id: 'cmap-rc',
     label: 'New colormap',
-    current: () => chosen,
+    value: chosen,
     onChoose: (name: any, typedReversed: any) => {
       const changed = name !== chosen || (typedReversed && !revBox.checked);
       chosen = name;
+      picker.update({ value: chosen });
       if (typedReversed) revBox.checked = true;
       if (changed) render();
     },
@@ -58,7 +60,7 @@ export function setupCmapRecolor(ctx: CmapViewerContext) {
   const mapField = field(
     'New colormap',
     'The colormap the figure is redrawn in. Type to search; leave empty to see them all.',
-    picker.box,
+    pickerBox,
     revLabel,
   );
 

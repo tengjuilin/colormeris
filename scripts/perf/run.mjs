@@ -2,6 +2,7 @@
 // and prints medians over several fresh page loads (npm run perf, after
 // npm run build). Uses the installed Chrome (CHROME_PATH to override); no
 // browser download. Numbers are only comparable on the same machine.
+// PERF_OUT=<dir> measures another build (e.g. one of main) for an A/B comparison.
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
@@ -11,7 +12,11 @@ const PORT = 8010;
 const LOADS = Number(process.env.PERF_LOADS ?? 5);
 const CHROME = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
-const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { cwd: root, stdio: 'pipe' });
+const outDir = process.env.PERF_OUT ? ['--outDir', resolve(process.env.PERF_OUT)] : [];
+const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', ...outDir], {
+  cwd: root,
+  stdio: 'pipe',
+});
 await new Promise((ok, fail) => {
   server.stdout.on('data', (d) => String(d).includes(String(PORT)) && ok());
   server.on('exit', (code) => fail(new Error(`vite preview exited (${code})`)));

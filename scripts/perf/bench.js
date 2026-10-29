@@ -123,6 +123,8 @@ globalThis.perfBench = (() => {
         await frame();
         typeInto(search, '');
       });
+    // Let the idle metric precompute and lazy row builds settle first, or they land in the tab timings.
+    await new Promise((r) => setTimeout(r, 1000));
     for (const tab of ['compare', 'identify', 'recolor', 'cvd', 'browse']) {
       out[`tab_${tab}`] = await runs(3, async () => {
         location.hash = `#${tab}`;

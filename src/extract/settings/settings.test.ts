@@ -13,6 +13,7 @@ import {
   HOTKEY_GROUPS,
   hexToRgb,
   hotkeyClashes,
+  hotkeyTitle,
   isMacPlatform,
   normalizeCombo,
   normalizeSettings,
@@ -158,4 +159,15 @@ test('agent mode is "agent" or "decision", with an optional decision model', () 
   assert.equal(s.agent.decision, 'typesafe/jev-1.14');
   assert.equal(s.agent.decisionPrompt, '');
   assert.equal(normalizeSettings({ agent: { mode: 'reviewer' } }).agent.mode, 'agent');
+});
+
+test('hotkeyTitle names the keys in the tooltip and gives the key cap', () => {
+  const label = (c: string) => formatCombo(c);
+  assert.deepEqual(hotkeyTitle('Shortcut: {key}', ['G'], label), { title: 'Shortcut: G', key: 'G' });
+  assert.deepEqual(hotkeyTitle('Shortcut: {key}', ['G', 'Mod+K'], label), { title: 'Shortcut: G or Ctrl+K', key: 'G' });
+  assert.deepEqual(hotkeyTitle('Place the grid', ['G'], label), { title: 'Place the grid (G)', key: 'G' });
+  // No key bound: the placeholder goes, with its lead-in.
+  assert.deepEqual(hotkeyTitle('Shortcut: {key}', [], label), { title: 'Shortcut', key: '' });
+  assert.deepEqual(hotkeyTitle('Place the grid: {key}', [], label), { title: 'Place the grid', key: '' });
+  assert.deepEqual(hotkeyTitle('Place the grid', [], label), { title: 'Place the grid', key: '' });
 });

@@ -239,26 +239,28 @@ Configuration changes:
 - Ids, classes and `data-*` attributes stay identical. CSS, hotkeys and `scripts/perf/bench.js` depend on them:
   - extract: `#grid-rows`;
   - colormaps: `.cmap-row`, `.cmap-th[data-sort]`, `.cmap-search`, and the `Reversed` label.
-- **Budget**, versus the baseline below (same machine, `npm run build && npm run perf`, medians of 5 loads):
-  - load, agent batch, typing, sort, search and tab switches each stay within +10%, or within 2 ms when the baseline is under 20 ms;
-  - long tasks are not more numerous;
-  - JS per page grows by at most 60 KB gzip (React plus ReactDOM);
-  - an over-budget result blocks the commit.
+- **Budget**, measured A/B against a build of `main`. Use the same machine and medians of 7 loads. Build main with `git worktree add <dir> main`, then run `vite build --outDir <out>`. Then run `PERF_OUT=<out> npm run perf` and `npm run perf`.
+  - Agent batch, typing, undo, sort, search and tab switches each stay within +10%, or within 2 ms when the baseline is under 20 ms.
+  - Long tasks are not more numerous.
+  - Page load may grow by React's fixed cost only. That is about 16 ms and 69 KB gzip, measured in the bridge step. The user accepted it on 2026-10-28. App code beyond that stays within +10%.
+  - An over-budget result blocks the commit.
 
-Baseline (main at 55b3656, 2026-10-28, headless Chrome, ms):
+A/B at the bridge step (2026-10-28, headless Chrome, total ms, median of 7):
 
-| Page | Measure | sync | total |
-| --- | --- | --- | --- |
-| extract | load (loadEventEnd) | | 81.7 |
-| extract | agent batch of 20 `set_tick_value` | 74.7 | 81.3 |
-| extract | 100 keystrokes in `#grid-rows` | 419.2 | 422.0 |
-| extract | undo | 1.7 | 8.1 |
-| colormaps | load (loadEventEnd), 1063 rows | | 105.1 |
-| colormaps | sort click | 2.7 | 16.9 |
-| colormaps | search "vir" and clear | 16.9 | 22.0 |
-| colormaps | tab compare / identify / recolor / cvd / browse | | 16.7 / 19.0 / 40.7 / 20.2 / 11.5 |
+| Measure | main | react branch |
+| --- | --- | --- |
+| extract load (loadEventEnd) | 74.1 | 90.0 |
+| extract agent batch of 20 `set_tick_value` | 77.4 | 76.4 |
+| extract 100 keystrokes in `#grid-rows` | 410.3 | 408.5 |
+| extract undo | 7.8 | 7.5 |
+| colormaps load (loadEventEnd), 1063 rows | 81.1 | 97.1 |
+| colormaps sort click | 16.8 | 16.7 |
+| colormaps search "vir" and clear | 21.7 | 16.9 |
+| colormaps tab switches (each) | 9.2–9.6 | 9.3–9.7 |
 
-Long tasks: 10 on extract (the figure load), 0 on colormaps. Gzip JS: extract 132.3 KB, colormaps 41.0 KB, shared colormap-data chunk 162.3 KB, pdf.js 129.0 KB (lazy), OpenRouter SDK 151.6 KB (lazy).
+Long tasks: 10 on extract (the figure load), 0 on colormaps, on both builds.
+
+Gzip JS on main: extract 132.3 KB and colormaps 41.0 KB. The shared colormap-data chunk is 162.3 KB on main and 231.6 KB with React. pdf.js (129.0 KB) and the OpenRouter SDK (151.6 KB) are lazy.
 
 ## 9. Colormaps page (React state + URL; replaces §4 step 11)
 
