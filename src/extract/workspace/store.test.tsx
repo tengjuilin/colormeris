@@ -56,3 +56,11 @@ test('a light notify leaves the render to React', async () => {
   assert.equal(host.querySelector('output')!.textContent, String(v + 1));
   flushSync(() => root.unmount());
 });
+
+test('a light notify leaves the full version alone', () => {
+  const full = store.getFullVersion();
+  notify({ light: true });
+  assert.equal(store.getFullVersion(), full);
+  notify();
+  assert.equal(store.getFullVersion(), full + 1);
+});

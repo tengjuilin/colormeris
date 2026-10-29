@@ -35,7 +35,7 @@ Bump `version` (call `notify()`) in these four places:
 3. In `setTool`, after `tool` is assigned. The quiet path needs it too.
 4. In a `settingsUi.onChange` listener added in `pages/extract.ts`.
 
-The `flushSync` matters. Imperative callers such as `w.changed(); $('panel-name').focus()`, `focusTick(id)` after a commit, and the agent API reading the DOM expect the DOM to be current when `changed()` returns. Without it, React would flush in a microtask. Never call `changed()`/`commit` during a React render or effect, only from event handlers. `flushSync` warns there.
+The `flushSync` matters. Imperative callers such as `focusTick(id)` after a commit, and the agent API reading the DOM expect the DOM to be current when `changed()` returns. Without it, React would flush in a microtask. Never call `changed()`/`commit` during a React render or effect, only from event handlers. `flushSync` warns there.
 
 **Snapshot = the version number.** Project objects are mutated in place, so a selector that returns objects would either be stale or loop forever. Use the version like this:
 
@@ -235,7 +235,7 @@ Configuration changes:
 
 - `changed({light: true})` fires on every keystroke in a number field and on every pointermove of a handle drag (`interact.ts`). For these, `notify()` does **not** use `flushSync`. React renders in a microtask, which batches every change from one event. No imperative caller reads the sidebar DOM after a light change.
 - A full `changed()` keeps `flushSync`.
-- A card renders `null` while its section is hidden, so hidden tool cards cost nothing.
+- A hidden card stays mounted but skips re-renders (§10), so hidden tool cards cost nothing.
 - Ids, classes and `data-*` attributes stay identical. CSS, hotkeys and `scripts/perf/bench.js` depend on them:
   - extract: `#grid-rows`;
   - colormaps: `.cmap-row`, `.cmap-th[data-sort]`, `.cmap-search`, and the `Reversed` label.
@@ -315,3 +315,36 @@ Gzip JS on main: extract 132.3 KB and colormaps 41.0 KB. The shared colormap-dat
 - **11b:** CVD, Identify, Recolor, then Compare and the tray, as React islands mounted by the old `viewer.ts` with callbacks in place of `ctx`.
 - **11c:** shell, reducer, URL sync, Browse, Detail and the scroll anchor. This deletes `viewer.ts`, the old tab modules and the islands.
 - **11d:** delete `CmapViewerContext`, `CmapListItem`, `setupCmap*` and the `any` index.
+
+## 10. The card pattern (from the Panels card, reviewed 2026-10-29)
+
+Every extract card copies `src/extract/workspace/cards/panels-card.tsx`.
+
+**Reading state**
+- Read during render with `useWorkspace(...)`: `w.activePanel()`, `w.pagePanels()`, `w.toolFor(p)…`. Keep no memo and no local copy of project state.
+- Values computed at render time are for JSX only. Handlers read live state (`const panel = w.activePanel()`), because handlers also run from hotkeys, `.click()` and after light (microtask) changes.
+
+**Writing**
+- A handler mutates through the existing workspace logic or `w.commit(...)` and ends with `w.changed()`, which flushes before it returns.
+- Never call `changed()` during a render or an effect.
+
+**Fields**
+- A field bound to the active panel takes `key={active.id}`, so a draft never carries over to another panel.
+- Use `BoundInput` or `BoundSelect` with `useBoundText` or `useBoundNumber`. The history entry is pushed on the first input of a focus session, not on focus. Focusing and blurring without typing adds no entry.
+
+**Focus after an action**
+- Set a ref flag before the action. A `useLayoutEffect` focuses the element after the render that shows it, and the flag is reset in `finally`.
+- Do not focus straight after `changed()`: `notify` may defer to a microtask when a flush is already running.
+
+**Visibility**
+- Cards stay mounted, so `<details>` open state and drafts survive a tool switch.
+- `useWorkspace` with the card's section skips re-renders while the section is hidden, and re-renders once when it is shown again.
+- Cards that don't need live updates during drags and typing subscribe to full changes only (`light: false`).
+
+**Render budget**
+- Every light notify, from a keystroke or a drag frame, re-renders every visible light-subscribed card.
+- A render is O(panels) or O(ticks) at most, with no image or pixel work: results come only from `resultFor`'s cache, and canvases draw in layout effects keyed on what they show.
+
+**Tests**
+- Card tests render under `<StrictMode>` with a minimal `{ws, w}` around `createProject()`.
+- They assert the mutation, the history entries and the rendered DOM.

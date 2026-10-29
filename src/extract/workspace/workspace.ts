@@ -242,7 +242,6 @@ export function createWorkspace(): Workspace {
     if (!loaded) return;
 
     const panel = activePanel();
-    if (!light) w.renderPanels(panel);
     w.renderGridCard(panel);
     w.renderColorbarCard(panel);
     tool.renderSidebar?.(panel, light);

@@ -31,7 +31,25 @@ function setup() {
   return { log, panel, el: screen.getByLabelText('n') as HTMLInputElement };
 }
 
-test('history on focus, light while typing, nothing for "" or NaN, full on change', () => {
+test('focus and blur alone add no history entry', () => {
+  const { log, el } = setup();
+  fireEvent.focus(el);
+  fireEvent.blur(el);
+  assert.deepEqual(log, []);
+});
+
+test('history once per focus session, at the first edit', () => {
+  const { log, el } = setup();
+  fireEvent.focus(el);
+  fireEvent.input(el, { target: { value: '2' } });
+  fireEvent.input(el, { target: { value: '3' } });
+  fireEvent.blur(el);
+  fireEvent.focus(el);
+  fireEvent.input(el, { target: { value: '4' } });
+  assert.deepEqual(log, ['history', 'light', 'light', 'history', 'light']);
+});
+
+test('history at the first edit, light while typing, nothing for "" or NaN, full on change', () => {
   const { log, panel, el } = setup();
   fireEvent.focus(el);
   fireEvent.input(el, { target: { value: '' } });

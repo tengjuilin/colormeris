@@ -5,10 +5,11 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import type { SettingsSource } from '../../types/index.ts';
 import { SettingsProvider } from '../../ui/index.ts';
+import { PanelsCard } from '../workspace/cards/panels-card.tsx';
 import { WsContext, type WsContextValue } from './use-workspace.ts';
 
 /** [id of the section shell, card component]. */
-export const CARD_REGISTRY: [sectionId: string, Component: ComponentType][] = [];
+export const CARD_REGISTRY: [sectionId: string, Component: ComponentType][] = [['sec-panels', PanelsCard]];
 
 // One root per section: calling mountCards again re-renders into the same roots.
 const roots = new Map<string, Root>();

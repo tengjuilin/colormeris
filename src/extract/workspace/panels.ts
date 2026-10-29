@@ -1,90 +1,13 @@
 import type { Panel, PanelSettings, PanelsMembers, WorkspaceContext } from '../../types/index.ts';
 import { createPanel } from '../project/project.ts';
 
-// Panels: the Panels card (chips, name, add and delete), links to other
-// pages with panels, and the rule that every page shown has a panel.
+// Panels: adding and removing panels, and the rule that every page shown has
+// a panel. The Panels card itself is cards/panels-card.tsx.
 //
 // w is the workspace's private context (workspace.js). Other modules'
 // functions are called through it at call time (setMode, changed, goToPage, ...).
 export function setupWorkspacePanels(w: WorkspaceContext): PanelsMembers {
-  const { $, app } = w;
-
-  function renderPanels(active: Panel) {
-    const list = $('panel-list');
-    const multiPage = (app.project.source?.pageCount || 1) > 1;
-    $('panel-page-note').textContent = multiPage ? `on page ${w.currentPage()}` : '';
-    list.replaceChildren(
-      ...w.pagePanels().map((p) => {
-        const li = document.createElement('li');
-        const btn = document.createElement('button');
-        btn.className = 'chip';
-        btn.setAttribute('aria-pressed', String(p === active));
-        const dot = document.createElement('span');
-        const problem = w.toolFor(p).panelProblem(p);
-        const review = !problem && w.ws.reviewStatus?.(p);
-        dot.className = `status-dot${problem ? '' : review === 'rejected' ? ' rejected' : ' done'}`;
-        btn.append(
-          dot,
-          Object.assign(document.createElement('span'), {
-            className: 'chip-label',
-            textContent: p.name || '(unnamed)',
-          }),
-        );
-        btn.title =
-          problem ||
-          (review === 'rejected'
-            ? `Rejected in review${p.review!.note ? `: ${p.review!.note}` : ''}`
-            : review === 'accepted'
-              ? 'Calibrated and accepted'
-              : 'Calibrated');
-        btn.addEventListener('click', () => {
-          if (p.id === app.project.activePanelId) return;
-          w.setMode(null);
-          app.project.activePanelId = p.id;
-          app.tableCell = null;
-          w.changed();
-        });
-        li.append(btn);
-        return li;
-      }),
-    );
-    w.setValue($('panel-name'), active.name);
-    const del = $('panel-delete');
-    del.title = w.pagePanels().length < 2 ? 'Clear the panel' : 'Delete the panel';
-    del.setAttribute('aria-label', del.title);
-    renderOtherPages();
-  }
-
-  // Links to other pages that already have panels.
-  function renderOtherPages() {
-    const byPage = new Map<number, string[]>();
-    for (const p of app.project.panels) {
-      if (p.page === w.currentPage()) continue;
-      if (!byPage.has(p.page)) byPage.set(p.page, []);
-      byPage.get(p.page)!.push(p.name || '(unnamed)');
-    }
-    const box = $('other-pages');
-    box.hidden = byPage.size === 0;
-    const items = [...byPage.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([page, names]) => {
-        const btn = document.createElement('button');
-        btn.className = 'chip';
-        btn.append(
-          Object.assign(document.createElement('span'), {
-            className: 'chip-label',
-            textContent: `Page ${page}: ${names.join(', ')}`,
-          }),
-        );
-        btn.title = `Go to page ${page}`;
-        btn.addEventListener('click', () => w.goToPage(page));
-        return btn;
-      });
-    box.replaceChildren(
-      Object.assign(document.createElement('span'), { className: 'hint', textContent: 'Other pages:' }),
-      ...items,
-    );
-  }
+  const { app } = w;
 
   function isEmptyPanel(p: Panel) {
     return (
@@ -118,7 +41,8 @@ export function setupWorkspacePanels(w: WorkspaceContext): PanelsMembers {
     return `Panel ${n}`;
   }
 
-  $('panel-add').addEventListener('click', () => {
+  // Add a panel to the current page, with the active panel's settings, and make it the active one.
+  function addPanel() {
     w.pushHistory();
     const prev = w.activePanel();
     const panel = createPanel(nextPanelName(), w.currentPage(), w.tool().kind);
@@ -128,9 +52,9 @@ export function setupWorkspacePanels(w: WorkspaceContext): PanelsMembers {
     app.tableCell = null;
     w.setMode(null);
     w.changed();
-    $('panel-name').focus();
-    $('panel-name').select();
-  });
+    return panel;
+  }
+
   // Delete a panel. Every page keeps one panel, so deleting the last one on
   // its page swaps in an empty panel instead. Undo restores it.
   function removePanel(panel: Panel) {
@@ -152,17 +76,6 @@ export function setupWorkspacePanels(w: WorkspaceContext): PanelsMembers {
     w.changed();
     return { cleared: last };
   }
-  $('panel-delete').addEventListener('click', () => {
-    const panel = w.activePanel();
-    const last = w.pagePanels().length < 2;
-    if (
-      !confirm(last ? `Clear panel "${panel.name}"? A page always keeps one panel.` : `Delete panel "${panel.name}"?`)
-    )
-      return;
-    removePanel(panel);
-  });
-  w.bindText('panel-name', (p, v) => (p.name = v));
-  $('panel-name').addEventListener('input', () => renderPanels(w.activePanel()));
 
-  return { renderPanels, removePanel, isEmptyPanel, ensurePagePanel };
+  return { addPanel, removePanel, isEmptyPanel, ensurePagePanel };
 }

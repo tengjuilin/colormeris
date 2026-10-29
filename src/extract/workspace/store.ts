@@ -4,6 +4,8 @@
 import { flushSafely } from '../../ui/flush.ts';
 
 let version = 0;
+// Bumped by full notifies only, for cards that ignore the light changes of typing and drags.
+let fullVersion = 0;
 const subs = new Set<() => void>();
 
 export const store = {
@@ -14,6 +16,7 @@ export const store = {
     };
   },
   getVersion: () => version,
+  getFullVersion: () => fullVersion,
 };
 
 /**
@@ -25,6 +28,7 @@ export const store = {
  */
 export function notify({ light = false }: { light?: boolean } = {}) {
   version++;
+  if (!light) fullVersion++;
   const run = () => {
     for (const fn of [...subs]) fn();
   };

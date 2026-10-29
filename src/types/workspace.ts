@@ -281,7 +281,7 @@ export interface WorkspaceContext {
   focusTick: (id: string) => void;
 
   // ---- panels.ts
-  renderPanels: (active: Panel) => void;
+  addPanel: () => Panel;
   removePanel: (panel: Panel) => { cleared: boolean };
   isEmptyPanel: (panel: Panel) => boolean;
   ensurePagePanel: (page: number, settings?: Partial<PanelSettings>) => void;
@@ -312,7 +312,7 @@ export type InteractMembers = Pick<
 >;
 export type GridCardMembers = Pick<WorkspaceContext, 'renderGridCard'>;
 export type ColorbarCardMembers = Pick<WorkspaceContext, 'renderColorbarCard' | 'focusTick'>;
-export type PanelsMembers = Pick<WorkspaceContext, 'renderPanels' | 'removePanel' | 'isEmptyPanel' | 'ensurePagePanel'>;
+export type PanelsMembers = Pick<WorkspaceContext, 'addPanel' | 'removePanel' | 'isEmptyPanel' | 'ensurePagePanel'>;
 export type SourceMembers = Pick<
   WorkspaceContext,
   'openFile' | 'hasCalibration' | 'ensurePage' | 'showZoom' | 'goToPage'
