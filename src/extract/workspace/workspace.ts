@@ -8,6 +8,7 @@ import type {
   PanelResult,
   PanelSettings,
   Point,
+  SettingsSource,
   ToolHooks,
   ToolKind,
   ViewerApi,
@@ -16,17 +17,18 @@ import type {
   WorkspaceCore,
 } from '../../types/index.ts';
 import { createProject } from '../project/project.ts';
+import { mountCards } from '../react/mount-cards.tsx';
 import { COLOR_DEFAULTS, defaultSettings } from '../settings/settings.ts';
 import { Viewer } from '../viewer.ts';
-import { setupWorkspaceColorbarCard } from './colorbar-card.ts';
+import { setupWorkspaceTickFocus } from './cards/tick-focus.ts';
 import { setupWorkspaceExport } from './export.ts';
-import { setupWorkspaceGridCard } from './grid-card.ts';
 import { setupWorkspaceHistory } from './history.ts';
 import { setupWorkspaceHotkeys } from './hotkeys.ts';
 import { setupWorkspaceInteract } from './interact.ts';
 import { setupWorkspaceOverlay } from './overlay.ts';
 import { setupWorkspacePanels } from './panels.ts';
 import { setupWorkspaceSource } from './source.ts';
+import { notify } from './store.ts';
 
 // Shared workspace for the Colormeris tools (extract.html): source loading
 // and PDF pages, the zoomable viewer, panels, the grid and colorbar
@@ -72,8 +74,7 @@ import { setupWorkspaceSource } from './source.ts';
 //   history.js        undo/redo, commit
 //   overlay.js        drawing grids, colorbars, handles
 //   interact.js       clicks, handle drags, hover
-//   grid-card.js      the Grid card
-//   colorbar-card.js  the Colorbar card: ticks, strip, reference colormap
+//   cards/colorbar-card.tsx  the Colorbar card (React; cards/tick-focus.ts holds focusTick)
 //   panels.js         the Panels card; every page has a panel
 //   source.js         opening files and zips, pages, resolution, zoom box
 //   export.js         downloads and the project zip
@@ -120,6 +121,8 @@ export function createWorkspace(): Workspace {
     hoverCell: null,
     tableCell: null,
     showOverlay: true,
+    keepRect: true,
+    showRecon: false,
   };
 
   let tickSeq = 1;
@@ -169,7 +172,9 @@ export function createWorkspace(): Workspace {
     (type === 'grid' && tool.gridTexts) ||
     MODE_TEXT[type];
 
-  function setMode(type: string | null) {
+  // `notify: false` is for setTool only: a render queued before the tool switches would run against the new
+  // tool's panel (a card of the old tool computing its result for a panel of another tool).
+  function setMode(type: string | null, { notify: notifyCards = true }: { notify?: boolean } = {}) {
     if (type && !app.sourceCanvas) return;
     if (type === 'tick') {
       const cb = activePanel().colorbar;
@@ -180,11 +185,10 @@ export function createWorkspace(): Workspace {
     }
     app.mode = type ? { type, points: [] } : null;
     updateModebar();
-    setPressed($('grid-place'), type === 'grid');
-    setPressed($('bar-place'), type === 'colorbar');
-    setPressed($('tick-add'), type === 'tick');
     tool.onModeChange?.(type);
     viewer.requestDraw();
+    // Light: nearly every caller follows with changed(), whose full notify renders once.
+    if (notifyCards) notify({ light: true });
   }
 
   function updateModebar() {
@@ -210,8 +214,14 @@ export function createWorkspace(): Workspace {
     for (const fn of changeListeners) fn();
   }
 
-  let helpLoaded: boolean | null = null;
+  // The DOM render, then React is told (store.ts) so migrated cards follow.
   function renderSidebar(light = false) {
+    renderSidebarDom(light);
+    notify({ light });
+  }
+
+  let helpLoaded: boolean | null = null;
+  function renderSidebarDom(light: boolean) {
     const loaded = !!app.sourceCanvas;
     for (const t of Object.values(tools)) for (const id of t.sections || []) $(id).hidden = true;
     for (const id of ['sec-panels', 'sec-grid', 'sec-colorbar', ...(tool.sections || [])]) $(id).hidden = !loaded;
@@ -231,15 +241,7 @@ export function createWorkspace(): Workspace {
     if (!loaded) return;
 
     const panel = activePanel();
-    if (!light) w.renderPanels(panel);
-    w.renderGridCard(panel);
-    w.renderColorbarCard(panel);
     tool.renderSidebar?.(panel, light);
-  }
-
-  function setBadge(el: HTMLElement, text: string, ok: boolean) {
-    el.textContent = text;
-    el.className = `badge ${ok ? 'ok' : 'todo'}`;
   }
 
   // Toggle buttons and chips: .active for the look, aria-pressed for screen readers.
@@ -271,28 +273,6 @@ export function createWorkspace(): Workspace {
     viewer.zoomTo(Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad);
   }
 
-  function bindNumber(id: string, apply: (panel: Panel, value: number) => void) {
-    const el = $(id);
-    el.addEventListener('focus', () => w.pushHistory());
-    el.addEventListener('input', () => {
-      const v = Number(el.value);
-      if (el.value === '' || !Number.isFinite(v)) return;
-      apply(activePanel(), v);
-      changed({ light: true });
-    });
-    el.addEventListener('change', () => changed());
-  }
-
-  function bindText(id: string, apply: (panel: Panel, value: string) => void) {
-    const el = $(id);
-    el.addEventListener('focus', () => w.pushHistory());
-    el.addEventListener('input', () => {
-      apply(activePanel(), el.value);
-      changed({ light: true });
-    });
-    el.addEventListener('change', () => changed());
-  }
-
   // Matching settings live in the Settings dialog (settings-dialog.js). They
   // are defaults for new panels and, when changed there, apply to every panel
   // of the tool. Panels keep their own copy, so a project zip reproduces its values.
@@ -318,7 +298,7 @@ export function createWorkspace(): Workspace {
   function setTool(kind: ToolKind, { quiet = false }: { quiet?: boolean } = {}) {
     if (!tools[kind] || tool?.kind === kind) return;
     if (tool) {
-      setMode(null);
+      setMode(null, { notify: false });
       if (app.sourceCanvas) {
         app.lastActive.set(activeKey(), activePanel()?.id);
         // Drop the old tool's untouched placeholder panels on this page.
@@ -346,6 +326,7 @@ export function createWorkspace(): Workspace {
       const remembered = app.lastActive.get(activeKey());
       app.project.activePanelId = pagePanels().some((p) => p.id === remembered) ? remembered! : pagePanels()[0].id;
     }
+    notify({ light: true }); // after `tool` and the active panel are switched; changed() below renders in full
     if (!quiet) changed();
   }
 
@@ -370,13 +351,10 @@ export function createWorkspace(): Workspace {
     updateModebar,
     changed,
     setValue,
-    setBadge,
     setPressed,
     toast,
     status,
     zoomToPoints,
-    bindNumber,
-    bindText,
     panelDefaults,
     setTool,
     ws: null as unknown as Workspace, // the public object, set below
@@ -408,8 +386,7 @@ export function createWorkspace(): Workspace {
     setupWorkspaceHistory,
     setupWorkspaceOverlay,
     setupWorkspaceInteract,
-    setupWorkspaceGridCard,
-    setupWorkspaceColorbarCard,
+    setupWorkspaceTickFocus,
     setupWorkspacePanels,
     setupWorkspaceSource,
     setupWorkspaceExport,
@@ -440,16 +417,14 @@ export function createWorkspace(): Workspace {
     download: w.download,
     csvName: w.csvName,
     zoomToPoints,
-    bindNumber,
-    bindText,
     setValue,
-    setBadge,
     setPressed,
     strokeDual: w.strokeDual,
     polyPath: w.polyPath,
     drawHandle: w.drawHandle,
     snapAxis: w.snapAxis,
     render: () => renderSidebar(),
+    mountCards: (settings: SettingsSource) => mountCards({ ws, w }, settings),
     // Used by the agent API (agent/api.js).
     openFile: w.openFile,
     goToPage: w.goToPage,

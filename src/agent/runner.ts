@@ -18,9 +18,7 @@ import type {
   RunSettings,
   RunUsage,
   StateSnapshot,
-  ToolCall,
   ToolCallResult,
-  ViewFrame,
   Workspace,
 } from '../types/index.ts';
 import { DECISION_LLM_ACTIONS, DECISION_SYSTEM_PROMPT, decisionLlmTools, panelBrief } from './decide.ts';

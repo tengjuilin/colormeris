@@ -8,7 +8,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { Box, PixelImage, Point } from './image.ts';
 import type { Panel, PanelSettings, Project, ReviewStatus, ToolKind } from './project.ts';
 import type { PanelResult } from './results.ts';
-import type { ColorValue, Settings } from './settings.ts';
+import type { ColorValue, Settings, SettingsSource } from './settings.ts';
 
 /**
  * What `$` returns. Sidebar code reads value, checked, options and max on
@@ -90,6 +90,10 @@ export interface AppState {
   /** Cell picked in a results table, highlighted on the image. */
   tableCell: Cell | null;
   showOverlay: boolean;
+  /** Grid card: dragging a corner keeps the grid a rectangle. */
+  keepRect: boolean;
+  /** Heatmap Results card: repaint the sampled areas with the colors of their values. */
+  showRecon: boolean;
 }
 
 /** Callbacks the Viewer gets from the workspace (extract/viewer.ts). */
@@ -235,13 +239,10 @@ export interface WorkspaceContext {
   updateModebar: () => void;
   changed: (opts?: { light?: boolean }) => void;
   setValue: (el: DomEl, value: string | number) => void;
-  setBadge: (el: HTMLElement, text: string, ok: boolean) => void;
   setPressed: (el: Element, on: boolean) => void;
   toast: (msg: string, isError?: boolean) => void;
   status: (msg: string) => void;
   zoomToPoints: (points: Point[]) => void;
-  bindNumber: (id: string, apply: (panel: Panel, value: number) => void) => void;
-  bindText: (id: string, apply: (panel: Panel, value: string) => void) => void;
   panelDefaults: (kind: ToolKind) => Partial<PanelSettings>;
   setTool: (kind: ToolKind, opts?: { quiet?: boolean }) => void;
   viewer: ViewerApi;
@@ -273,15 +274,11 @@ export interface WorkspaceContext {
   /** b moved onto the horizontal or vertical through a when within a few degrees. */
   snapAxis: (a: Point, b: Point) => Point;
 
-  // ---- grid-card.ts
-  renderGridCard: (panel: Panel) => void;
-
-  // ---- colorbar-card.ts
-  renderColorbarCard: (panel: Panel) => void;
+  // ---- cards/tick-focus.ts
   focusTick: (id: string) => void;
 
   // ---- panels.ts
-  renderPanels: (active: Panel) => void;
+  addPanel: () => Panel;
   removePanel: (panel: Panel) => { cleared: boolean };
   isEmptyPanel: (panel: Panel) => boolean;
   ensurePagePanel: (page: number, settings?: Partial<PanelSettings>) => void;
@@ -310,9 +307,8 @@ export type InteractMembers = Pick<
   WorkspaceContext,
   'onClick' | 'hitTest' | 'onHandleDrag' | 'onHandleDrop' | 'onHover' | 'handlePoint' | 'applyDetectedSize' | 'snapAxis'
 >;
-export type GridCardMembers = Pick<WorkspaceContext, 'renderGridCard'>;
-export type ColorbarCardMembers = Pick<WorkspaceContext, 'renderColorbarCard' | 'focusTick'>;
-export type PanelsMembers = Pick<WorkspaceContext, 'renderPanels' | 'removePanel' | 'isEmptyPanel' | 'ensurePagePanel'>;
+export type ColorbarCardMembers = Pick<WorkspaceContext, 'focusTick'>;
+export type PanelsMembers = Pick<WorkspaceContext, 'addPanel' | 'removePanel' | 'isEmptyPanel' | 'ensurePagePanel'>;
 export type SourceMembers = Pick<
   WorkspaceContext,
   'openFile' | 'hasCalibration' | 'ensurePage' | 'showZoom' | 'goToPage'
@@ -326,7 +322,6 @@ export type WorkspaceCore = Omit<
   | keyof HistoryMembers
   | keyof OverlayMembers
   | keyof InteractMembers
-  | keyof GridCardMembers
   | keyof ColorbarCardMembers
   | keyof PanelsMembers
   | keyof SourceMembers
@@ -362,10 +357,7 @@ export interface Workspace {
   download: WorkspaceContext['download'];
   csvName: WorkspaceContext['csvName'];
   zoomToPoints: WorkspaceContext['zoomToPoints'];
-  bindNumber: WorkspaceContext['bindNumber'];
-  bindText: WorkspaceContext['bindText'];
   setValue: WorkspaceContext['setValue'];
-  setBadge: WorkspaceContext['setBadge'];
   setPressed: WorkspaceContext['setPressed'];
   strokeDual: WorkspaceContext['strokeDual'];
   polyPath: WorkspaceContext['polyPath'];
@@ -373,6 +365,8 @@ export interface Workspace {
   snapAxis: WorkspaceContext['snapAxis'];
   /** Full sidebar render. */
   render: () => void;
+  /** Mounts the React cards into their section shells (extract/react/mount-cards.tsx); call once after the tools are set up. */
+  mountCards: (settings: SettingsSource) => void;
   // Used by the agent API.
   openFile: WorkspaceContext['openFile'];
   goToPage: WorkspaceContext['goToPage'];

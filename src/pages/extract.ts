@@ -3,7 +3,7 @@ import * as m_agent_decide from '../agent/decide.ts';
 import * as m_agent_labels from '../agent/labels.ts';
 import * as m_agent_llm from '../agent/llm.ts';
 import * as m_agent_schema from '../agent/schema.ts';
-import { setupAgentPanel } from '../agent/ui/agent-card.ts';
+import { setupAgentPanel } from '../agent/ui/agent-card.tsx';
 import { setupLabelReader } from '../agent/ui/labels-reader.ts';
 import * as m_core_color from '../core/color.ts';
 import * as m_core_colorbar from '../core/colorbar.ts';
@@ -79,9 +79,12 @@ try {
 
   const toolFromHash = () =>
     (({ '#roi': 'roi', '#map': 'map' }) as const)[location.hash as '#roi' | '#map'] || 'heatmap';
-  ws.setTool(toolFromHash());
-  window.addEventListener('hashchange', () => ws.setTool(toolFromHash()));
+  // Quiet: no sidebar render yet, so imperative renderers never reach a migrated card's ids before it is mounted.
+  ws.setTool(toolFromHash(), { quiet: true });
+  // React cards (extract/react/mount-cards.tsx) go in before the first render and before anything reads their ids.
+  ws.mountCards(settings);
   ws.render();
+  window.addEventListener('hashchange', () => ws.setTool(toolFromHash()));
 
   // Typed API for software agents (agent/api.ts).
   window.colormeris = createAgentApi(ws);

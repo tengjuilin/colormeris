@@ -229,3 +229,27 @@ export function citeFor(name: string) {
 }
 
 export const CMAP_REFS = REFS;
+
+// The group order of the Browse list (browse-model.ts SECTIONS).
+const LIST_GROUPS = ['sequential', 'diverging', 'cyclic', 'rainbow', 'multi-sequential', 'qualitative', 'others'];
+
+// Footer reference numbers, in order of first use in the default Browse list:
+// sections in LIST_GROUPS order, inside a section the sub-headings in order of
+// first appearance, inside those the maps in library order. This is not the
+// library order itself (a sub-heading's maps are not always contiguous), and
+// matches what the old footer assigned while the Browse rows were built. Returns key -> number (1-based), in numbering order.
+export function buildRefNumbers(maps: { name: string; group: string; sub: string }[]): Map<string, number> {
+  const numbers = new Map<string, number>();
+  for (const group of LIST_GROUPS) {
+    const inGroup = maps.filter((m) => m.group === group);
+    const subs: string[] = [];
+    for (const m of inGroup) if (!subs.includes(m.sub)) subs.push(m.sub);
+    for (const sub of subs) {
+      for (const m of inGroup) {
+        if (m.sub !== sub) continue;
+        for (const k of citeFor(m.name)) if (!numbers.has(k)) numbers.set(k, numbers.size + 1);
+      }
+    }
+  }
+  return numbers;
+}

@@ -76,5 +76,9 @@ export interface SettingsUi {
   get: () => Settings;
   save: () => void;
   open: (tab?: string) => void;
-  onChange: (fn: () => void) => void;
+  /** Returns the function that removes the listener. */
+  onChange: (fn: () => void) => () => void;
 }
+
+/** What the React UI needs from the settings dialog (useSettings): the object and its change notifications. */
+export type SettingsSource = Pick<SettingsUi, 'get' | 'onChange'>;

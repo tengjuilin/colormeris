@@ -1,4 +1,4 @@
-// The figure input shared by the Identify and Recolor tabs of the colormap
+// The figure input shared by the Identify, Recolor and CVD tabs of the colormap
 // viewer: a drop zone with Choose / Example / Clear buttons, paste while the
 // tab is shown, and a canvas with the image on which a line is dragged along
 // the colorbar. The image never leaves the browser.
@@ -22,6 +22,9 @@ export interface FigureBox {
 }
 type Pt = { x: number; y: number };
 
+/** A line dragged along a colorbar, in image pixels. */
+export type FigureLine = { start: Pt; end: Pt };
+
 // What createFigureInput returns, besides its methods.
 export interface FigureState {
   zone: HTMLElement;
@@ -36,7 +39,7 @@ export interface FigureState {
   name: string;
   lastFile: File | null;
   /** In image pixels. */
-  line: { start: Pt; end: Pt } | null;
+  line: FigureLine | null;
   /** Drawn as dashed outlines. */
   boxes: FigureBox[];
   dragging: boolean;
@@ -95,6 +98,8 @@ export function createFigureInput(opts: any) {
     dragging: false,
   };
   let drag: FigureDrag | null = null;
+  // After destroy() no callback fires: a pending image load or example fetch may still settle.
+  let destroyed = false;
 
   // Pointer positions are relative to the content box: the border is not part of the image.
   const scale = () => canvas.width / (canvas.clientWidth || canvas.width);
@@ -172,6 +177,10 @@ export function createFigureInput(opts: any) {
   // Resolves true once the image is shown, false when it could not be read.
   function load(f: File | null | undefined) {
     return new Promise<boolean>((resolve) => {
+      if (destroyed) {
+        resolve(false);
+        return;
+      }
       if (!f || !/^image\//.test(f.type)) {
         fail('That file is not an image. Use a PNG, JPEG, WebP or GIF.');
         resolve(false);
@@ -181,6 +190,10 @@ export function createFigureInput(opts: any) {
       const im = new Image();
       im.onload = () => {
         URL.revokeObjectURL(url);
+        if (destroyed) {
+          resolve(false);
+          return;
+        }
         try {
           const k = Math.min(1, MAX_SIDE / Math.max(im.naturalWidth, im.naturalHeight));
           const w = Math.max(1, Math.round(im.naturalWidth * k));
@@ -213,6 +226,10 @@ export function createFigureInput(opts: any) {
       };
       im.onerror = () => {
         URL.revokeObjectURL(url);
+        if (destroyed) {
+          resolve(false);
+          return;
+        }
         fail('Could not open that image.');
         resolve(false);
       };
@@ -292,8 +309,11 @@ export function createFigureInput(opts: any) {
     try {
       const res = await fetch(EXAMPLE);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await load(new File([await res.blob()], 'example-jet.png', { type: 'image/png' }));
+      const blob = await res.blob();
+      if (destroyed) return false;
+      return await load(new File([blob], 'example-jet.png', { type: 'image/png' }));
     } catch (err) {
+      if (destroyed) return false;
       fail(`Could not load the example (${(err as Error).message}). Serve the app with npm run dev.`);
       return false;
     }
@@ -319,13 +339,19 @@ export function createFigureInput(opts: any) {
     });
   }
   // Paste works anywhere on the page while this tab is shown.
-  document.addEventListener('paste', (e) => {
+  const onPaste = (e: ClipboardEvent) => {
     if (state.tab !== tab || (e.target as Element).closest?.('input[type="search"], textarea')) return;
     const f = fileOf(e.clipboardData);
     if (!f) return;
     e.preventDefault();
     load(f);
-  });
+  };
+  document.addEventListener('paste', onPaste);
+  // For hosts that unmount (React): the paste listener is the only thing on the page itself.
+  const destroy = () => {
+    destroyed = true;
+    document.removeEventListener('paste', onPaste);
+  };
 
-  return Object.assign(fig, { redraw, reset, fail, load, loadExample, pointAt, scale, clear });
+  return Object.assign(fig, { redraw, reset, fail, load, loadExample, pointAt, scale, clear, destroy });
 }

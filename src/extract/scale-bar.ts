@@ -2,14 +2,18 @@ import type { Mode, Point, ScaleBar, ScaleUnit, ViewerApi, Workspace } from '../
 
 // Scale bar, DOM: measuring a scale bar on the image ('scale' mode, two
 // clicks), drawing it and its preview. Shared by the ROI tool (areas in real
-// units) and the Map tool (profile distances in real units). The Scale
-// card's buttons and fields are bound in roi/roi-sidebar.js and act on the
-// active panel, whatever the tool.
+// units) and the Map tool (profile distances in real units). The Scale card
+// (scale-bar-card.tsx, React) acts on the active panel, whatever the tool.
+
+/** Set before the commit that adds a scale bar; the Scale card focuses its length field in the layout effect after that render. */
+export const scaleFocus = { pending: false };
+
+/** Length and unit the next measurement takes: what the Scale card last showed or had typed. */
+export const scaleDefaults: { length: number; unit: ScaleUnit } = { length: 1, unit: 'cm' };
 
 // A click in 'scale' mode: the first end, then the other one, which sets
 // panel.scale with the length and unit typed in the card.
 export function scaleBarClick(ws: Workspace, mode: Mode, p: Point, e: PointerEvent) {
-  const { $ } = ws;
   const q = mode.points.length === 1 && !e.altKey ? ws.snapAxis(mode.points[0], p) : p;
   mode.points.push(q);
   if (mode.points.length < 2) {
@@ -23,10 +27,14 @@ export function scaleBarClick(ws: Workspace, mode: Mode, p: Point, e: PointerEve
     return true;
   }
   ws.setMode(null);
-  const length = Number($('scale-length').value) > 0 ? Number($('scale-length').value) : 1;
-  ws.commit((pn) => (pn.scale = { p1, p2, length, unit: $('scale-unit').value as ScaleUnit }));
-  $('scale-length').focus();
-  $('scale-length').select();
+  const { length, unit } = scaleDefaults;
+  scaleFocus.pending = true;
+  try {
+    ws.commit((pn) => (pn.scale = { p1, p2, length: length > 0 ? length : 1, unit }));
+  } catch (err) {
+    scaleFocus.pending = false;
+    throw err;
+  }
   return true;
 }
 

@@ -19,6 +19,7 @@ import type {
 import { createRoi } from '../project/project.ts';
 import { roiCsv } from '../project/project-files.ts';
 import { scaleBarClick } from '../scale-bar.ts';
+import { setRoiContext } from './cards/roi-context.ts';
 import {
   boundsOf,
   boxGeom,
@@ -42,7 +43,6 @@ import {
 } from './geometry.ts';
 import { quantifyPanel, roiPanelProblem } from './quantify.ts';
 import { setupRoiOverlay } from './roi-overlay.ts';
-import { setupRoiSidebar } from './roi-sidebar.ts';
 
 /** A region copy found by regionAt: row and col are null for an unreplicated region. */
 export interface RegionHit {
@@ -66,6 +66,8 @@ export interface RoiToolState {
   /** While dragging a new ellipse or rectangle. */
   draft: RoiDraft | null;
   showMask: boolean;
+  /** "Copy new regions into every grid box". */
+  replicate: boolean;
   mask: { key: string; canvas: HTMLCanvasElement } | null;
   metric: keyof RoiStats;
 }
@@ -80,7 +82,7 @@ type RoiHandle = Handle & {
   offset: RoiOffset;
 };
 
-/** What roi-tool.ts shares with roi-overlay.ts and roi-sidebar.ts. */
+/** What roi-tool.ts shares with roi-overlay.ts and the cards (cards/roi-context.ts). */
 export interface RoiToolContext {
   ws: Workspace;
   state: RoiToolState;
@@ -88,6 +90,7 @@ export interface RoiToolContext {
   roiColor: (panel: Panel, roi: Roi) => string;
   regionAt: (p: Point) => RegionHit | null;
   deleteSelected: () => void;
+  toggleTool: (type: string) => void;
 }
 
 // ROI tool: quantify luminescence overlays inside drawn regions (ellipses,
@@ -96,16 +99,17 @@ export interface RoiToolContext {
 // drawn in one box is copied into every box (see roi/geometry.js).
 //
 // This file sets up the tool and handles drawing and editing regions.
-// roi-overlay.js draws over the image, roi-sidebar.js renders the cards; the
-// three share `rctx` (state, selection, colors, hit testing).
+// roi-overlay.ts draws over the image, the cards (roi/cards/, React) are the
+// sidebar; all share `rctx` (state, selection, colors, hit testing).
 
 // setupRoiTool(ws) registers the tool with a workspace (workspace/workspace.js).
 export function setupRoiTool(ws: Workspace) {
-  const { $, app, viewer } = ws;
+  const { app, viewer } = ws;
   const state: RoiToolState = {
     selectedId: null, // selected region
     draft: null, // {shape, a, b, equal} while dragging a new ellipse/rect
     showMask: false,
+    replicate: true,
     mask: null, // {key, canvas}
     metric: 'sum',
   };
@@ -115,9 +119,9 @@ export function setupRoiTool(ws: Workspace) {
     const palette = ws.color('roiPalette') as string[];
     return palette[Math.max(0, panel.rois.indexOf(roi)) % palette.length];
   };
-  const rctx: RoiToolContext = { ws, state, selectedRoi, roiColor, regionAt, deleteSelected };
+  const rctx: RoiToolContext = { ws, state, selectedRoi, roiColor, regionAt, deleteSelected, toggleTool };
   const { drawOverlay, drawModePreview, hoverText } = setupRoiOverlay(rctx);
-  const { renderSidebar } = setupRoiSidebar(rctx);
+  setRoiContext(rctx);
 
   ws.addTool({
     kind: 'roi',
@@ -165,7 +169,10 @@ export function setupRoiTool(ws: Workspace) {
     drawModePreview,
     hoverText,
     onKey,
-    renderSidebar,
+    // The cards render themselves; this only drops a selection that no longer exists (undo, panel switch).
+    renderSidebar: (p) => {
+      if (!p.rois.some((r) => r.id === state.selectedId)) state.selectedId = null;
+    },
   } satisfies ToolHooks);
 
   // ---------------------------------------------------------------- bounds
@@ -185,7 +192,7 @@ export function setupRoiTool(ws: Workspace) {
   function drawLimit(p: Point) {
     const grid = ws.activePanel().grid;
     const lim = gridLimit(grid);
-    const cell = grid.corners && $('roi-replicate').checked ? cellAt(grid, clampPoint(p, lim)) : null;
+    const cell = grid.corners && state.replicate ? cellAt(grid, clampPoint(p, lim)) : null;
     if (!cell) return lim;
     return boundsOf(
       [
@@ -225,14 +232,13 @@ export function setupRoiTool(ws: Workspace) {
         : { x: (geomPx as ShapeGeom).cx, y: (geomPx as ShapeGeom).cy };
     let roi: Roi;
     const cell = grid.corners ? cellAt(grid, centre) : null;
-    if ($('roi-replicate').checked && cell) {
+    if (state.replicate && cell) {
       roi = createRoi(shape, fitGeom(shape, geomToBox(shape, geomPx, grid, cell.row, cell.col), UNIT), {
         name: nextRoiName(panel),
       });
     } else {
       roi = createRoi(shape, fitGeom(shape, geomPx, gridLimit(grid)), { name: nextRoiName(panel), replicate: false });
-      if ($('roi-replicate').checked && grid.corners)
-        ws.toast('Drawn outside the grid, so it was added as a single region.');
+      if (state.replicate && grid.corners) ws.toast('Drawn outside the grid, so it was added as a single region.');
     }
     ws.setMode(null);
     ws.commit((p) => p.rois.push(roi));
@@ -299,8 +305,6 @@ export function setupRoiTool(ws: Workspace) {
   }
 
   function onModeChange(type: string | null) {
-    for (const s of ['ellipse', 'rect', 'polygon']) ws.setPressed($(`tool-${s}`), type === s);
-    ws.setPressed($('scale-place'), type === 'scale');
     if (type !== 'ellipse' && type !== 'rect') state.draft = null;
   }
 
@@ -429,11 +433,8 @@ export function setupRoiTool(ws: Workspace) {
   }
   for (const shape of ['ellipse', 'rect', 'polygon']) ws.addHotkey(shape, () => toggleTool(shape), { tool: 'roi' });
 
+  // Also called by the Regions card's buttons.
   function toggleTool(type: string) {
     ws.setMode(app.mode?.type === type ? null : type);
   }
-
-  // ---------------------------------------------------------------- bindings
-
-  for (const s of ['ellipse', 'rect', 'polygon']) $(`tool-${s}`).addEventListener('click', () => toggleTool(s));
 }

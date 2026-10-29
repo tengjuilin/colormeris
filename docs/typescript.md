@@ -5,7 +5,7 @@ Colormeris is strict TypeScript in ES modules, bundled by Vite (see CLAUDE.md fo
 ## Ground rules
 
 - `strict: true`. Pure modules (no DOM: `src/core`, `project/`, `settings/settings.ts`, `heatmap/sampling.ts`, `roi/geometry.ts`, `roi/quantify.ts`, `map/field.ts`, agent `schema`/`llm`/`decide`/`labels`, colormaps `metrics`/`route`/`recolor`/`references`) are fully typed: no `any`. Prefer `unknown` plus a check, `Record<string, unknown>` for open objects. Untrusted JSON read field by field uses the one `Raw` alias in project.ts / settings.ts.
-- UI code may use `any` at DOM seams only, marked `// TODO(types)`.
+- No `any` anywhere: Biome's `noExplicitAny` is an error. A seam that really needs it (one options bag in `colormaps/figure-input.ts`) carries a `biome-ignore` with the reason; casts that the types can't express yet are marked `// TODO(types)`.
 - `import type { … }` for types (`verbatimModuleSyntax`), always with the `.ts` extension: `import { rgbToLab } from '../core/color.ts'`.
 - Every file starts with a comment saying what it does; comments explain why. Keep exported names stable: the agent API, docs/agent.md and tests use them.
 - Libraries come from npm (pinned in `package.json`): `import JSZip from 'jszip'`; pdf.js is loaded lazily in `pdf-loader.ts`; the OpenRouter SDK is a lazy `import('@openrouter/sdk')` in `openrouter-client.ts`, which returns a pre-set `globalThis.OpenRouterSDK` first (mocks). Static files are in `public/` and are fetched relative to the page (`examples/example.pdf`).
@@ -13,7 +13,7 @@ Colormeris is strict TypeScript in ES modules, bundled by Vite (see CLAUDE.md fo
 
 ## Types to use
 
-From `src/types/`: `Point`, `Box`, `Rgb`, `Lab`, `PixelImage` (ImageData-like; pure code takes this, not `ImageData`), `Project`, `Panel`, `Grid`, `Colorbar`, `Tick`, `TickWithT`, `Roi`, `ScaleBar`, `MapSettings`, `Profile`, `AxisTick`, `Review`, `SourceInfo`; results `HeatmapResult`, `RoiResult`, `MapResult`, `ColorbarSample`, `LabelledBin`, `PanelResult`, `ErrorResult`; `Settings`, `HotkeyAction`, `ColorItem`, `SettingsUi`; `Workspace`, `WorkspaceContext`, `ToolHooks`, `Mode`, `Handle`, `ViewerApi`, `DomEl`; agent `JsonSchema`, `ActionSpec`, `ActionResult`, `ColormerisApi`, `Question`, `Decision`, `ChatMessage`, `ChatClient`, `RunSettings`, `ToolCallResult`, `DecisionRequest`, `DecideFn`; `ColormapData`, `CmapViewerContext`. Globals (`window.JSZip`, `window.colormeris`, `globalThis.OpenRouterSDK`, `ColormerisPdfjsSource`, `pdfjsWorker`) are declared in `src/types/globals.ts`.
+From `src/types/`: `Point`, `Box`, `Rgb`, `Lab`, `PixelImage` (ImageData-like; pure code takes this, not `ImageData`), `Project`, `Panel`, `Grid`, `Colorbar`, `Tick`, `TickWithT`, `Roi`, `ScaleBar`, `MapSettings`, `Profile`, `AxisTick`, `Review`, `SourceInfo`; results `HeatmapResult`, `RoiResult`, `MapResult`, `ColorbarSample`, `LabelledBin`, `PanelResult`, `ErrorResult`; `Settings`, `HotkeyAction`, `ColorItem`, `SettingsUi`; `Workspace`, `WorkspaceContext`, `ToolHooks`, `Mode`, `Handle`, `ViewerApi`, `DomEl`; agent `JsonSchema`, `ActionSpec`, `ActionResult`, `ColormerisApi`, `Question`, `Decision`, `ChatMessage`, `ChatClient`, `RunSettings`, `ToolCallResult`, `DecisionRequest`, `DecideFn`; `ColormapData`. Globals (`window.JSZip`, `window.colormeris`, `globalThis.OpenRouterSDK`, `ColormerisPdfjsSource`, `pdfjsWorker`) are declared in `src/types/globals.ts`.
 
 Types of one module only (a locate.js candidate, a decide.js plan, `fitCellCounts`' result) are declared in that module and exported if another module needs them. Let return types of pure functions be inferred unless a type above fits.
 
@@ -33,8 +33,7 @@ Types of one module only (a locate.js candidate, a decide.js plan, `fitCellCount
 
   `HistoryMembers` is `Pick<WorkspaceContext, 'pushHistory' | …>`; likewise `OverlayMembers`, `InteractMembers`, `GridCardMembers`, `ColorbarCardMembers`, `PanelsMembers`, `SourceMembers`, `ExportMembers`, `HotkeysMembers`. In `workspace.ts` build the core object as `WorkspaceCore`, then `const w = core as WorkspaceContext;` before the setup loop, and `const ws: Workspace = {…}`. If a module's real signature differs from `WorkspaceContext`, fix the type in `src/types/workspace.ts` (the code wins) and say so in the report.
 - **Tool hooks**: `ws.addTool({…} satisfies ToolHooks)`. `computeResult` returns the tool's result type (assignable to `PanelResult`).
-- **Tool contexts** `rctx` (roi-tool.js) and `mctx` (map-tool.js): declare `export interface RoiToolContext` / `MapToolContext` in roi-tool.ts / map-tool.ts; roi-overlay.ts, roi-sidebar.ts and map-sidebar.ts `import type` it (a type-only cycle is fine).
-- **Colormap viewer `ctx`**: modules take `ctx: CmapViewerContext`; `setupX(ctx)` returns its members. Drop `CM` from the ctx literal in viewer.ts (no module reads `ctx.CM`). `createMapPicker` takes `Pick<CmapViewerContext, 'el' | 'data' | 'mapByName' | 'base' | 'stripCanvas'>`, because colorbar-card.js passes a small `pickerCtx`.
+- **Tool contexts** `rctx` (roi-tool.js) and `mctx` (map-tool.js): declare `export interface RoiToolContext` / `MapToolContext` in roi-tool.ts / map-tool.ts; roi-overlay.ts, the cards in roi/cards/ and the cards in map/cards/ `import type` it (a type-only cycle is fine).
 - **Viewer**: `export class Viewer implements ViewerApi`, with typed fields; the callbacks are `ViewerCallbacks`.
 - **Libraries come from npm** (`package.json` pins the vendored versions; `assets/vendor/` is deleted):
   - JSZip: `import JSZip from 'jszip'` where `window.JSZip` was read; pure files keep taking `JSZip` as a parameter.
@@ -44,10 +43,20 @@ Types of one module only (a locate.js candidate, a decide.js plan, `fitCellCount
 - **JSON Schemas** (schema.js `ACTIONS`, llm.js `RUNNER_TOOLS`, decide.js `DECISION_TOOLS`): `const ACTIONS: Record<string, ActionSpec> = {…}`. Schema pieces declared apart (`const point = { type: 'object', … }`) widen `'object'` to `string`: annotate them `const point: JsonSchema = …`.
 - **Constants with literal unions** (`SCALES`, `KINDS`, `HOTKEY_ACTIONS`): annotate (`const SCALES: ColorbarScale[] = […]`) so `includes(x)` still takes a string: `(SCALES as string[]).includes(cb.scale)`.
 
+## React
+
+The UI is React 19 (`.tsx`); [react.md](react.md) has the design. The typing rules:
+
+- Props are a named `type XProps = {…}` next to the component; callbacks are typed (`onChoose(name: string): void`), never `Function` or `any`.
+- Components read workspace state during render through `useWorkspace(...)` and never keep a copy of a project object; `memo` and `useMemo` key on primitives (`panel.id`, a tick id), never on project objects, which are mutated in place.
+- Refs to imperative hosts are typed for the element they hold (`useRef<HTMLCanvasElement>(null)`).
+- `import type` for React types (`ReactNode`, `ComponentType`, `Dispatch`).
+
 ## Tests
 
-- Tests sit next to the module (`grid.ts` → `grid.test.ts`): `import { describe, test } from 'vitest'` and `import assert from 'node:assert/strict'`; helpers from `src/testing/helpers.ts`.
+- Tests sit next to the module (`grid.ts` → `grid.test.ts`, `panels-card.tsx` → `panels-card.test.tsx`): `import { describe, test } from 'vitest'` and `import assert from 'node:assert/strict'`; helpers from `src/testing/helpers.ts`.
 - Fake timers: `vi.useFakeTimers({ toFake: ['setTimeout'] })`, `vi.advanceTimersByTime(ms)`, `vi.useRealTimers()`; stub globals with `vi.stubGlobal` before a dynamic `await import(...)` (see openrouter-client.test.ts).
+- Component tests start with `// @vitest-environment jsdom`, use `@testing-library/react` and call `afterEach(cleanup)` (Vitest has no globals).
 - `scripts/agent-docs.test.ts` fails when docs/agent.md is stale (`npm run docs`).
 - Test values may need casts (`as Panel`); never weaken what a test checks.
 

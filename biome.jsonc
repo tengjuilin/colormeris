@@ -15,9 +15,13 @@
   },
   "linter": {
     "enabled": true,
+    // Hook rules (useExhaustiveDependencies, useHookAtTopLevel) for the React UI.
+    "domains": { "react": "recommended" },
     "rules": {
       "preset": "recommended",
       "suspicious": {
+        // `any` is an error; a DOM seam that really needs it carries a biome-ignore with the reason.
+        "noExplicitAny": "error",
         // Accumulators like `(best ??= x)` and `n += (a = f())` are deliberate in the pixel loops.
         "noAssignInExpressions": "off",
         // `xs.forEach((x) => set.add(x))` is idiomatic here; the returned value is ignored on purpose.

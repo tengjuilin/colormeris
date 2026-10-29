@@ -34,7 +34,7 @@ test('a sampled colorbar is matched with its direction', () => {
   }
   const r = identifyColorbar(bar('jet', { reversed: true }), maps)[0];
   assert.deepEqual([r.name, r.reversed], ['jet', true]);
-});
+}, 20_000); // matches 7 bars against the whole library: ~1 s alone, over 5 s on a busy machine
 
 test('overshoot into the frame is trimmed off', () => {
   const s = [...Array(10).fill([255, 255, 255]), ...bar('plasma'), ...Array(6).fill([0, 0, 0])];

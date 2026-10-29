@@ -252,3 +252,11 @@ export function roiTableModel(panel: Panel, result: RoiResult) {
   });
   return { rows: order.map((k) => rowsByKey.get(k)!), rois: panel.rois };
 }
+
+/** Metrics that need a scale bar (areas in real units). */
+export const SCALED_METRICS: (keyof RoiStats)[] = ['sumArea', 'signalArea', 'area'];
+
+/** The metric to show: a scaled one falls back to the total signal while the panel has no scale bar. */
+export function metricFor(metric: keyof RoiStats, hasScale: boolean): keyof RoiStats {
+  return !hasScale && SCALED_METRICS.includes(metric) ? 'sum' : metric;
+}
