@@ -98,8 +98,9 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
 
   root.addEventListener('pointermove', (e) => {
     const strip = (e.target as Element).closest?.('.cmap-strip') as StripEl | null;
+    if (strip && !strip._cm) return; // a React strip (app/shared/probe-strip.tsx) probes itself
     if (!strip || !strip._cm.rendered) {
-      if (!(e.target as Element).closest?.('.cmap-plot')) hideTip();
+      if (!(e.target as Element).closest?.('.cmap-plot, .cmap-sine-img')) hideTip();
       return;
     }
     probe(strip, indexAt(strip, e.clientX), e.clientX, e.clientY);
@@ -107,7 +108,7 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
   root.addEventListener('pointerleave', hideTip);
   root.addEventListener('click', (e) => {
     const strip = (e.target as Element).closest?.('.cmap-strip') as StripEl | null;
-    if (!strip) return;
+    if (!strip?._cm) return;
     const i = indexAt(strip, e.clientX);
     probe(strip, i, e.clientX, e.clientY);
     copy(strip._cm.lastHex);
@@ -125,7 +126,7 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
   // Keyboard probe: arrows move by one sample, Shift by ten, Home/End jump.
   root.addEventListener('keydown', (e) => {
     const strip = (e.target as Element).closest?.('.cmap-strip') as StripEl | null;
-    if (!strip || e.target !== strip) return;
+    if (!strip?._cm || e.target !== strip) return;
     const n = viewData(strip._cm.map, strip._cm.view, strip._cm.rev).colors.length;
     let i = strip._cm.probe ?? (e.key === 'ArrowLeft' ? n : -1);
     if (e.key === 'ArrowRight') i += e.shiftKey ? 10 : 1;

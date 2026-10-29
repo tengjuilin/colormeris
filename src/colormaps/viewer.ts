@@ -1,7 +1,10 @@
 import { cmapData } from '../core/colormap-library.ts';
 import type { CmapListItem, CmapViewerContext, CmapViewerState, ColormapEntry, ViewKey } from '../types/index.ts';
+import { mountCompareTab, mountCompareTray } from './app/compare/index.ts';
 import { mountCvdTab } from './app/cvd/index.ts';
 import { mountIdentifyTab } from './app/identify/index.ts';
+import { mountRecolorTab } from './app/recolor/index.ts';
+import { comparedWith } from './app/viewer-state.ts';
 import { anchorPopover, clamp8, el, GLYPH, PILL, pct, RATING_COLS, roundRgb, svgEl, VIEWS } from './common.ts';
 import { setupCmapFooter } from './footer.ts';
 import {
@@ -13,21 +16,19 @@ import {
   notesOf,
 } from './library-cache.ts';
 import { setupCmapPlots } from './plots.ts';
-import { formatViewerUrl, parseViewerRoute, VIEWER_TABS } from './route.ts';
+import { COMPARE_MAX, formatViewerUrl, parseViewerRoute, VIEWER_TABS } from './route.ts';
 import { keepPlaceOnResize } from './scroll-anchor.ts';
 import { setupCmapStrips } from './strips.ts';
 import { setupCmapBrowse } from './tabs/browse-tab.ts';
-import { setupCmapCompare } from './tabs/compare-tab.ts';
 import { setupCmapDetail } from './tabs/detail-drawer.ts';
-import { setupCmapRecolor } from './tabs/recolor-tab.ts';
 
 // The colormap viewer page (colormaps.html), in five tabs:
 //   Browse    every colormap as five vector SVG strips (as seen, three
 //             color-vision-deficiency simulations, grayscale) with rating
 //             columns; one map at a time opens in the detail view (detail-drawer.js)
-//   Compare   up to 10 maps side by side (compare-tab.js)
+//   Compare   up to 10 maps side by side (app/compare, React; the tray too)
 //   Identify  find the colormap of a figure (app/identify, React)
-//   Recolor   redraw a figure in another colormap (recolor-tab.js)
+//   Recolor   redraw a figure in another colormap (app/recolor, React)
 //   CVD       a figure next to a color-vision-deficiency simulation (app/cvd, React)
 // The tab, the open map and the comparison live in the URL (route.js). The
 // data comes from core/colormap-library.js, so the page needs no fetch and
@@ -41,7 +42,7 @@ import { setupCmapRecolor } from './tabs/recolor-tab.ts';
 //   plots.js          SVG plots and per-position profiles
 //   footer.js         references and the footer
 //   browse-tab.js     the Browse tab (rows, controls, sort, filters)
-//   detail-drawer.js, compare-tab.js, recolor-tab.js
+//   detail-drawer.js
 //   scroll-anchor.js  keeps the reader's place on resize
 
 export function setupColormapViewer(root: HTMLElement) {
@@ -131,6 +132,66 @@ export function setupColormapViewer(root: HTMLElement) {
     identify.setCompared([...state.selected]);
   }
 
+  // ---- the comparison (Compare tab and tray are React islands) ----
+
+  // Maps flipped in Compare, on top of their Browse direction.
+  let compareFlipped: ReadonlySet<string> = new Set();
+  // The comparison as props. Kept as one object while nothing changed, so a
+  // tab switch does not rebuild the view.
+  let compareData: { key: string; compare: string[]; browseRev: boolean[] } | null = null;
+  function currentCompare() {
+    const browseRev = state.selected.map((n) => directionOf(state, n));
+    const key = `${state.selected.join('\n')}|${browseRev.join()}`;
+    if (compareData?.key !== key) compareData = { key, compare: [...state.selected], browseRev };
+    return compareData;
+  }
+  function renderCompare() {
+    const { compare: names, browseRev } = currentCompare();
+    compareTab.update({
+      active: state.tab === 'compare',
+      compare: names,
+      compareFlipped,
+      browseRev,
+      stripView: state.stripView,
+    });
+    syncTray();
+  }
+  // The tray shows on Browse while there are maps.
+  function syncTray() {
+    const { compare: names, browseRev } = currentCompare();
+    tray.update({ compare: names, browseRev, compareFlipped }, names.length > 0 && state.tab === 'browse');
+  }
+  // One Browse row; rows not built yet only get the tint (buildRow syncs the rest).
+  function syncButton(e: CmapListItem) {
+    const on = state.selected.includes(e.map.name);
+    e.item.classList.toggle('compared', on);
+    if (!e.cmpBtn) return;
+    const full = state.selected.length >= COMPARE_MAX;
+    e.cmpBtn.setAttribute('aria-pressed', String(on));
+    (e.cmpBtn as HTMLButtonElement).disabled = !on && full;
+    e.cmpBtn.title = on
+      ? `Remove ${e.map.name} from comparison`
+      : full
+        ? `Up to ${COMPARE_MAX} maps can be compared`
+        : `Add ${e.map.name} to comparison`;
+  }
+  function syncButtons() {
+    for (const e of items) syncButton(e);
+  }
+  // Every change to the comparison: the link, the Browse buttons, both islands, the tab name and the detail view.
+  function applyCompare(next: readonly string[]) {
+    state.selected = [...next];
+    ctx.updateUrl();
+    syncButtons();
+    renderCompare();
+    ctx.onCompareChange();
+  }
+  const setCompared = (name: string, on: boolean) => {
+    const next = comparedWith(state.selected, name, on);
+    if (next !== state.selected) applyCompare(next);
+  };
+  const compare = { render: renderCompare, syncButton, syncButtons, setCompared };
+
   function setTab(tab: string, { scroll = true } = {}) {
     if (!VIEWER_TABS.includes(tab)) return;
     const changed = tab !== state.tab;
@@ -143,15 +204,14 @@ export function setupColormapViewer(root: HTMLElement) {
     browse.bar.hidden = !browsing;
     browse.header.hidden = !browsing;
     browse.list.hidden = !browsing;
-    compare.sec.hidden = tab !== 'compare';
+    compareTab.sec.hidden = tab !== 'compare';
     identify.sec.hidden = tab !== 'identify';
     recolor.sec.hidden = tab !== 'recolor';
     cvd.sec.hidden = tab !== 'cvd';
-    if (tab === 'compare') compare.show();
     cvd.setActive(tab === 'cvd');
     ctx.hideTip();
     detail.place();
-    compare.syncTray();
+    renderCompare();
     // A new tab starts at its top; the list keeps its place within Browse.
     if (changed && scroll) {
       root.scrollTop = 0;
@@ -211,14 +271,13 @@ export function setupColormapViewer(root: HTMLElement) {
     updateUrl,
     goTab,
     // Late bound: the modules call each other through these.
-    setCompared: (name: string, on: boolean) => compare.setCompared(name, on),
+    setCompared,
     onCompareChange: () => {
       syncTabs();
       detail.syncCompare();
     },
-    openDetail: (name: string) => detail.open(name),
     detail: null, // set below
-    compare: null,
+    compare, // used by browse-tab: syncButton, setCompared, render
   } as unknown as CmapViewerContext; // the strips members are added just below
   // Each module adds what it shares; later modules use what earlier ones added.
   Object.assign(ctx, setupCmapStrips(ctx));
@@ -226,23 +285,43 @@ export function setupColormapViewer(root: HTMLElement) {
   Object.assign(ctx, setupCmapFooter(ctx));
   // Builds the rows, which number the references in list order.
   const browse = setupCmapBrowse(ctx);
-  Object.assign(ctx, { headerRow: browse.headerRow, applyStripView: browse.applyStripView, buildRow: browse.buildRow });
+  Object.assign(ctx, { buildRow: browse.buildRow });
   // Identify and CVD are React islands: data in, callbacks out.
   const identify = mountIdentifyTab({
     getTab: () => state.tab,
     compared: [...state.selected],
     onShowRow: (name) => browse.showRow(name),
-    onCompare: (name, on) => compare.setCompared(name, on),
+    onCompare: (name, on) => setCompared(name, on),
     onRecolor: (file, line) => {
       goTab('recolor');
       recolor.open(file, line);
     },
   });
   const cvd = mountCvdTab({ active: false, getTab: () => state.tab });
+  const recolor = mountRecolorTab({ getTab: () => state.tab, incoming: null });
   const detail = setupCmapDetail(ctx);
-  const compare = setupCmapCompare(ctx);
-  const recolor = setupCmapRecolor(ctx);
-  Object.assign(ctx, { detail, compare });
+  const initial = currentCompare();
+  const compareTab = mountCompareTab({
+    active: false,
+    compare: initial.compare,
+    compareFlipped,
+    browseRev: initial.browseRev,
+    stripView: state.stripView,
+    onCompareChange: applyCompare,
+    onToggleFlip: (name) => {
+      const next = new Set(compareFlipped);
+      if (!next.delete(name)) next.add(name);
+      compareFlipped = next;
+      renderCompare();
+    },
+  });
+  const tray = mountCompareTray({
+    compare: initial.compare,
+    compareFlipped,
+    browseRev: initial.browseRev,
+    onCompareChange: applyCompare,
+  });
+  Object.assign(ctx, { detail });
 
   root.replaceChildren();
   const inner = el('div', { class: 'cmap-inner' });
@@ -259,8 +338,8 @@ export function setupColormapViewer(root: HTMLElement) {
   const top = el('div', { class: 'cmap-top' });
   top.append(buildTabs(), browse.bar, browse.header);
   const footer = ctx.buildFooter();
-  inner.append(top, browse.list, compare.sec, identify.sec, recolor.sec, cvd.sec, footer);
-  root.append(inner, detail.drawer, compare.tray);
+  inner.append(top, browse.list, compareTab.sec, identify.sec, recolor.sec, cvd.sec, footer);
+  root.append(inner, detail.drawer, tray.host);
   browse.anchorPopovers();
 
   // Links into the footer open it first, so the target is visible.
@@ -274,8 +353,7 @@ export function setupColormapViewer(root: HTMLElement) {
   });
 
   browse.applyStripView(root);
-  compare.syncButtons();
-  compare.render();
+  syncButtons();
   syncTabs();
   setTab(route.tab || 'browse', { scroll: false });
   // Every history entry gets its tab, so Back returns to the right one.

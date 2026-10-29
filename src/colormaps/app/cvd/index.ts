@@ -6,7 +6,18 @@ import { CvdTab, type CvdTabProps } from './cvd-tab.tsx';
 export function mountCvdTab(props: CvdTabProps) {
   const sec: HTMLElement = el('section', { class: 'cmap-cvd', 'aria-labelledby': 'cmap-cvd-title', hidden: '' });
   const island = mountIsland(sec, CvdTab, props);
-  return { sec, setActive: (active: boolean) => island.update({ active }), unmount: island.unmount };
+  // The tab only needs to know when it is first shown (to load the example), so later
+  // shows and hides render nothing: a tab switch must stay as cheap as flipping `hidden`.
+  let activated = props.active;
+  return {
+    sec,
+    setActive(active: boolean) {
+      if (!active || activated) return;
+      activated = true;
+      island.update({ active });
+    },
+    unmount: island.unmount,
+  };
 }
 
 export type { CvdTabProps };

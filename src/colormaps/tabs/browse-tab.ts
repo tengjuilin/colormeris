@@ -444,6 +444,7 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
     state.stripView = k;
     saveStripView(k);
     applyStripView(root);
+    ctx.compare.render(); // the Compare strips follow the view
   }
 
   // Hide the strips of the other views (they are built lazily, so hidden ones cost little).
@@ -451,6 +452,7 @@ export function setupCmapBrowse(ctx: CmapViewerContext) {
     const k = state.stripView;
     root.classList.toggle('cmap-single', k !== 'all');
     for (const c of scope.querySelectorAll('.cmap-cell[data-view], .cmap-head [data-view]')) {
+      if (c.closest('.cmap-compare')) continue; // Compare's cells are React's: they follow the stripView prop
       c.hidden = k !== 'all' && c.dataset.view !== k;
     }
     for (const b of ui.viewBtns) b.setAttribute('aria-pressed', String(b.dataset.viewKey === k));

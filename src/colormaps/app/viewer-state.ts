@@ -132,6 +132,32 @@ export function cycleSort(sort: SortState | null, key: string): SortState | null
   return sort.dir > 0 ? { key, dir: -1 } : null;
 }
 
+// The comparison list after one change; the same list when nothing changes.
+export function comparedWith(list: readonly string[], name: string, on: boolean): readonly string[] {
+  const i = list.indexOf(name);
+  if (on && i < 0 && list.length < COMPARE_MAX) return [...list, name];
+  if (!on && i >= 0) return list.filter((n) => n !== name);
+  return list;
+}
+
+export function comparedMoved(list: readonly string[], name: string, d: number): readonly string[] {
+  const i = list.indexOf(name);
+  const j = i + d;
+  if (i < 0 || j < 0 || j >= list.length) return list;
+  const next = list.slice();
+  [next[i], next[j]] = [next[j], next[i]];
+  return next;
+}
+
+export function comparedReordered(list: readonly string[], from: number, to: number): readonly string[] {
+  const n = list.length;
+  if (from === to || from < 0 || to < 0 || from >= n || to >= n) return list;
+  const next = list.slice();
+  const [name] = next.splice(from, 1);
+  next.splice(to, 0, name);
+  return next;
+}
+
 export function filtering(s: Pick<ViewerState, 'query' | 'filters'>): boolean {
   return s.query.trim() !== '' || s.filters.ratings.length > 0 || s.filters.sources.length > 0;
 }
@@ -153,27 +179,16 @@ export function viewerReducer(s: ViewerState, a: ViewerAction): ViewerState {
     case 'OPEN':
       return s.open === a.name ? s : replace({ open: a.name });
     case 'SET_COMPARED': {
-      const i = s.compare.indexOf(a.name);
-      if (a.on && i < 0 && s.compare.length < COMPARE_MAX) return replace({ compare: [...s.compare, a.name] });
-      if (!a.on && i >= 0) return replace({ compare: s.compare.filter((n) => n !== a.name) });
-      return s;
+      const next = comparedWith(s.compare, a.name, a.on);
+      return next === s.compare ? s : replace({ compare: next });
     }
     case 'MOVE_COMPARED': {
-      const i = s.compare.indexOf(a.name);
-      const j = i + a.d;
-      if (i < 0 || j < 0 || j >= s.compare.length) return s;
-      const next = s.compare.slice();
-      [next[i], next[j]] = [next[j], next[i]];
-      return replace({ compare: next });
+      const next = comparedMoved(s.compare, a.name, a.d);
+      return next === s.compare ? s : replace({ compare: next });
     }
     case 'REORDER_COMPARED': {
-      const { from, to } = a;
-      const n = s.compare.length;
-      if (from === to || from < 0 || to < 0 || from >= n || to >= n) return s;
-      const next = s.compare.slice();
-      const [name] = next.splice(from, 1);
-      next.splice(to, 0, name);
-      return replace({ compare: next });
+      const next = comparedReordered(s.compare, a.from, a.to);
+      return next === s.compare ? s : replace({ compare: next });
     }
     case 'CLEAR_COMPARED':
       return s.compare.length ? replace({ compare: [] }) : s;

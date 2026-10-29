@@ -12,3 +12,14 @@ export function paintStrip(canvas: HTMLCanvasElement, colors: Rgb[]): boolean {
   g.putImageData(img, 0, 0);
   return true;
 }
+
+/** A strip canvas for imperative code (plot legends): `paintStrip` on a new canvas, as <Strip> renders it. */
+export function stripCanvasEl(colors: Rgb[], qualitative: boolean): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.className = qualitative ? 'cmap-paint qual' : 'cmap-paint';
+  canvas.width = Math.max(1, colors.length);
+  canvas.height = 1;
+  canvas.setAttribute('aria-hidden', 'true');
+  paintStrip(canvas, colors);
+  return canvas;
+}

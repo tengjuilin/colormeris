@@ -1,12 +1,32 @@
 import { rgbToHex } from '../core/color.ts';
-import type { CmapViewerContext } from '../types/index.ts';
+import type { CmapViewerContext, ColormapEntry, ViewData, ViewKey } from '../types/index.ts';
+import type { Tooltip } from './tooltip-element.ts';
 
 // SVG plots of the colormap viewer: axes, line and dot series with a
 // hover guide, figures with captions, and the per-position profile of a map
 // (L*, chroma, hue, ΔE2000 steps) used by the detail view and Compare.
+// createPlots takes what it needs as arguments (the tooltip among them), so
+// React components can use it; setupCmapPlots is the same with the viewer's ctx.
+
+export interface PlotDeps {
+  // biome-ignore lint/suspicious/noExplicitAny: TODO(types) DOM seam, see common.ts el
+  el: (tag: string, attrs?: Record<string, unknown> | null, text?: unknown) => any;
+  svgEl: (tag: string, attrs?: Record<string, unknown>) => SVGElement;
+  viewData: (map: ColormapEntry, view: ViewKey, reversed: boolean) => ViewData;
+  // biome-ignore lint/suspicious/noExplicitAny: TODO(types) colormaps/metrics.ts colormapMetrics result
+  metrics: (map: ColormapEntry) => any;
+  rev: <T>(a: T[], reversed?: boolean) => T[];
+  isRev: (map: ColormapEntry) => boolean;
+  showTip: Tooltip['showTip'];
+  hideTip: Tooltip['hideTip'];
+}
+
 export function setupCmapPlots(ctx: CmapViewerContext) {
   const { el, svgEl, viewData, metrics, rev, isRev, showTip, hideTip } = ctx;
+  return createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip, hideTip });
+}
 
+export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip, hideTip }: PlotDeps) {
   // The four plots sit in one row, each with a square plot box (as
   // matplotlib's set_box_aspect(1)): PH − M.t − M.b equals PW − M.l − M.r.
   const M = { l: 42, r: 12, t: 10, b: 34 };
@@ -203,7 +223,7 @@ export function setupCmapPlots(ctx: CmapViewerContext) {
     const qual = map.kind === 'qualitative';
     const xOf = (i: any) => (n > 1 ? i / (n - 1) : 0.5);
     const posOf = (i: any) => (qual ? `color ${i + 1} of ${n}` : `t = ${xOf(i).toFixed(3)}`);
-    const pts = (ys: any, fmt: any, skip: any) =>
+    const pts = (ys: any, fmt: any, skip?: any) =>
       colors.map((c, i) => ({
         x: xOf(i),
         y: skip && skip(i) ? null : ys[i],

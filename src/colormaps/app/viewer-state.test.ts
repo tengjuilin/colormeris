@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { COMPARE_MAX, parseViewerRoute } from '../route.ts';
 import {
+  comparedMoved,
+  comparedReordered,
+  comparedWith,
   cycleSort,
   filtering,
   initFromRoute,
@@ -197,4 +200,16 @@ test('the reducer returns new objects and leaves the old state alone', () => {
   const frozen = JSON.stringify({ ...s, flipped: [...s.flipped], compareFlipped: [...s.compareFlipped] });
   run(s, { type: 'SET_COMPARED', name: 'jet', on: true }, { type: 'TOGGLE_FLIP', name: 'jet' });
   assert.equal(JSON.stringify({ ...s, flipped: [...s.flipped], compareFlipped: [...s.compareFlipped] }), frozen);
+});
+
+test('the pure comparison helpers return the same list when nothing changes', () => {
+  const l = ['a', 'b', 'c'];
+  assert.equal(comparedWith(l, 'a', true), l);
+  assert.equal(comparedWith(l, 'z', false), l);
+  assert.deepEqual(comparedWith(l, 'd', true), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(comparedWith(l, 'b', false), ['a', 'c']);
+  assert.equal(comparedMoved(l, 'a', -1), l);
+  assert.deepEqual(comparedMoved(l, 'a', 1), ['b', 'a', 'c']);
+  assert.equal(comparedReordered(l, 1, 1), l);
+  assert.deepEqual(comparedReordered(l, 0, 2), ['b', 'c', 'a']);
 });

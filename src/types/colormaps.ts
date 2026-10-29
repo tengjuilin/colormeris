@@ -121,12 +121,11 @@ export interface CmapViewerContext {
   goTab: (tab: string) => void;
   setCompared: (name: string, on: boolean) => void;
   onCompareChange: () => void;
-  openDetail: (name: string) => void;
   // ---- strips.ts members used by the map picker
   stripCanvas: (colors: Rgb[], qualitative: boolean) => HTMLCanvasElement;
   // ---- added by the modules: strips.ts (stripCanvas, renderStrip, makeStrip,
   // showTip, hideTip), plots.ts, footer.ts (refNumber, methodList,
-  // buildFooter, …), browse-tab.ts (headerRow, applyStripView, buildRow),
+  // buildFooter, …), browse-tab.ts (buildRow),
   // then detail and compare.
   // biome-ignore lint/suspicious/noExplicitAny: TODO(types) module members of the colormap viewer
   [key: string]: any;
