@@ -1,0 +1,130 @@
+# Colormeris usage manual
+
+User-facing details for each tool. Not needed for coding work; see CLAUDE.md.
+
+## Heatmap tool
+
+1. **Open** a PDF, PNG or JPG. You can use *Open file…*, drag and drop, or paste an image from the clipboard. For a PDF, choose the page and the render resolution. The default is 216 dpi.
+2. **Panels**: add one panel for each heatmap in the figure. Each panel has its own grid, labels and colorbar. In a PDF, panels belong to the page they were made on. Switching pages keeps them and shows the new page's own panels. The Panels card links to other pages that already have panels.
+3. **Grid**: press *Place grid corners* (`G`). Click the outer top-left corner of the heatmap, then the outer bottom-right corner. Colormeris guesses the number of rows and columns from where the colors change and fills them in. Correct them if needed, or press *Detect* to guess again. Then paste the row and column labels, or open *Row and column labels* and press *Read labels with AI*: a vision LLM (OpenAI GPT-6.1 Sol by default; change it in the *Model* field below the button) reads them from the current view for this panel only. Zoom so the grid and its labels are visible. It uses the Agent's OpenRouter key or proxy, costs about a cent, and Undo reverts it. You can drag the corner handles to adjust. Uncheck *Keep rectangular* for skewed or rotated scans.
+   **Dot plots** (e.g. scRNA-seq), which have no cell borders and dots of different sizes: set *Click on* to *Dot centers* before placing, then click the centers of the top-left and bottom-right dots and type the rows and columns (*Detect* needs cell borders). The grid is drawn through the dot centers. Each dot is sampled inside a circle of 70 % of its own radius, found from where its color meets the background; a cell without a dot is left blank. *Shape* (Square / Circle) and *Sampled area* are under Options in both modes.
+4. **Colorbar**: press *Place colorbar ends* (`B`) and click both ends of the bar along its middle. Lines within 3° of vertical or horizontal snap straight; hold Alt to turn snapping off. Next, click at least two labelled ticks on the bar and type their values (`T`). Values between ticks are interpolated linearly, and values beyond the outer ticks are extrapolated. If the tick labels are raw numbers on a logarithmic bar, choose *Log₁₀*. If the tick values are uneven along the bar (for example a binned bar labelled 1e4, 2e4, 2e5, 5e5 at its steps), choose *Piecewise*, or *Piecewise log10* for positive values over decades: values are then interpolated between neighbouring ticks only. A binned bar (flat colors with steps between them) is found by itself: each cell gets the middle value of its bin, and a bin past the outermost tick gets that tick's value as a bound (at most or at least). Cells whose color is not on the colormap, such as gray "ND" cells or a black diagonal, get no value. Cells past an end of the bar (paler or darker in the bar's own colors) read as that end. Drag an end handle to adjust the bar: under *When dragging an end, ticks*, choose whether the ticks move with the bar (keeping their proportions) or stay in place on their printed marks. Drag the line itself to move the whole calibration, ticks included. To place a tick exactly, type its position in % along the bar (0 at the start, 100 at the end) in the tick table. Under the sampled strip, the card suggests the Matplotlib, CMasher, Crameri, cmocean, colorcet, seaborn, CarbonPlan, NCL, SciVisColor, CARTOColors, MATLAB or R packages colormap the bar matches (for example `jet` or `viridis_r`, with its ΔE2000 score and a link to the colormap viewer). With two ticks the direction follows the values; this works in the ROI tool too.
+   **Known colormap.** When the figure's colorbar is missing, tiny or badly compressed, set *Colors* to *Known colormap* and pick the map with the same search field as the colormap viewer (any of the 1063 maps; type `name_r` or tick *Reversed* for the reversed map). Two ticks appear at 0% and 100% of the colormap, valued 0 and 1 (1 and 10 on a log scale): type the figure's values at its ends, or keep them for values relative to the colormap. *Type a tick* adds more by value and position in % along the colormap, and every tick's position can be edited in the table. Placing the colorbar ends is then optional; if you do, ticks clicked on the bar count too. When a figure's bar matches a known map, the suggestion under the strip has *Use its colors* to switch to that map's exact colors. This works the same in the ROI and Map tools.
+5. **Results**: hover a table cell to find it on the image. Turn on *Reconstruct* to repaint each sampled area with the color the matched value predicts, so you can check the match by eye. Cells whose color is far from every colorbar color (ΔE above the threshold) are outlined in red. A cell whose color is not on the colormap (a gray "ND" cell, a black diagonal) shows "–" and its reason in the tooltip. Values that are only bounds (past an end of the bar, or in an open end bin) start with ≤ or ≥.
+6. **Export**:
+   - *Download CSV* saves the matrix (rows × columns).
+   - *Long CSV* saves one row per cell, with the sampled RGB, ΔE, a `status` (ok, flagged, clamped, off-map, empty), a `bound` (`<=` or `>=` for values that are only bounds) and a `reason` for off-map cells (gray, hue, far).
+   - *Export project (.zip)* saves everything needed to reload the project.
+
+Navigation: scroll to zoom and drag to pan. Space-drag or middle-drag always pans. `F` fits the image to the view, Esc cancels the current tool, and Ctrl/⌘+Z undoes.
+
+## ROI tool
+
+1. **Open** the figure as for the heatmap tool. Panels work the same way, including across PDF pages.
+2. **Grid** (optional): if the animals are shown in boxes, place the grid. Include the name labels above each row so every animal sits at the same place in its box. Check rows and columns (*Detect* guesses them) and type the box names in reading order, e.g. `B-a11, B-a16, …`. *Remove* drops the grid.
+3. **Colorbar**: place the ends and ticks as for heatmaps. For bars with a ×10ⁿ multiplier, type values like `1.4e9`.
+4. **Regions**:
+   - Pick *Ellipse* (`E`), *Rectangle* (`R`) or *Polygon* (`P`).
+   - Drag to draw an ellipse or rectangle; hold Shift for a circle or square.
+   - For a polygon, click its points, then click the first point, double-click or press Enter. Backspace removes the last point.
+   - With *Copy new regions into every grid box* on, a region drawn inside a box is copied into every box. Copies share their shape: dragging a handle on any copy resizes all of them.
+   - Dragging the inside of a copy nudges only that box's copy. Alt-drag moves all copies, and *Reset nudges* puts them back.
+   - Regions drawn with the option off, or without a grid, are single regions. They report under the box they sit in.
+   - Different shapes can be mixed freely. Select a region to rename or delete it (Del).
+5. **Scale** (optional): *Measure scale bar*, click both ends of a known distance, then enter its length in cm, mm, µm or nm. Areas are then also reported in that unit squared.
+6. **Results**: pick a measurement for the table (boxes × regions). *Download CSV* saves every measurement for every region copy. Turn on *Show signal* to tint the pixels counted as signal.
+
+Measurements for each region copy:
+
+| Column | Meaning |
+| --- | --- |
+| `area_px` | pixels inside the region |
+| `signal_px` | pixels with colormap color (not gray) |
+| `sum` | total of the colorbar values over the region (gray = 0), like total flux in pixel units |
+| `mean` | `sum / area_px`, like average radiance |
+| `mean_signal` | `sum / signal_px` |
+| `max` | highest value |
+| `flagged_px` | colored pixels that match no colorbar color (ΔE above the limit), e.g. colored text. They are still counted as signal with their nearest colorbar value. |
+| `area_<unit>2`, `signal_area_<unit>2`, `sum_x_area` | with a scale bar: areas in real units, and `sum` × pixel area |
+
+**Background**: a pixel whose CIELAB chroma is at or below the *gray* threshold is the photograph, i.e. no signal. The default is 20, which removes the JPEG color noise seen in published IVIS figures while keeping the dimmest overlay colors. Adjust it under *Settings → Matching* and check with *Show signal*.
+
+## Map tool
+
+For figures whose pixels are the data: spectroscopy maps with so many bins that they look continuous, or false-color fluorescence images with a calibration bar.
+
+1. **Open** the figure as for the heatmap tool. Panels work the same way.
+2. **Plot area**: press *Place plot area* (`G`) and click the top-left and bottom-right corners of the image area, inside the axes.
+3. **Colorbar**: place the ends and ticks as for heatmaps.
+4. **Scale** (optional), for images with a scale bar but no axes: *Measure scale bar*, click both ends of the scale bar, then enter its length and unit (cm, mm, µm or nm). Profiles, the matrix and the status bar can then report positions in that unit.
+5. **Axes** (optional): press *Add x ticks* (`X`), click two or more labelled ticks on the x axis and type their values. Do the same for y (`Y`). Ticks stay on the plot area's edges (x on the bottom, y on the left), so only their position along the axis counts; drag them along the edge to adjust, or type a position in % across the plot area in the tick table (0 at the left or top, 100 at the right or bottom), for example for a tick exactly at the plot's corner. Each axis can be linear or Log₁₀. Without ticks, coordinates are pixels from the plot's top-left corner.
+6. **Results**: *Bin size* 1 gives one value per pixel. Larger bins give one value per N × N pixels, the median of each channel, which smooths out JPEG noise. Hover the image for the value and axis coordinates under the pointer. *Reconstruct* repaints the plot with the matched values. *Show flags* marks colors far from the colorbar in red (ΔE above the threshold) and colors at the top or bottom end of the colorbar in magenta or cyan.
+7. **Profiles**: press *Draw profile* (`L`) and click both ends of a line, for example a spectrum at one delay or a line scan across a cell. *X axis* picks what the plot's horizontal axis shows: *Axis* (the calibrated axis the line mostly runs along), *px* (distance from the line's start in pixels) or the scale-bar unit (distance from the line's start in real length, for example µm). It is the same setting as *Coordinates* in the Results card. When a choice is not available it falls back to the axis, then the scale bar, then pixels. *Length* sets how long the line is, in the same units; the start and direction stay. *Width* averages ± pixels across the line. Shift- or Cmd-click profiles (chips or lines) to overlay several in the plot, each in its own color; *Select all* overlays every profile. *Scale* plots the values as they are, so signal levels compare directly, or divides each profile by its own maximum or mean, so their shapes compare. Hover the plot or a line on the image to trace it: both show the same sample, with its position and value. Drag the ends or the line to move it; hold Shift to move it only horizontally or vertically. Hold Ctrl (⌘ on a Mac) when you start dragging a line to drag a copy and leave the original in place. Ctrl+C / Ctrl+V (⌘ on a Mac) copy and paste the selected profiles, also into another panel or page: there a copy keeps its place within the plot area, so the same line scan lands in the same spot of a panel of another size. *Sweep* (`K`) moves the edited profile across the plot area, perpendicular to itself, and back at each edge, so the plot plays like an animation. *Speed* sets how fast, in page pixels per second. With *Run off the edge* the line keeps going until no part of it is left in the plot area, which covers more of a slanted line's corners. Parts of any profile outside the plot area are left out of the plot and the CSV. The value axis stays fixed during the sweep, so heights compare between frames. *Pause* leaves the line where it is; one undo puts it back where it started.
+8. **Export**: *Coordinates* (in the Results card) picks how x and y are reported in the CSVs and the status bar: axis values, pixels from the plot's top-left corner (`x_px`), or scale-bar lengths from that corner (`x_µm`). It is saved with the panel and shared with the profile plot's *X axis*. *Download CSV* saves the matrix, with x of each column in the header and y of each row in the first column. *Long CSV* saves one row per value with ΔE and flags. *Download profile CSV* saves the selected profile; with several selected it saves them in one table with a `profile` column. With a scale bar, the profile CSV adds a `d_<unit>` column (for example `d_µm`) after `d_px`. When *Scale* divides the values, the CSV adds a `value_per_max` or `value_per_mean` column. The project zip includes all of them.
+
+What the numbers can and cannot tell you:
+
+- **Compression.** JPEG stores color at half resolution and in 8 × 8 blocks. Single pixels can be off by several percent of the range; the summary and *Show flags* show where. Bins of 4–8 px bring the worst case down a lot. On a synthetic viridis map saved at JPEG quality 0.6, the worst pixel was off by 10% of the range at bin 1 and by 2.4% at bin 8; the mean error was 0.6%.
+- **Levels.** A colorbar can only tell so many values apart. The summary reports how many distinct colors the sampled bar has, at most 256 for an 8-bit colormap and fewer for a short bar.
+- **Display units.** Published fluorescence images are almost always contrast-adjusted. Values are in the units of the colorbar as displayed, which supports comparisons within the image, not absolute intensities.
+- **Clipping.** Pixels at the top or bottom color of the bar may be saturated: their true value can lie beyond the bar. The summary counts them.
+
+Large maps take a moment: a 600 × 400 px map at bin 1 takes about 1–2 s with CIEDE2000, and CIE76 (in *Settings*) is about 10× faster.
+
+
+## Settings
+
+*Settings* (top right) holds what belongs to you rather than to a figure. It is saved in the browser as you change it.
+
+- **Agent**: OpenRouter key (stored only if *Remember* is ticked), *Min. confidence*, *Max. steps*, *API base URL*, and the prompts of both agent modes and the label reader.
+- **Matching**: color difference, ΔE flag limit and, for ROI, the gray threshold. New panels start with these values; changing one applies it to every panel of that tool in the open project (Undo reverts it). Each panel keeps its own copy in the project zip, so a project reopens with the values it was made with.
+- **Hotkeys**, in sections (General, View and pages, Calibration, ROI, Map): press *Change* and then the new key. A key taken from another action of the same tool moves to the new one; ROI and Map actions can share keys, since only one tool is active. Esc, Space, Enter, Backspace and Delete are fixed. Keys are shown for your computer: Ctrl on Windows and Linux is ⌘ on a Mac, so the same settings work on both. Control (⌃) on a Mac and the Windows key are left to the system.
+- **Colors**: the colors of marks drawn over figures (grid and plot area, colorbar, flags, highlight, scale bar, ROI regions and masks, map axis ticks, profiles, trace and flags). Change them when they blend into a figure's colormap; *Reset* restores a default.
+- **Import and export**: *Export settings* writes `colormeris-settings.zip` (one `settings.json`); *Import settings* reads it back, or a bare `settings.json`. The API key is left out unless you tick *Include the API key*; importing a file without a key keeps the current one.
+
+
+## How heatmap values are computed
+
+- **Cell color**: each channel's median over the central part of the cell. The *Sampled area* setting controls how much, 50% by default. Using the center avoids grid lines, anti-aliased edges and JPEG noise.
+- **Colorbar**: sampled at 256 evenly spaced points from one end to the other. Each point averages ±*half-width* pixels across the bar.
+- **Matching**: the cell color is converted to CIELAB and matched to the nearest colorbar sample by CIEDE2000 (CIE76 is optional). The match is refined between neighbouring samples. That position along the bar is then converted to a value using the ticks.
+
+## Project zip layout
+
+```
+project.json            per panel: tool (heatmap, roi or map), page, grid, colorbar,
+                        labels, settings, review (accepted/rejected), for ROI
+                        the regions and scale bar, and for maps the bin size,
+                        axis ticks and profiles
+README.txt
+source/<original file>  the uploaded PDF/image
+source/page-<n>.png     the rendered image of each page that has panels
+data/<panel>.csv        heatmap: matrix of values
+data/<panel>_long.csv   heatmap: per-cell values with page, RGB and ΔE
+data/<panel>_rois.csv   ROI: measurements per region copy
+data/<panel>_map.csv    map: matrix of values with x and y at bin centres
+data/<panel>_map_long.csv  map: one row per value with ΔE and flags
+data/<panel>_profile_<name>.csv  map: values along each profile
+agent/actions.json      changes made through the agent API, in order
+agent/decisions.json    typed decisions (answer, confidence, source, applied)
+```
+
+The agent logs are written but not read back when a zip is reopened; panel reviews are (they live in `project.json`). Each panel records its `page`. Its coordinates are pixels in that page's `source/page-<n>.png`. Regions copied into every box are stored relative to a box, where a box spans 0–1 in each direction, with per-box nudges. A zip opens in either tool with everything in it. Version 1 zips load too; one without a tool is a heatmap project. Zips saved before the ROI tool was renamed (tool `ivis`) are refused with an error rather than opened as heatmaps.
+
+
+## Colormap viewer
+
+`colormaps.html` has five tabs (Browse, Compare, Identify, Recolor, CVD) over 1063 colormaps from Matplotlib, CMasher, Crameri, cmocean, colorcet, seaborn, CarbonPlan, NCL, SciVisColor, CARTOColors, MATLAB and R palettes. Tab, open map and comparison live in the URL. Data is generated by `scripts/export-mpl-colormaps.py` (command in CLAUDE.md); sources and filtering rules are in that script.
+
+- *Browse* shows each map as vector strips: as seen, as simulated for protanopia, deuteranopia and tritanopia, and in grayscale. Under *Views*, pick one view to show only that strip, wider; the page remembers your choice.
+- Hover a strip to see the hex, RGB, position and lightness (L*) of that color. Click to copy the hex. With the keyboard, focus a strip and use the arrow keys (Shift moves by 10).
+- Four columns rate each map as uniform (U), CVD-safe, grayscale-safe and readable: ✓ yes, ~ partly, ✕ no. Hover a rating for the numbers, and press **?** in the header for how they are made. Click a column name to sort by it (best first, then worst first). On phones the ratings are pills under the name.
+- *Readable* is about reading values back from colors, as Colormeris does. A color can be off by a few ΔE in a figure, so a difference under 3 ΔE2000 is not trusted. A map is less readable where values 5% apart look the same (flat zones), or where a color has a look-alike at least 10% away (ambiguous). jet is readable but not uniform.
+- The search box filters by name. *Filters* keeps maps rated yes (*All four ✓* for maps that pass everything). Under **⋯** are *Reversed*, which flips every map, and the full sort menu (for example *Most linear L\**). Each group folds; Rainbow and Others start folded and open when a search matches them.
+- Click a name, or the arrow at the end of its row, to see one map in detail. On wide screens it opens in a panel at the right and the list stays in place; on narrower ones it opens under the row. Esc closes it. It starts with one sentence per rating and four small square plots (in one row when there is room, else 2 × 2): L*, ΔE2000 steps, chroma and hue (hover a plot title's ⓘ for what to look for). Folded below are the L* stats with a table per view (smallest difference between values at least 10% apart, distinguishable levels, flat and ambiguous share; hover a row to mark the two closest colors on its strip), where values get confused on the strip, and the map's references. *Expand all* opens every fold at once.
+- Press + on a row to add it to the comparison (up to 10). A tray at the bottom lists the chosen maps. *Compare* shows them side by side: strips, four plots in a row (L*, ΔE2000 steps, chroma and hue) with all maps on the same axes and one legend (hover a name to highlight that map in every plot), and a sortable table of the key numbers (*All numbers* shows the rest; the best value in each column is bold). You can reorder or remove maps there. Use *Copy link* to share it (`colormaps.html?compare=viridis,cividis#compare`).
+- *Identify*: load an image (choose, drop or paste), then drag along its colorbar. The page snaps the line to the bar, samples it and lists the closest maps and their direction. *Use the whole image* matches the colors of a heatmap without a colorbar, but cannot tell the direction. *Show* opens a match in *Browse*, and *Recolor this figure* takes the image and the line to *Recolor*. The image never leaves the browser.
+- *Recolor*: load an image, drag along its colorbar and pick a new colormap (viridis by default; type in the field to search, or leave it empty to scroll through all of them, and `name_r` turns on *Reversed*). Every pixel with a color of the bar gets the new map's color at the same place on the bar, so a jet figure can be seen in viridis, for example. Pixels farther than *Match within* (ΔE) from the bar keep their color, so the background, text and axes stay as they are. When the background or other parts share colors with the bar, press *Draw regions* and drag rectangles on the original around the parts to recolor (the plot, the colorbar); only pixels inside them change. Press it again or Esc to stop drawing; *Whole image* removes the regions. When the old map is a known one and the line runs from its high end, the bar is read the other way, so low stays low. Hover a color in the figure, or a place on the strips under it, and every pixel with a similar value (*Similar within*, 2% of the bar by default) flashes quickly between its own color and its complementary color. With reduced motion turned on, the rest of the figure is dimmed instead. Press and hold the figure to see the other version (original or recolored); release to go back. *Original* / *Recolored* switch for good. *Download PNG* saves the recolored figure at full size.
+- *CVD*: see a figure next to how it may look with a color vision deficiency. The jet example is shown until you load your own image (choose, drop or paste; *Clear* goes back to the example). Pick *Protan*, *Deutan* or *Tritan*, *Gray* for achromatopsia (no color at all: the gray of the same luminance, as in *Browse*), or *All* for all four next to the original. *Severity* 1 is dichromacy; lower values are the milder anomalous trichromacy. *Recommended* follows the [DaltonLens review](https://daltonlens.org/opensource-cvd-simulation/): Brettel 1997 for tritan and Machado 2009 for protan and deutan; Brettel 1997, Viénot 1999 (protan and deutan only) and Machado 2009 can also be picked. Hover a spot to mark it on every panel and compare its colors (with ΔE2000); press and hold a simulation to see the original. *Download PNG* saves the simulation (with *All*, the five panels in a grid).
+- Colormap data is generated from Matplotlib, CMasher, cmcrameri, cmocean, colorcet, seaborn, the `colormaps` package (CarbonPlan, NCL, SciVisColor) the `cartocolor` npm package (fetched from unpkg) MATLAB's parula (values embedded in the script) and R palettes (`scripts/fetch-r-palettes.py` saves them from R Charts to `scripts/data/r-palettes.json`) by `uv run --with matplotlib --with cmasher --with cmcrameri --with cmocean --with colorcet --with seaborn --with colormaps python scripts/export-mpl-colormaps.py`. The CVD views use the Machado et al. (2009) model. Methods and references are in the fold at the bottom of the page.
+
