@@ -50,7 +50,7 @@ function result(): HeatmapResult {
 function setup(opts: { error?: string; kind?: string } = {}) {
   const project = createProject('heatmap');
   // Another tool's panel: the card gates on panel.tool (right after a switch, w.tool() may lag behind).
-  if (opts.kind) project.panels[0].tool = opts.kind as typeof project.panels[0]['tool'];
+  if (opts.kind) project.panels[0].tool = opts.kind as (typeof project.panels)[0]['tool'];
   project.activePanelId = project.panels[0].id;
   const app = { project, sourceCanvas: {}, hoverCell: null as unknown, tableCell: null as unknown, showRecon: false };
   const state = { res: (opts.error ? { error: opts.error } : result()) as HeatmapResult | { error: string } };
