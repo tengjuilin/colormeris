@@ -1,5 +1,7 @@
 import { cmapData } from '../core/colormap-library.ts';
 import type { CmapListItem, CmapViewerContext, CmapViewerState, ColormapEntry, ViewKey } from '../types/index.ts';
+import { mountCvdTab } from './app/cvd/index.ts';
+import { mountIdentifyTab } from './app/identify/index.ts';
 import { anchorPopover, clamp8, el, GLYPH, PILL, pct, RATING_COLS, roundRgb, svgEl, VIEWS } from './common.ts';
 import { setupCmapFooter } from './footer.ts';
 import {
@@ -16,9 +18,7 @@ import { keepPlaceOnResize } from './scroll-anchor.ts';
 import { setupCmapStrips } from './strips.ts';
 import { setupCmapBrowse } from './tabs/browse-tab.ts';
 import { setupCmapCompare } from './tabs/compare-tab.ts';
-import { setupCmapCvd } from './tabs/cvd-tab.ts';
 import { setupCmapDetail } from './tabs/detail-drawer.ts';
-import { setupCmapIdentify } from './tabs/identify-tab.ts';
 import { setupCmapRecolor } from './tabs/recolor-tab.ts';
 
 // The colormap viewer page (colormaps.html), in five tabs:
@@ -26,9 +26,9 @@ import { setupCmapRecolor } from './tabs/recolor-tab.ts';
 //             color-vision-deficiency simulations, grayscale) with rating
 //             columns; one map at a time opens in the detail view (detail-drawer.js)
 //   Compare   up to 10 maps side by side (compare-tab.js)
-//   Identify  find the colormap of a figure (identify-tab.js)
+//   Identify  find the colormap of a figure (app/identify, React)
 //   Recolor   redraw a figure in another colormap (recolor-tab.js)
-//   CVD       a figure next to a color-vision-deficiency simulation (cvd-tab.js)
+//   CVD       a figure next to a color-vision-deficiency simulation (app/cvd, React)
 // The tab, the open map and the comparison live in the URL (route.js). The
 // data comes from core/colormap-library.js, so the page needs no fetch and
 // works from file://.
@@ -41,7 +41,7 @@ import { setupCmapRecolor } from './tabs/recolor-tab.ts';
 //   plots.js          SVG plots and per-position profiles
 //   footer.js         references and the footer
 //   browse-tab.js     the Browse tab (rows, controls, sort, filters)
-//   detail-drawer.js, compare-tab.js, identify-tab.js, recolor-tab.js, cvd-tab.js
+//   detail-drawer.js, compare-tab.js, recolor-tab.js
 //   scroll-anchor.js  keeps the reader's place on resize
 
 export function setupColormapViewer(root: HTMLElement) {
@@ -128,6 +128,7 @@ export function setupColormapViewer(root: HTMLElement) {
   function syncTabs() {
     const n = state.selected.length;
     tabLinks.get('compare').textContent = n ? `Compare (${n})` : 'Compare';
+    identify.setCompared([...state.selected]);
   }
 
   function setTab(tab: string, { scroll = true } = {}) {
@@ -147,7 +148,7 @@ export function setupColormapViewer(root: HTMLElement) {
     recolor.sec.hidden = tab !== 'recolor';
     cvd.sec.hidden = tab !== 'cvd';
     if (tab === 'compare') compare.show();
-    if (tab === 'cvd') cvd.show();
+    cvd.setActive(tab === 'cvd');
     ctx.hideTip();
     detail.place();
     compare.syncTray();
@@ -216,11 +217,6 @@ export function setupColormapViewer(root: HTMLElement) {
       detail.syncCompare();
     },
     openDetail: (name: string) => detail.open(name),
-    recolorFigure: (file: File, line?: unknown) => {
-      goTab('recolor');
-      recolor.open(file, line);
-    },
-    showRow: (name: string, opts?: { smooth?: boolean }) => browse.showRow(name, opts),
     detail: null, // set below
     compare: null,
   } as unknown as CmapViewerContext; // the strips members are added just below
@@ -231,11 +227,21 @@ export function setupColormapViewer(root: HTMLElement) {
   // Builds the rows, which number the references in list order.
   const browse = setupCmapBrowse(ctx);
   Object.assign(ctx, { headerRow: browse.headerRow, applyStripView: browse.applyStripView, buildRow: browse.buildRow });
+  // Identify and CVD are React islands: data in, callbacks out.
+  const identify = mountIdentifyTab({
+    getTab: () => state.tab,
+    compared: [...state.selected],
+    onShowRow: (name) => browse.showRow(name),
+    onCompare: (name, on) => compare.setCompared(name, on),
+    onRecolor: (file, line) => {
+      goTab('recolor');
+      recolor.open(file, line);
+    },
+  });
+  const cvd = mountCvdTab({ active: false, getTab: () => state.tab });
   const detail = setupCmapDetail(ctx);
   const compare = setupCmapCompare(ctx);
-  const identify = setupCmapIdentify(ctx);
   const recolor = setupCmapRecolor(ctx);
-  const cvd = setupCmapCvd(ctx);
   Object.assign(ctx, { detail, compare });
 
   root.replaceChildren();

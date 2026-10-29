@@ -1459,7 +1459,8 @@ input.cmap-search {
   max-width: 920px;
   font-size: 13px;
 }
-.cmap-identify > * {
+.cmap-identify > *,
+.cmap-identify > .cmap-slot > * {
   margin-top: 8px;
 }
 .cmap-identify > h2 {
@@ -1592,7 +1593,8 @@ input.cmap-search {
   font-size: 13px;
   container-type: inline-size;
 }
-.cmap-recolor > * {
+.cmap-recolor > *,
+.cmap-recolor > .cmap-slot > * {
   margin-top: 8px;
 }
 .cmap-recolor > h2 {
@@ -1751,7 +1753,8 @@ input.cmap-search {
   font-size: 13px;
   container-type: inline-size;
 }
-.cmap-cvd > * {
+.cmap-cvd > *,
+.cmap-cvd > .cmap-slot > * {
   margin-top: 8px;
 }
 .cmap-cvd > h2 {

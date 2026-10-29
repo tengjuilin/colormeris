@@ -122,8 +122,6 @@ export interface CmapViewerContext {
   setCompared: (name: string, on: boolean) => void;
   onCompareChange: () => void;
   openDetail: (name: string) => void;
-  recolorFigure: (file: File, line?: unknown) => void;
-  showRow: (name: string, opts?: { smooth?: boolean }) => void;
   // ---- strips.ts members used by the map picker
   stripCanvas: (colors: Rgb[], qualitative: boolean) => HTMLCanvasElement;
   // ---- added by the modules: strips.ts (stripCanvas, renderStrip, makeStrip,

@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, test } from 'vitest';
 import { MapPicker } from './map-picker.tsx';
 
@@ -105,5 +106,35 @@ test('typed text is not overwritten by a new value while focused', async () => {
   const { input, user } = setup();
   await user.click(input);
   await user.keyboard('ma');
+  assert.equal(input.value, 'ma');
+});
+
+function Controlled() {
+  const [value, setValue] = useState<string | null>('viridis');
+  return <MapPicker id="c" label="Colormap" value={value} onChoose={(n) => setValue(n)} />;
+}
+
+test('after the user picks a map (Enter or click) the still-focused field shows it at once', async () => {
+  const user = userEvent.setup();
+  render(<Controlled />);
+  const input = screen.getByRole('combobox', { name: 'Colormap' }) as HTMLInputElement;
+  await user.click(input);
+  await user.keyboard('plas{Enter}');
+  assert.equal(document.activeElement, input);
+  assert.equal(input.value, 'plasma');
+  // And by mouse.
+  await user.clear(input);
+  await user.keyboard('mag');
+  await user.click(document.querySelector('[role=option][data-name="magma"]') as HTMLElement);
+  assert.equal(input.value, 'magma');
+});
+
+test('a value change from elsewhere does not overwrite text being typed', async () => {
+  const user = userEvent.setup();
+  const { rerender } = render(<MapPicker id="r" label="Colormap" value="viridis" onChoose={() => {}} />);
+  const input = screen.getByRole('combobox', { name: 'Colormap' }) as HTMLInputElement;
+  await user.click(input);
+  await user.keyboard('ma');
+  rerender(<MapPicker id="r" label="Colormap" value="plasma" onChoose={() => {}} />);
   assert.equal(input.value, 'ma');
 });

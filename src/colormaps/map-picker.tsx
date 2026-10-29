@@ -102,10 +102,12 @@ export function MapPicker({ id, label, placeholder, value, disabled, title, onCh
   const [active, setActive] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
-  // While the field has the focus its text is the user's, whatever `value` becomes.
+  // While the field has the focus its text is the user's, whatever `value` becomes ...
   const heldIdle = useRef(idle);
-  if (!focused) heldIdle.current = idle;
-  const shown = typed ?? (focused ? heldIdle.current : idle);
+  // ... except after the user's own pick: then the field follows `value` until they type again.
+  const [followed, setFollowed] = useState(false);
+  if (!focused || followed) heldIdle.current = idle;
+  const shown = typed ?? (focused && !followed ? heldIdle.current : idle);
 
   const hits = useMemo(() => (open ? matches(query) : []), [open, query]);
   const q = query.trim();
@@ -133,6 +135,7 @@ export function MapPicker({ id, label, placeholder, value, disabled, title, onCh
     const typedReversed = /_r$/i.test(text.trim()) && !mapByName.has(text.trim());
     close();
     setTyped(null);
+    setFollowed(true);
     onChoose(name, typedReversed);
   };
 
@@ -234,6 +237,7 @@ export function MapPicker({ id, label, placeholder, value, disabled, title, onCh
         value={shown}
         onFocus={(e) => {
           setFocused(true);
+          setFollowed(false);
           e.currentTarget.select();
           openWith('');
         }}
@@ -241,6 +245,7 @@ export function MapPicker({ id, label, placeholder, value, disabled, title, onCh
           if (!open) openWith('');
         }}
         onChange={(e) => {
+          setFollowed(false);
           setTyped(e.target.value);
           openWith(e.target.value);
         }}

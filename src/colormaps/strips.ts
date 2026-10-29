@@ -1,5 +1,7 @@
-import { rgbToHex } from '../core/color.ts';
 import type { CmapViewerContext, ColormapEntry, Rgb } from '../types/index.ts';
+import { paintStrip } from './strip-paint.ts';
+import { tipInfo } from './tooltip-core.ts';
+import { getTooltip } from './tooltip-element.ts';
 
 // Colormap strips (one canvas pixel per color, built when near the
 // viewport), the shared tooltip, and hover / click / keyboard probing of
@@ -23,9 +25,7 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
       height: '1',
       'aria-hidden': 'true',
     });
-    const img = new ImageData(n, 1);
-    colors.forEach((c, i) => img.data.set([c[0], c[1], c[2], 255], i * 4));
-    canvas.getContext('2d')!.putImageData(img, 0, 0);
+    paintStrip(canvas, colors);
     return canvas;
   }
 
@@ -73,67 +73,7 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
 
   // ---- shared tooltip ----
 
-  const tip = el('div', { class: 'cmap-tip', role: 'tooltip', hidden: '' });
-  const tipSwatch = el('span', { class: 'cmap-tip-swatch' });
-  const tipTitle = el('div', { class: 'cmap-tip-title' });
-  const tipLines = el('div', { class: 'cmap-tip-lines' });
-  const tipCopied = el('div', { class: 'cmap-tip-copied', hidden: '' }, 'Copied');
-  const tipHead = el('div', { class: 'cmap-tip-head' });
-  tipHead.append(tipSwatch, tipTitle);
-  tip.append(tipHead, tipLines, tipCopied);
-  document.body.append(tip);
-  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
-  let tipMarker: HTMLElement | null = null; // marker element to hide with the tooltip
-
-  function tipInfo(map: ColormapEntry, viewLabel: string, colors: Rgb[], Ls: number[], i: number) {
-    const n = colors.length;
-    const c = colors[i];
-    const hex = rgbToHex(c);
-    const pos = map.kind === 'qualitative' ? `color ${i + 1} of ${n}` : `t = ${(n > 1 ? i / (n - 1) : 0).toFixed(3)}`;
-    return {
-      hex,
-      c,
-      text: [hex, `rgb(${c[0]}, ${c[1]}, ${c[2]})`, pos, `L* = ${Ls[i].toFixed(1)}`],
-      title: `${map.name} · ${viewLabel}`,
-    };
-  }
-
-  function placeTip(x: number, y: number) {
-    // Measure first, then keep the tooltip fully inside the viewport.
-    const w = tip.offsetWidth;
-    const h = tip.offsetHeight;
-    const vw = document.documentElement.clientWidth;
-    const vh = window.innerHeight;
-    let left = x + 14;
-    let top = y + 16;
-    if (left + w > vw - 4) left = x - w - 14;
-    if (top + h > vh - 4) top = y - h - 12;
-    tip.style.left = `${Math.max(4, left)}px`;
-    tip.style.top = `${Math.max(4, top)}px`;
-  }
-
-  function showTip(info: { hex: string; title: string; text: string[] }, x: number, y: number) {
-    tip.hidden = false;
-    tipSwatch.style.background = info.hex;
-    tipTitle.textContent = info.title;
-    tipLines.replaceChildren(...info.text.map((t, k) => el('div', { class: k === 0 ? 'cmap-tip-hex' : '' }, t)));
-    tipCopied.hidden = true;
-    placeTip(x, y);
-  }
-
-  function hideTip() {
-    tip.hidden = true;
-    if (tipMarker) tipMarker.hidden = true;
-    tipMarker = null;
-  }
-
-  function flashCopied() {
-    tipCopied.hidden = false;
-    clearTimeout(copiedTimer);
-    copiedTimer = setTimeout(() => {
-      tipCopied.hidden = true;
-    }, 1200);
-  }
+  const { showTip, hideTip, flashCopied } = getTooltip();
 
   // ---- strip interaction (delegated) ----
 
@@ -149,14 +89,11 @@ export function setupCmapStrips(ctx: CmapViewerContext) {
     const label = VIEWS.find((v) => v.key === view)!.label;
     const vd = viewData(map, view, strip._cm.rev);
     const marker = strip.querySelector<HTMLElement>('.cmap-marker')!;
-    if (tipMarker && tipMarker !== marker) tipMarker.hidden = true;
-    tipMarker = marker;
-    marker.hidden = false;
     marker.style.left = `${((i + 0.5) / vd.colors.length) * 100}%`;
     strip._cm.probe = i;
     const info = tipInfo(map, label, vd.colors, vd.L!, i);
     strip._cm.lastHex = info.hex;
-    showTip(info, x, y);
+    showTip(info, x, y, marker);
   }
 
   root.addEventListener('pointermove', (e) => {
