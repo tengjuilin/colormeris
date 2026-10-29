@@ -11,7 +11,6 @@ import type {
   DecisionTools,
   HeatmapResult,
   Panel,
-  PixelImage,
   Point,
   RenderedView,
   RunUsage,

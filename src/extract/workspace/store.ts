@@ -1,6 +1,6 @@
 // The bridge between the imperative workspace and React: a version counter that is bumped whenever the
 // sidebar state may have changed. Project objects are mutated in place, so components subscribe to the
-// number (useWorkspace) and read the objects during render. See docs/react.md §1 and §8.
+// number (useWorkspace) and read the objects during render. See docs/react.md, "Extract page: the bridge".
 import { flushSafely } from '../../ui/flush.ts';
 
 let version = 0;

@@ -1,7 +1,7 @@
 // The Colorbar card: ends, the tick table, the sampled strip and the suggested reference colormap. The colors
 // come from the bar in the figure or from a known colormap (colorbar.colormap, picked with the colormap viewer's
 // picker); with a known colormap the bar line is optional and ticks can be typed as a position along the map.
-// Read in render, write in handlers that end in w.commit / w.changed (docs/react.md §10). Moving the focus to a
+// Read in render, write in handlers that end in w.commit / w.changed (docs/react.md, "The card pattern"). Moving the focus to a
 // new tick goes through tick-focus.ts; the sampled strip and the reference match are their own components.
 import { MapPicker } from '../../../colormaps/map-picker.tsx';
 import type { ColorbarScale } from '../../../types/index.ts';

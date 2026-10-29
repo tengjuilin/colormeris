@@ -239,13 +239,10 @@ export interface WorkspaceContext {
   updateModebar: () => void;
   changed: (opts?: { light?: boolean }) => void;
   setValue: (el: DomEl, value: string | number) => void;
-  setBadge: (el: HTMLElement, text: string, ok: boolean) => void;
   setPressed: (el: Element, on: boolean) => void;
   toast: (msg: string, isError?: boolean) => void;
   status: (msg: string) => void;
   zoomToPoints: (points: Point[]) => void;
-  bindNumber: (id: string, apply: (panel: Panel, value: number) => void) => void;
-  bindText: (id: string, apply: (panel: Panel, value: string) => void) => void;
   panelDefaults: (kind: ToolKind) => Partial<PanelSettings>;
   setTool: (kind: ToolKind, opts?: { quiet?: boolean }) => void;
   viewer: ViewerApi;
@@ -360,10 +357,7 @@ export interface Workspace {
   download: WorkspaceContext['download'];
   csvName: WorkspaceContext['csvName'];
   zoomToPoints: WorkspaceContext['zoomToPoints'];
-  bindNumber: WorkspaceContext['bindNumber'];
-  bindText: WorkspaceContext['bindText'];
   setValue: WorkspaceContext['setValue'];
-  setBadge: WorkspaceContext['setBadge'];
   setPressed: WorkspaceContext['setPressed'];
   strokeDual: WorkspaceContext['strokeDual'];
   polyPath: WorkspaceContext['polyPath'];

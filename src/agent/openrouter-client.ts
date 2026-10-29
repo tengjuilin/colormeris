@@ -65,7 +65,7 @@ export function makeDecisionClient({ key, base }: { key?: string; base?: string 
       if (e.name === 'AbortError') throw err;
       throw Object.assign(new Error(`Decision model: ${e.message}`), { network: true });
     }
-    const json = await res.json().catch(() => ({}) as Record<string, any>); // TODO(types): untyped JSON from the API
+    const json: Partial<DecisionResponse> & { error?: { message?: string } } = await res.json().catch(() => ({}));
     if (!res.ok || !json.answers) {
       const err: DecisionError = new Error(
         `Decision model: ${json.error?.message || res.statusText || 'no answers'} (${res.status})`,
@@ -73,7 +73,7 @@ export function makeDecisionClient({ key, base }: { key?: string; base?: string 
       err.status = res.status;
       throw err;
     }
-    return json;
+    return json as DecisionResponse;
   }
   function fetchDecision(body: DecisionRequest, signal: AbortSignal | undefined) {
     return fetch(`${origin}/api/alpha/decisions`, {

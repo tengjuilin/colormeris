@@ -1,7 +1,7 @@
 // The heatmap Results card: summary, the value table, CSV downloads and Copy table, and the Reconstruct
 // toggle. The table stays imperative (results-table.ts) inside a ref host: it can hold a million cells and the
 // hover highlight adds a class (`td.hl`) that React would wipe on a re-render. It is rebuilt only when the
-// cached result changes. Read in render, write in handlers (docs/react.md §10).
+// cached result changes. Read in render, write in handlers (docs/react.md, "The card pattern").
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { HeatmapResult, Panel, Workspace, WorkspaceContext } from '../../../types/index.ts';
 import { Btn, Check, Hint, MainStep, Notice, SplitActions } from '../../../ui/index.ts';

@@ -30,8 +30,11 @@ export const clamp8 = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
 export const roundRgb = (rgb: Rgb): Rgb => rgb.map(clamp8) as Rgb;
 export const pct = (v: number) => `${Math.round(v * 100)}%`;
 
-// biome-ignore lint/suspicious/noExplicitAny: TODO(types) DOM seam: callers read .value, .checked, ._cm and the like off the result
-export function el(tag: string, attrs?: Record<string, unknown> | null, text?: unknown): any {
+export function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  attrs?: Record<string, unknown> | null,
+  text?: unknown,
+): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
     if (k === 'class') e.className = String(v);
@@ -41,7 +44,10 @@ export function el(tag: string, attrs?: Record<string, unknown> | null, text?: u
   return e;
 }
 
-export function svgEl(tag: string, attrs?: Record<string, unknown>) {
+export function svgEl<K extends keyof SVGElementTagNameMap>(
+  tag: K,
+  attrs?: Record<string, unknown>,
+): SVGElementTagNameMap[K] {
   const e = document.createElementNS(SVG_NS, tag);
   for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, String(v));
   return e;

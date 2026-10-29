@@ -244,11 +244,6 @@ export function createWorkspace(): Workspace {
     tool.renderSidebar?.(panel, light);
   }
 
-  function setBadge(el: HTMLElement, text: string, ok: boolean) {
-    el.textContent = text;
-    el.className = `badge ${ok ? 'ok' : 'todo'}`;
-  }
-
   // Toggle buttons and chips: .active for the look, aria-pressed for screen readers.
   function setPressed(el: Element, on: boolean) {
     el.classList.toggle('active', on);
@@ -276,28 +271,6 @@ export function createWorkspace(): Workspace {
     const ys = points.map((p) => p.y);
     const pad = 20;
     viewer.zoomTo(Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad);
-  }
-
-  function bindNumber(id: string, apply: (panel: Panel, value: number) => void) {
-    const el = $(id);
-    el.addEventListener('focus', () => w.pushHistory());
-    el.addEventListener('input', () => {
-      const v = Number(el.value);
-      if (el.value === '' || !Number.isFinite(v)) return;
-      apply(activePanel(), v);
-      changed({ light: true });
-    });
-    el.addEventListener('change', () => changed());
-  }
-
-  function bindText(id: string, apply: (panel: Panel, value: string) => void) {
-    const el = $(id);
-    el.addEventListener('focus', () => w.pushHistory());
-    el.addEventListener('input', () => {
-      apply(activePanel(), el.value);
-      changed({ light: true });
-    });
-    el.addEventListener('change', () => changed());
   }
 
   // Matching settings live in the Settings dialog (settings-dialog.js). They
@@ -378,13 +351,10 @@ export function createWorkspace(): Workspace {
     updateModebar,
     changed,
     setValue,
-    setBadge,
     setPressed,
     toast,
     status,
     zoomToPoints,
-    bindNumber,
-    bindText,
     panelDefaults,
     setTool,
     ws: null as unknown as Workspace, // the public object, set below
@@ -447,10 +417,7 @@ export function createWorkspace(): Workspace {
     download: w.download,
     csvName: w.csvName,
     zoomToPoints,
-    bindNumber,
-    bindText,
     setValue,
-    setBadge,
     setPressed,
     strokeDual: w.strokeDual,
     polyPath: w.polyPath,

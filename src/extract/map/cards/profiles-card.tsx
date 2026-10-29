@@ -2,7 +2,7 @@
 // selects several, `selectedId` + `overlay`), the edited profile's fields, the plot and the sweep, and the
 // profile CSV. The plot canvas and the sweep animation stay imperative (profile-plot.ts, sweep.ts): the plot is
 // drawn in a layout effect after each render, and a sweep frame redraws it and the "line at" text through refs
-// without rendering the card. Read in render, write in handlers (docs/react.md §10).
+// without rendering the card. Read in render, write in handlers (docs/react.md, "The card pattern").
 import { useLayoutEffect, useRef } from 'react';
 import type { MapResult, Profile, ProfileSample } from '../../../types/index.ts';
 import {

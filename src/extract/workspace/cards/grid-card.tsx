@@ -2,7 +2,7 @@
 // options for heatmaps; box names for ROI. For the Map tool it is the Plot area card (the tool's `plotArea`):
 // corners only, with its size in pixels. Fields that belong to one tool are hidden, not unmounted, so the
 // ids stay in the DOM and the Options open state survives a tool switch. Read in render, write in handlers
-// (docs/react.md §10).
+// (docs/react.md, "The card pattern").
 import { cornerCellCenters, gridPixelSize, outerCorners } from '../../../core/grid.ts';
 import type { GridAnchor, GridShape } from '../../../types/index.ts';
 import {

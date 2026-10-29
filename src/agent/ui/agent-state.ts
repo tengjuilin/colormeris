@@ -116,9 +116,9 @@ export function answerText(a: unknown) {
       : String(a);
 }
 
-// TODO(types): SDK errors carry statusCode/status; the SDK error classes are not typed here.
-// biome-ignore lint/suspicious/noExplicitAny: see above
-export function errorText(err: any): string {
+// SDK errors carry statusCode or status; the SDK's error classes are not imported here.
+export function errorText(error: unknown): string {
+  const err = error as { statusCode?: number; status?: number; message?: string };
   const status = err.statusCode || err.status;
   if (status === 401) return 'The API key was rejected (401).';
   if (status === 402) return 'The OpenRouter account has no credit left (402).';

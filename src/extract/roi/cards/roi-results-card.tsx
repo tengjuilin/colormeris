@@ -1,7 +1,7 @@
 // The ROI Results card: summary, metric select, the region × measurement table, CSV download and Copy table.
 // The table stays imperative inside a ref host (cells carry data-r / data-c for the hover link to the image and
 // the table can be large); it is rebuilt only when the cached result, the metric or the unit changes.
-// Read in render, write in handlers (docs/react.md §10).
+// Read in render, write in handlers (docs/react.md, "The card pattern").
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { Panel, RoiResult, RoiStats, Workspace, WorkspaceContext } from '../../../types/index.ts';
 import { BoundSelect, Btn, Check, Field, Hint, Notice, SplitActions } from '../../../ui/index.ts';

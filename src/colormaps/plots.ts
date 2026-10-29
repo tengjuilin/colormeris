@@ -1,5 +1,7 @@
 import { rgbToHex } from '../core/color.ts';
-import type { ColormapEntry, ViewData, ViewKey } from '../types/index.ts';
+import type { ColormapEntry, Rgb, ViewData, ViewKey } from '../types/index.ts';
+import type { el as elFn, svgEl as svgElFn } from './common.ts';
+import type { colormapMetrics } from './metrics.ts';
 import type { Tooltip } from './tooltip-element.ts';
 
 // SVG plots of the colormap viewer: axes, line and dot series with a
@@ -9,16 +11,61 @@ import type { Tooltip } from './tooltip-element.ts';
 // React components use it.
 
 export interface PlotDeps {
-  // biome-ignore lint/suspicious/noExplicitAny: TODO(types) DOM seam, see common.ts el
-  el: (tag: string, attrs?: Record<string, unknown> | null, text?: unknown) => any;
-  svgEl: (tag: string, attrs?: Record<string, unknown>) => SVGElement;
+  el: typeof elFn;
+  svgEl: typeof svgElFn;
   viewData: (map: ColormapEntry, view: ViewKey, reversed: boolean) => ViewData;
-  // biome-ignore lint/suspicious/noExplicitAny: TODO(types) colormaps/metrics.ts colormapMetrics result
-  metrics: (map: ColormapEntry) => any;
+  metrics: (map: ColormapEntry) => ReturnType<typeof colormapMetrics>;
   rev: <T>(a: T[], reversed?: boolean) => T[];
   isRev: (map: ColormapEntry) => boolean;
   showTip: Tooltip['showTip'];
   hideTip: Tooltip['hideTip'];
+}
+
+/** One plotted sample: y null = skipped; pos and value are tooltip lines. */
+export interface PlotPoint {
+  x: number;
+  y: number | null;
+  color: Rgb;
+  pos: string;
+  value: string;
+}
+interface AxisTick {
+  x: number;
+  label: string;
+}
+interface PlotMargins {
+  l: number;
+  r: number;
+  t: number;
+  b: number;
+}
+interface AxesOptions {
+  W: number;
+  H: number;
+  m: PlotMargins;
+  yMax: number;
+  yTicks: number[];
+  xTicks: AxisTick[];
+  xLabel: string;
+  yLabel: string;
+}
+interface SeriesOptions {
+  points: PlotPoint[];
+  mode?: 'line' | 'dots';
+  dotR?: number;
+  halo?: boolean;
+  stroke?: string;
+}
+interface LinePlotOptions extends Omit<AxesOptions, 'm' | 'W' | 'H' | 'xLabel'> {
+  map: ColormapEntry;
+  title: string;
+  xLabel?: string;
+  points: PlotPoint[];
+  mode: 'line' | 'dots';
+  ref?: null | { x1: number; y1: number; x2: number; y2: number; label: string };
+  dotR?: number;
+  W?: number;
+  H?: number;
 }
 
 export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip, hideTip }: PlotDeps) {
@@ -38,7 +85,7 @@ export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip,
     return { top, ticks };
   }
 
-  function svgText(cls: any, attrs: any, str: any) {
+  function svgText(cls: string, attrs: Record<string, unknown>, str: string) {
     const t = svgEl('text', { class: cls, ...attrs });
     t.textContent = str;
     return t;
@@ -46,9 +93,9 @@ export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip,
 
   // Grid, ticks, frame and axis labels, shared by the single and the compare
   // plots. Returns the scales: x in 0–1, y in data units.
-  function drawAxes(svg: any, { W, H, m, yMax, yTicks, xTicks, xLabel, yLabel }: any) {
-    const px = (t: any) => m.l + t * (W - m.l - m.r);
-    const py = (v: any) => m.t + (1 - v / yMax) * (H - m.t - m.b);
+  function drawAxes(svg: SVGElement, { W, H, m, yMax, yTicks, xTicks, xLabel, yLabel }: AxesOptions) {
+    const px = (t: number) => m.l + t * (W - m.l - m.r);
+    const py = (v: number) => m.t + (1 - v / yMax) * (H - m.t - m.b);
     for (const v of yTicks) {
       svg.append(svgEl('line', { class: 'cmap-grid', x1: m.l, x2: W - m.r, y1: py(v), y2: py(v) }));
       svg.append(svgText('cmap-tick', { x: m.l - 6, y: py(v) + 3.5, 'text-anchor': 'end' }, String(v)));
@@ -75,7 +122,12 @@ export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip,
   // outline so lines that cross stay readable. `stroke` (a paint such as
   // url(#gradient) running along x) draws the line as one path instead of
   // one segment per sample: Compare's plots held about 15 000 elements.
-  function drawSeries(parent: any, { points, mode, dotR, halo, stroke }: any, px: any, py: any) {
+  function drawSeries(
+    parent: Element,
+    { points, mode, dotR = 3, halo, stroke }: SeriesOptions,
+    px: (x: number) => number,
+    py: (y: number) => number,
+  ) {
     if (mode === 'line') {
       const segs = [];
       for (let i = 0; i < points.length - 1; i++) {
@@ -86,7 +138,7 @@ export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip,
       }
       if (!segs.length) return;
       let d = '';
-      let end = null;
+      let end: [number, number] | null = null;
       for (const g of segs) {
         if (!end || end[0] !== g.x1 || end[1] !== g.y1) d += `M${g.x1} ${g.y1}`;
         d += `L${g.x2} ${g.y2}`;
@@ -126,7 +178,7 @@ export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip,
     dotR = 3,
     W = PW,
     H = PH,
-  }: any) {
+  }: LinePlotOptions) {
     const svg = svgEl('svg', {
       class: 'cmap-plot',
       viewBox: `0 0 ${W} ${H}`,
@@ -157,8 +209,8 @@ export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip,
       const x = (((e.clientX - r.left) / r.width) * W - M.l) / (W - M.l - M.r);
       let p = points[0];
       for (const q of points) if (Math.abs(q.x - x) < Math.abs(p.x - x)) p = q;
-      guide.setAttribute('x1', px(p.x));
-      guide.setAttribute('x2', px(p.x));
+      guide.setAttribute('x1', String(px(p.x)));
+      guide.setAttribute('x2', String(px(p.x)));
       guide.setAttribute('visibility', 'visible');
       const hex = rgbToHex(p.color);
       showTip(
@@ -179,7 +231,7 @@ export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip,
   }
 
   // `compact` puts the caption in a tooltip on the title, to keep plots short.
-  function figure(title: any, svg: any, caption: any, { compact = false } = {}) {
+  function figure(title: string, svg: SVGSVGElement, caption: string | null, { compact = false } = {}) {
     const fig = el('div', { class: 'cmap-fig' });
     const head = el('div', { class: 'cmap-fig-title' }, title);
     // Center the title over the x axis, not the whole plot: pad by the
@@ -208,7 +260,7 @@ export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip,
 
   // Per-position values of one map (in the current direction) and a point
   // builder shared by the single plots and the comparison plot.
-  function profile(map: any, reversed = isRev(map)) {
+  function profile(map: ColormapEntry, reversed = isRev(map)) {
     const colors = viewData(map, 'orig', reversed).colors;
     const Ls = viewData(map, 'orig', reversed).L;
     const m = metrics(map);
@@ -216,9 +268,9 @@ export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip,
     const h = rev(m.lch.h, reversed);
     const n = colors.length;
     const qual = map.kind === 'qualitative';
-    const xOf = (i: any) => (n > 1 ? i / (n - 1) : 0.5);
-    const posOf = (i: any) => (qual ? `color ${i + 1} of ${n}` : `t = ${xOf(i).toFixed(3)}`);
-    const pts = (ys: any, fmt: any, skip?: any) =>
+    const xOf = (i: number) => (n > 1 ? i / (n - 1) : 0.5);
+    const posOf = (i: number) => (qual ? `color ${i + 1} of ${n}` : `t = ${xOf(i).toFixed(3)}`);
+    const pts = (ys: number[], fmt: (v: number) => string, skip?: (i: number) => boolean): PlotPoint[] =>
       colors.map((c, i) => ({
         x: xOf(i),
         y: skip && skip(i) ? null : ys[i],
@@ -230,8 +282,11 @@ export function createPlots({ el, svgEl, viewData, metrics, rev, isRev, showTip,
   }
 
   // ΔE2000 between neighbors, one point per step, in the color at its middle.
-  function stepPoints(map: any, { colors, n, reversed }: any) {
-    const steps = rev(metrics(map).steps as number[], reversed);
+  function stepPoints(
+    map: ColormapEntry,
+    { colors, n, reversed }: { colors: Rgb[]; n: number; reversed: boolean },
+  ): PlotPoint[] {
+    const steps = rev(metrics(map).steps, reversed);
     const k = steps.length;
     return steps.map((v, i) => {
       const t = (i + 0.5) / k;

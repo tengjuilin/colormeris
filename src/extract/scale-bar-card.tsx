@@ -1,6 +1,6 @@
 // The Scale card, shared by the ROI and Map tools (both list 'sec-scale' in their sections). It acts on the
 // active panel's scale bar whatever the tool; measuring and drawing are plain functions in scale-bar.ts.
-// Read in render, write in handlers (docs/react.md §10).
+// Read in render, write in handlers (docs/react.md, "The card pattern").
 import { useLayoutEffect, useRef } from 'react';
 import type { ScaleUnit } from '../types/index.ts';
 import { BoundInput, BoundSelect, CardHead, Fields, Hint, IconBtn, InputPair, MainStep } from '../ui/index.ts';

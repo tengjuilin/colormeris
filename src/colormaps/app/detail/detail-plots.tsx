@@ -88,7 +88,7 @@ export function detailFigures(map: ColormapEntry, reversed: boolean): Fig[] {
       build() {
         const stepPts = stepPoints(map, { colors, n, reversed });
         const k = stepPts.length;
-        const axis = niceAxis(Math.max(...stepPts.map((p: { y: number }) => p.y)) * 1.05);
+        const axis = niceAxis(Math.max(...stepPts.map((p) => p.y ?? 0)) * 1.05);
         const mean = m.stepStats.mean;
         return figure(
           'Perceptual step ΔE2000',

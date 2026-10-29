@@ -1,7 +1,7 @@
 // The Map tool's Axes card: Add x / y ticks, the scale of each axis, and a tick table per axis (value, position
 // in % across the plot area, remove). Rows are keyed by tick id so a row keeps its input and focus while ticks
 // come and go. Handlers look the tick up in the live project by id. Read in render, write in handlers
-// (docs/react.md §10).
+// (docs/react.md, "The card pattern").
 import { useLayoutEffect, useRef } from 'react';
 import type { AxisScale, AxisTick, Panel, WorkspaceContext } from '../../../types/index.ts';
 import { BoundInput, BoundSelect, Btn, CardHead, Field, Hint, SplitActions } from '../../../ui/index.ts';

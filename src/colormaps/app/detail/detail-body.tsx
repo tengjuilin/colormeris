@@ -95,7 +95,6 @@ export const DetailBody = memo(function DetailBody({
   const [open, setOpen] = useState<ReadonlySet<FoldId>>(() => new Set(FOLD_IDS.filter((id) => folds.has(id))));
 
   // Focus the name when a map is opened (not on later renders or a move), and drop a tooltip left over from it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `map.name` is the trigger, not an input
   useEffect(() => {
     mounted++;
     if (lastFocused !== map.name) {

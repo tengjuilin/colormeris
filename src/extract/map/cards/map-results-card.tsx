@@ -1,6 +1,6 @@
 // The Map tool's Results card: bin size, the coordinate units, the value summary and the matrix downloads, and
 // the Reconstruct / Show flags toggles (which only change the drawing). Read in render, write in handlers
-// (docs/react.md §10).
+// (docs/react.md, "The card pattern").
 import type { MapField, MapResult, Panel } from '../../../types/index.ts';
 import { BoundInput, Btn, Check, Field, Fields, Hint, Notice, SplitActions } from '../../../ui/index.ts';
 import { formatNumber, mapLongCsv, mapMatrixCsv } from '../../project/project-files.ts';

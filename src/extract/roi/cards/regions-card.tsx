@@ -1,6 +1,6 @@
 // The ROI Regions card: draw toggles (E / R / P), the copy-into-every-box option, one chip per region (keyed by
 // region id) and, for the selected region, its name, Reset nudges and Delete. Read in render, write in handlers
-// (docs/react.md §10). The selection lives in the tool state (roi-tool.ts); Delete / Backspace is its onKey.
+// (docs/react.md, "The card pattern"). The selection lives in the tool state (roi-tool.ts); Delete / Backspace is its onKey.
 import type { Panel, Roi } from '../../../types/index.ts';
 import { Actions, BoundInput, Btn, CardHead, Check, Chip, ChipList, Field, SplitActions } from '../../../ui/index.ts';
 import { useBoundText } from '../../react/use-bound.ts';
