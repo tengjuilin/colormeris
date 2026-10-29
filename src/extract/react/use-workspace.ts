@@ -18,6 +18,8 @@ const FIXED_SECTIONS = ['sec-panels', 'sec-grid', 'sec-colorbar'];
 /** The rule renderSidebarDom applies to a section's `hidden`, without reading the DOM. */
 export function sectionVisible({ w }: WsContextValue, sectionId: string): boolean {
   if (!w.app.sourceCanvas) return false;
+  // The Agent card sits in its tool's slot instead of the tool's `sections` list (renderSidebarDom: data-tool).
+  if (sectionId === 'sec-agent') return w.tool().kind === 'heatmap';
   return FIXED_SECTIONS.includes(sectionId) || !!w.tool().sections?.includes(sectionId);
 }
 

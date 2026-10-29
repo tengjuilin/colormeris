@@ -8,6 +8,7 @@ export function Chip({
   title,
   dot,
   meta,
+  icon,
   className,
   children,
   ...rest
@@ -17,6 +18,8 @@ export function Chip({
   /** Status dot: `pending` is gray, `done` green, `rejected` red. */
   dot?: 'pending' | 'done' | 'rejected';
   meta?: ReactNode;
+  /** Element before the label (a shape swatch). */
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -29,6 +32,7 @@ export function Chip({
       title={title}
     >
       {dot ? <span className={dot === 'pending' ? 'status-dot' : `status-dot ${dot}`} /> : null}
+      {icon}
       <span className="chip-label">{children}</span>
       {meta !== undefined && meta !== null ? <span className="chip-meta">{meta}</span> : null}
     </button>

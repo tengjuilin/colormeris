@@ -1,4 +1,6 @@
-// Map tool, profile plot: draws the profiles on a canvas and traces the sample under the pointer.
+// Map tool, profile plot: draws the profiles on a canvas (owned by the Profiles card, handed over with
+// attach) and traces the sample under the pointer. Imperative on purpose: it redraws on every sweep frame and
+// trace move without going through React.
 
 import type { Panel, Profile, ProfileSample } from '../../../types/index.ts';
 import { lengthPerPixel, profileXKind } from '../field.ts';
@@ -27,9 +29,10 @@ interface PlotState {
   sy: (y: number) => number;
 }
 
-export function setupProfilePlot(mctx: MapToolContext) {
+export function createProfilePlot(mctx: MapToolContext) {
   const { ws, state } = mctx;
-  const { $, viewer } = ws;
+  const { viewer } = ws;
+  let canvas: HTMLCanvasElement | null = null;
 
   // state.trace = {id, i}: sample i of profile id, under the pointer on the
   // image (map-tool.ts) or on the plot. Both draw it, so the two stay in step.
@@ -67,7 +70,7 @@ export function setupProfilePlot(mctx: MapToolContext) {
   // series: [{profile, samples, divisor, color}]; values are plotted
   // divided by divisor (1 unless normalized).
   function drawProfiles(panel: Panel, series: Series[]) {
-    const canvas = $('profile-plot') as unknown as HTMLCanvasElement;
+    if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const cssW = canvas.clientWidth || 300;
     const cssH = canvas.clientHeight || 140;
@@ -99,7 +102,7 @@ export function setupProfilePlot(mctx: MapToolContext) {
     }));
     // The x span covers whole lines; values only the parts inside the plot area.
     const allX = lines.flatMap((s) => s.xs);
-    const allY = lines.flatMap((s) => s.ys.filter((y, i) => !s.samples[i].outside));
+    const allY = lines.flatMap((s) => s.ys.filter((_y, i) => !s.samples[i].outside));
     const [x0, x1] = [Math.min(...allX), Math.max(...allX)];
     let [y0, y1] = allY.length ? [Math.min(...allY), Math.max(...allY)] : [Infinity, -Infinity];
     // While sweeping, the value axis holds still (widened if a frame
@@ -240,9 +243,9 @@ export function setupProfilePlot(mctx: MapToolContext) {
 
   // Pointer on the plot → for each line the nearest sample along the
   // horizontal axis; of those, the one closest to the pointer vertically.
-  $('profile-plot').addEventListener('pointermove', (e) => {
-    if (!plot) return;
-    const r = $('profile-plot').getBoundingClientRect();
+  function onPointerMove(e: PointerEvent) {
+    if (!plot || !canvas) return;
+    const r = canvas.getBoundingClientRect();
     const mx = e.clientX - r.left;
     const my = e.clientY - r.top;
     let best: { score: number; trace: { id: string; i: number } } | null = null;
@@ -260,8 +263,20 @@ export function setupProfilePlot(mctx: MapToolContext) {
       if (!best || score < best.score) best = { score, trace: { id: s.profile.id, i } };
     }
     setTrace(best ? best.trace : null);
-  });
-  $('profile-plot').addEventListener('pointerleave', () => setTrace(null));
+  }
+  const onPointerLeave = () => setTrace(null);
+
+  /** Hand over the card's canvas; returns the detach function (an effect cleanup). */
+  function attach(el: HTMLCanvasElement) {
+    canvas = el;
+    el.addEventListener('pointermove', onPointerMove);
+    el.addEventListener('pointerleave', onPointerLeave);
+    return () => {
+      el.removeEventListener('pointermove', onPointerMove);
+      el.removeEventListener('pointerleave', onPointerLeave);
+      if (canvas === el) canvas = null;
+    };
+  }
 
   const shortLabel = (v: number) => {
     if (!Number.isFinite(v)) return '';
@@ -269,5 +284,7 @@ export function setupProfilePlot(mctx: MapToolContext) {
     return a !== 0 && (a >= 1e5 || a < 1e-2) ? v.toExponential(2) : String(Number(v.toPrecision(4)));
   };
 
-  return { drawProfiles, setTrace };
+  return { attach, drawProfiles, redraw: redrawProfile, setTrace };
 }
+
+export type ProfilePlot = ReturnType<typeof createProfilePlot>;

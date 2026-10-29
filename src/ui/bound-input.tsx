@@ -5,7 +5,7 @@
 // value shows even while the field keeps the focus.
 import { type ComponentProps, type ReactNode, type Ref, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-type Kind = 'number' | 'range' | 'text' | 'textarea';
+type Kind = 'number' | 'range' | 'text' | 'textarea' | 'password' | 'url';
 type El = HTMLInputElement & HTMLTextAreaElement;
 
 /** The number typed in a field, or null for "", "1e" or anything else that is not a finite number. */

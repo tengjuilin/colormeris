@@ -81,8 +81,9 @@ function ResultTable({ w, panel, res }: { w: WorkspaceContext; panel: Panel; res
 export function HeatmapResultsCard() {
   const { ws, w } = useWorkspace({ section: 'sec-hm-results' });
   const panel = w.activePanel();
-  // Only the heatmap tool shows this card; another tool's result has no cells.
-  const res: Result = w.tool().kind === 'heatmap' ? (ws.resultFor(panel) as Result) : { error: '' };
+  // Only heatmap panels have cells. Gate on the panel, not w.tool(): right after a tool switch the active panel
+  // may already belong to the new tool.
+  const res: Result = panel.tool === 'heatmap' ? (ws.resultFor(panel) as Result) : { error: '' };
   const error = 'error' in res && res.error ? res.error : '';
   // O(cells): recomputed only when the result or the flag threshold changes, not on every render.
   const maxDeltaE = panel.settings.maxDeltaE;

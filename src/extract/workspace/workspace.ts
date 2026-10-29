@@ -172,7 +172,9 @@ export function createWorkspace(): Workspace {
     (type === 'grid' && tool.gridTexts) ||
     MODE_TEXT[type];
 
-  function setMode(type: string | null) {
+  // `notify: false` is for setTool only: a render queued before the tool switches would run against the new
+  // tool's panel (a card of the old tool computing its result for a panel of another tool).
+  function setMode(type: string | null, { notify: notifyCards = true }: { notify?: boolean } = {}) {
     if (type && !app.sourceCanvas) return;
     if (type === 'tick') {
       const cb = activePanel().colorbar;
@@ -186,7 +188,7 @@ export function createWorkspace(): Workspace {
     tool.onModeChange?.(type);
     viewer.requestDraw();
     // Light: nearly every caller follows with changed(), whose full notify renders once.
-    notify({ light: true });
+    if (notifyCards) notify({ light: true });
   }
 
   function updateModebar() {
@@ -323,7 +325,7 @@ export function createWorkspace(): Workspace {
   function setTool(kind: ToolKind, { quiet = false }: { quiet?: boolean } = {}) {
     if (!tools[kind] || tool?.kind === kind) return;
     if (tool) {
-      setMode(null);
+      setMode(null, { notify: false });
       if (app.sourceCanvas) {
         app.lastActive.set(activeKey(), activePanel()?.id);
         // Drop the old tool's untouched placeholder panels on this page.

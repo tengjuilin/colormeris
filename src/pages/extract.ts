@@ -3,7 +3,7 @@ import * as m_agent_decide from '../agent/decide.ts';
 import * as m_agent_labels from '../agent/labels.ts';
 import * as m_agent_llm from '../agent/llm.ts';
 import * as m_agent_schema from '../agent/schema.ts';
-import { setupAgentPanel } from '../agent/ui/agent-card.ts';
+import { setupAgentPanel } from '../agent/ui/agent-card.tsx';
 import { setupLabelReader } from '../agent/ui/labels-reader.ts';
 import * as m_core_color from '../core/color.ts';
 import * as m_core_colorbar from '../core/colorbar.ts';

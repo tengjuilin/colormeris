@@ -64,43 +64,7 @@
         <p class="muted">Switch tools at the top at any time: the file and both tools' work stay, and one project zip holds everything. Scroll to zoom, drag to pan, ← → to flip PDF pages, drag handles to adjust. Esc cancels, Ctrl+Z (⌘Z on a Mac) undoes; change the hotkeys in <i>Settings</i>. Everything runs in your browser; files are never uploaded, except page images sent to OpenRouter when you run the agent.</p>
       </details>
 
-      <section class="card agent" id="sec-agent" data-tool="heatmap">
-        <div class="card-head">
-          <h2>Agent</h2>
-          <span id="agent-badge" class="badge">off</span>
-          <div class="head-actions segmented" role="group" aria-label="Agent mode">
-            <button type="button" class="btn" id="agent-mode-agent" data-mode="agent" aria-pressed="true" title="Agent only: the LLM finds, places and checks everything itself">Agent only</button>
-            <button type="button" class="btn" id="agent-mode-decision" data-mode="decision" aria-pressed="false" title="Agent decision: the LLM describes each heatmap and reads its labels; a decision model locates the cells and colorbar and checks the result, and the app counts rows and columns. Fewer LLM steps and images.">Agent decision</button>
-          </div>
-        </div>
-        <button type="button" class="btn block" id="agent-open-settings" data-icon="settings" title="API key, base URL, confidence and step limits (Settings → Agent)">API key and limits</button>
-        <div class="fields">
-          <label class="field" title="OpenRouter model id; needs vision and tool calls">Agent model
-            <input id="agent-llm" type="text" list="agent-llm-list" spellcheck="false">
-            <datalist id="agent-llm-list"></datalist>
-          </label>
-          <label class="field" id="agent-decision-field" hidden title="OpenRouter decision model that takes images (output: decisions); answers one heatmap at a time">Decision model
-            <input id="agent-decision" type="text" list="agent-decision-list" spellcheck="false">
-            <datalist id="agent-decision-list"></datalist>
-          </label>
-          <label class="field">Pages
-            <select id="agent-pages">
-              <option value="current">Current page</option>
-              <option value="all">All pages</option>
-              <option value="range">Pages…</option>
-            </select>
-          </label>
-          <label class="field" id="agent-range-field" hidden>Page range <input id="agent-range" type="text" placeholder="e.g. 2-4, 7" spellcheck="false"></label>
-        </div>
-        <button class="btn primary block" id="agent-run" data-icon="play" disabled title="An LLM finds and calibrates the heatmaps with your own OpenRouter key. Page images and extracted values are sent to OpenRouter and the model providers you pick.">Run agent</button>
-        <button class="btn danger block" id="agent-stop" data-icon="stop" hidden>Stop agent</button>
-        <div id="agent-review" class="agent-review" hidden>
-          <h3>Needs review</h3>
-          <ul id="agent-review-list"></ul>
-        </div>
-        <ol id="agent-log" class="agent-log" hidden></ol>
-        <span id="agent-status" class="hint"></span>
-      </section>
+      <section class="card agent" id="sec-agent" data-tool="heatmap" hidden></section>
 
       <section class="card" id="sec-panels" hidden>
       </section>
@@ -110,179 +74,19 @@
       <section class="card" id="sec-colorbar" hidden>
       </section>
 
-      <section class="card" id="sec-rois" hidden>
-        <div class="card-head">
-          <h2><span class="step-dot roi-dot"></span>Regions</h2>
-          <span id="roi-state" class="badge"></span>
-        </div>
-        <div class="card-actions split" role="toolbar" aria-label="Draw a region">
-          <button class="btn" id="tool-ellipse" aria-pressed="false" title="Ellipse (E) — hold Shift for a circle" data-hotkey="ellipse" data-title="Ellipse ({key}) — hold Shift for a circle"><span class="shape-icon ellipse" aria-hidden="true"></span>Ellipse</button>
-          <button class="btn" id="tool-rect" aria-pressed="false" title="Rectangle (R) — hold Shift for a square" data-hotkey="rect" data-title="Rectangle ({key}) — hold Shift for a square"><span class="shape-icon rect" aria-hidden="true"></span>Rectangle</button>
-          <button class="btn" id="tool-polygon" aria-pressed="false" title="Polygon (P) — click points, then click the first point or press Enter" data-hotkey="polygon" data-title="Polygon ({key}) — click points, then click the first point or press Enter"><span class="shape-icon polygon" aria-hidden="true"></span>Polygon</button>
-        </div>
-        <label class="check"><input id="roi-replicate" type="checkbox" checked> Copy new regions into every grid box</label>
-        <ul id="roi-list" class="chip-list"></ul>
-        <div id="roi-edit" hidden>
-          <label class="field" title="Drag a copy to nudge it in its box; Alt-drag moves all copies. Handles resize the shape everywhere.">Region name <input id="roi-name" type="text" spellcheck="false"></label>
-          <div class="card-actions">
-            <button class="btn" id="roi-reset" data-icon="reset" title="Put every copy back at the shared position">Reset nudges</button>
-            <button class="btn danger" id="roi-delete" data-icon="trash" title="Delete (Delete or Backspace; ⌫ on a Mac)">Delete</button>
-          </div>
-        </div>
-      </section>
+      <section class="card" id="sec-rois" hidden></section>
 
-      <section class="card" id="sec-scale" hidden>
-        <div class="card-head">
-          <h2>Scale <span class="tag">optional</span></h2>
-          <span id="scale-state" class="badge"></span>
-          <div class="head-actions">
-            <button class="btn danger icon-only" id="scale-clear" data-icon="trash" title="Remove the scale bar" aria-label="Remove the scale bar"></button>
-          </div>
-        </div>
-        <button class="btn block" id="scale-place" data-icon="ruler" title="Click both ends of a scale bar (or any known distance), then type its length">Measure scale bar</button>
-        <div class="fields">
-          <div class="field"><label for="scale-length">Length</label>
-            <span class="input-pair">
-              <input id="scale-length" type="number" min="0" step="any" value="1">
-              <select id="scale-unit" aria-label="Unit"><option value="cm">cm</option><option value="mm">mm</option><option value="µm">µm</option><option value="nm">nm</option></select>
-            </span>
-          </div>
-        </div>
-        <p id="scale-info" class="hint"></p>
-      </section>
+      <section class="card" id="sec-scale" hidden></section>
 
-      <section class="card" id="sec-axes" hidden>
-        <div class="card-head">
-          <h2 title="Click labelled ticks on each axis and type their values. Without them, coordinates are pixels from the plot's top-left corner.">Axes <span class="tag">optional</span></h2>
-          <span id="axes-state" class="badge"></span>
-        </div>
-        <div class="card-actions split">
-          <button class="btn" id="axis-x-add" data-icon="plus" aria-pressed="false" title="Shortcut: X" data-hotkey="xtick" data-title="Shortcut: {key}">Add x ticks</button>
-          <button class="btn" id="axis-y-add" data-icon="plus" aria-pressed="false" title="Shortcut: Y" data-hotkey="ytick" data-title="Shortcut: {key}">Add y ticks</button>
-        </div>
-        <div class="axis-block">
-          <label class="field">X scale
-            <select id="axis-x-scale">
-              <option value="linear">Linear</option>
-              <option value="log10">Log10</option>
-            </select>
-          </label>
-          <table class="ticks" hidden>
-            <thead><tr><th>X value</th><th>Position</th><th></th></tr></thead>
-            <tbody id="axis-x-ticks"></tbody>
-          </table>
-          <p id="axis-x-problem" class="hint"></p>
-        </div>
-        <div class="axis-block">
-          <label class="field">Y scale
-            <select id="axis-y-scale">
-              <option value="linear">Linear</option>
-              <option value="log10">Log10</option>
-            </select>
-          </label>
-          <table class="ticks" hidden>
-            <thead><tr><th>Y value</th><th>Position</th><th></th></tr></thead>
-            <tbody id="axis-y-ticks"></tbody>
-          </table>
-          <p id="axis-y-problem" class="hint"></p>
-        </div>
-      </section>
+      <section class="card" id="sec-axes" hidden></section>
 
-      <section class="card" id="sec-profiles" hidden>
-        <div class="card-head">
-          <h2>Profiles</h2>
-          <span id="profile-state" class="badge"></span>
-          <div class="head-actions">
-            <button class="btn danger icon-only" id="profile-delete" data-icon="trash" title="Delete (Delete or Backspace; ⌫ on a Mac)" aria-label="Delete (Delete or Backspace; ⌫ on a Mac)" hidden></button>
-          </div>
-        </div>
-        <button class="btn block" id="profile-add" data-icon="line" aria-pressed="false" title="Draw a line to read values along it. Shortcut: L" data-hotkey="profile" data-title="Draw a line to read values along it. Shortcut: {key}">Draw profile</button>
-        <div class="card-actions">
-          <button class="btn subtle" id="profile-all" data-icon="layers" title="Overlay all profiles in the plot; Shift-click chips or lines to pick some" hidden>Overlay all</button>
-        </div>
-        <ul id="profile-list" class="chip-list"></ul>
-        <div id="profile-edit" hidden>
-          <div class="fields">
-            <label class="field">Name <input id="profile-name" type="text" spellcheck="false"></label>
-            <label class="field" id="profile-length-field"><span id="profile-length-label">Length (px)</span> <input id="profile-length" type="number" min="0" step="any" class="num"></label>
-            <label class="field" title="Values are averaged over this many pixels on each side of the line">Width (± px) <input id="profile-width" type="number" min="0" max="50" step="1" class="num"></label>
-          </div>
-        </div>
-        <div id="profile-view" hidden>
-          <p id="profile-problem" class="notice"></p>
-          <div class="fields">
-            <label class="field" title="What the plot's horizontal axis shows: axis values (with axis ticks), or the distance from the profile's start in pixels or in scale-bar units. Shared with the Results card's Coordinates.">X axis <select id="profile-x">
-              <option value="axis">Axis</option>
-              <option value="px">px</option>
-              <option value="length">Scale bar</option>
-            </select></label>
-            <label class="field" title="Divide each profile by its own maximum or mean to compare shapes rather than signal levels">Scale <select id="profile-norm">
-              <option value="raw">Values</option>
-              <option value="max">÷ each max</option>
-              <option value="mean">÷ each mean</option>
-            </select></label>
-            <label class="field" title="How fast the profile moves when swept, in page pixels per second">Speed (px/s) <input id="profile-sweep-speed" type="number" min="1" max="500" step="any" value="20" class="num"></label>
-          </div>
-          <label class="check" title="Keep going until no part of the line is inside the plot area, then turn. Off: turn as soon as the line touches an edge.">
-            <input id="profile-sweep-runoff" type="checkbox"> Run off the edge</label>
-          <button class="btn primary block" id="profile-sweep" data-icon="play" aria-pressed="false" title="Move the profile across the plot area, perpendicular to itself, and back (Shortcut: K)" data-hotkey="sweepProfile" data-title="Move the profile across the plot area, perpendicular to itself, and back (Shortcut: {key})">Sweep</button>
-          <p id="profile-sweep-at" class="profile-at" title="Where the profile's midpoint is, across the direction it sweeps (units as in Coordinates)"></p>
-          <canvas id="profile-plot" class="profile-plot" aria-label="Values along the selected profiles"></canvas>
-          <button class="btn block" id="profile-csv" data-icon="download">Download profile CSV</button>
-        </div>
-      </section>
+      <section class="card" id="sec-profiles" hidden></section>
 
-      <section class="card" id="sec-map-results" hidden>
-        <div class="card-head">
-          <h2>Results</h2>
-          <label class="check"><input id="map-recon" type="checkbox"> Reconstruct</label>
-          <label class="check" title="Red: color far from the colorbar (ΔE). Magenta / cyan: at the top / bottom end of the colorbar, possibly clipped. Colors can be changed in Settings."><input id="map-flags" type="checkbox"> Show flags</label>
-        </div>
-        <div class="fields">
-          <label class="field" title="Side of the square bins in pixels of the rendered image; each bin is the median of its pixels. 1 = one value per pixel.">Bin size (px) <input id="map-bin" type="number" min="1" max="256" step="1"></label>
-          <label class="field" title="How x and y are reported in the CSVs and the status bar: axis values (with axis ticks), pixels from the plot's top-left corner, or scale-bar lengths from that corner. Shared with the profile plot's X axis.">Coordinates <select id="map-units">
-            <option value="axis">Axis</option>
-            <option value="px">px</option>
-            <option value="length">Scale bar</option>
-          </select></label>
-        </div>
-        <p id="map-problem" class="notice"></p>
-        <p id="map-summary" class="hint"></p>
-        <p id="map-axis-hint" class="hint"></p>
-        <div class="card-actions split">
-          <button class="btn primary" id="map-dl-csv" data-icon="download" title="The value matrix: one row per bin row, one column per bin column">Download CSV</button>
-          <button class="btn" id="map-dl-long" data-icon="download" title="One line per bin with its coordinates, ΔE and flags">Long CSV</button>
-        </div>
-      </section>
+      <section class="card" id="sec-map-results" hidden></section>
 
       <section class="card" id="sec-hm-results" hidden></section>
 
-      <section class="card" id="sec-roi-results" hidden>
-        <div class="card-head">
-          <h2>Results</h2>
-          <label class="check" title="Tint the pixels counted as signal"><input id="toggle-mask" type="checkbox"> Show signal</label>
-        </div>
-        <p id="roi-result-problem" class="notice"></p>
-        <p id="roi-result-summary" class="hint"></p>
-        <label class="field">Show
-          <select id="result-metric">
-            <option value="sum">Total signal (sum)</option>
-            <option value="mean">Mean over region</option>
-            <option value="max">Max</option>
-            <option value="meanSignal">Mean over signal pixels</option>
-            <option value="signalPx">Signal area (px)</option>
-            <option value="areaPx">Region area (px)</option>
-            <option value="sumArea" data-scaled>Total signal × area</option>
-            <option value="signalArea" data-scaled>Signal area (unit²)</option>
-            <option value="area" data-scaled>Region area (unit²)</option>
-          </select>
-        </label>
-        <div class="table-wrap"><table id="roi-result-table" class="result-table"></table></div>
-        <div class="card-actions split">
-          <button class="btn primary" id="roi-dl-csv" data-icon="download">Download CSV</button>
-          <button class="btn" id="roi-copy-tsv" data-icon="copy" title="Copy the table to paste into a spreadsheet">Copy table</button>
-        </div>
-      </section>
+      <section class="card" id="sec-roi-results" hidden></section>
     </aside>
 
     <div class="stage">
@@ -343,126 +147,7 @@
       </footer>
     </div>
   </main>
-  <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
-    <form method="dialog" class="settings-head">
-      <h2 id="settings-title">Settings</h2>
-      <button class="btn ghost icon" value="close" aria-label="Close settings" title="Close (Esc)">×</button>
-    </form>
-    <div class="settings-body">
-      <nav class="settings-nav" aria-label="Settings sections">
-        <button type="button" class="active" data-settings-tab="agent">Agent</button>
-        <button type="button" data-settings-tab="matching">Matching</button>
-        <button type="button" data-settings-tab="hotkeys">Hotkeys</button>
-        <button type="button" data-settings-tab="colors">Colors</button>
-        <button type="button" data-settings-tab="transfer">Import and export</button>
-      </nav>
-
-      <section class="settings-pane" data-settings-pane="agent">
-        <h3>Agent</h3>
-        <p class="muted small">Used by the <i>Agent</i> card of the heatmap tool. Settings are saved in this browser as you change them.</p>
-        <label class="field">OpenRouter API key (required)
-          <input id="agent-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…">
-        </label>
-        <label class="check small"><input id="agent-remember" type="checkbox"> Remember the key in this browser</label>
-        <div class="row">
-          <label class="field" title="Answers to typed questions below this confidence (given through the API) are left for you under Needs review">Min. confidence <input id="agent-minconf" type="number" min="0" max="1" step="0.01" class="num"></label>
-          <label class="field" title="The run stops after this many LLM calls">Max. steps <input id="agent-steps" type="number" min="5" max="400" class="num"></label>
-        </div>
-        <label class="field">API base URL (optional) <input id="agent-base" type="url" spellcheck="false" placeholder="https://openrouter.ai/api/v1"></label>
-        <p class="muted small">Get a key at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>. Without <i>Remember</i>, the key is forgotten when you close the page. The base URL is for OpenRouter-compatible proxies (such as <code>npm run proxy</code> at <code>http://localhost:8787/api/v1</code>, which adds the key itself); leave it empty otherwise.</p>
-        <h3>Prompts</h3>
-        <p class="muted small">The instructions sent to the models. Edits are saved with the settings; <i>Reset</i> goes back to the built-in text.</p>
-        <label class="field" title="System prompt of the extraction agent (Run agent)">Agent prompt <textarea id="agent-prompt" rows="10" spellcheck="false"></textarea></label>
-        <div class="row"><button id="agent-prompt-reset" class="btn" type="button">Reset agent prompt</button></div>
-        <label class="field" title="System prompt of the LLM in Agent decision mode">Agent decision prompt <textarea id="agent-decision-prompt" rows="10" spellcheck="false"></textarea></label>
-        <div class="row"><button id="agent-decision-prompt-reset" class="btn" type="button">Reset agent decision prompt</button></div>
-        <label class="field" title="System prompt of Read labels with AI (Grid card)">Label reader prompt <textarea id="agent-labels-prompt" rows="6" spellcheck="false"></textarea></label>
-        <div class="row"><button id="agent-labels-prompt-reset" class="btn" type="button">Reset label reader prompt</button></div>
-      </section>
-
-      <section class="settings-pane" data-settings-pane="matching" hidden>
-        <h3>Matching</h3>
-        <p class="muted small">How colors are matched to the colorbar. New panels start with these values; changing one here applies it to every panel of that tool in the open project (Undo reverts it). Panels keep their values in the project zip.</p>
-        <p id="matching-note" class="notice small"></p>
-        <fieldset>
-          <legend>Heatmap</legend>
-          <div class="row wrap">
-            <label class="field">Color difference
-              <select id="set-hm-distance">
-                <option value="de2000">CIEDE2000</option>
-                <option value="de76">CIE76 (Lab distance)</option>
-              </select>
-            </label>
-            <label class="field">Flag colors with ΔE above <input id="set-hm-maxde" type="number" min="0" step="0.5" class="num"></label>
-          </div>
-          <p class="muted small">Cells whose color is further than the ΔE limit from every colorbar color are outlined in red.</p>
-        </fieldset>
-        <fieldset>
-          <legend>ROI</legend>
-          <div class="row wrap">
-            <label class="field">Background: gray up to chroma <input id="set-roi-gray" type="number" min="0" max="60" step="1" class="num"></label>
-            <label class="field">Color difference
-              <select id="set-roi-distance">
-                <option value="de2000">CIEDE2000</option>
-                <option value="de76">CIE76 (Lab distance)</option>
-              </select>
-            </label>
-            <label class="field">Flag colors with ΔE above <input id="set-roi-maxde" type="number" min="0" step="0.5" class="num"></label>
-          </div>
-          <p class="muted small">Pixels whose color is nearly gray (CIELAB chroma at or below the threshold) are background with no signal. Colored pixels that match no colorbar color (ΔE above the limit, e.g. colored text) are counted as signal but reported as flagged.</p>
-        </fieldset>
-        <fieldset>
-          <legend>Map</legend>
-          <div class="row wrap">
-            <label class="field">Color difference
-              <select id="set-map-distance">
-                <option value="de2000">CIEDE2000</option>
-                <option value="de76">CIE76 (Lab distance)</option>
-              </select>
-            </label>
-            <label class="field">Flag colors with ΔE above <input id="set-map-maxde" type="number" min="0" step="0.5" class="num"></label>
-          </div>
-          <p class="muted small">Values whose color is further than the ΔE limit from every colorbar color are shown in red under <i>Show flags</i>. CIE76 is about 10× faster on large maps.</p>
-        </fieldset>
-        <div class="row"><button type="button" class="btn small" id="matching-reset">Reset matching to defaults</button></div>
-      </section>
-
-      <section class="settings-pane" data-settings-pane="hotkeys" hidden>
-        <h3>Hotkeys</h3>
-        <p class="muted small">Click <i>Change</i>, then press the new key or combination. A key used by another action in the same tool moves to this one; ROI and Map actions may share keys, since only one tool is active at a time. Esc (cancel), Space (pan), Enter and Backspace (polygons) and Delete or Backspace (regions, profiles) are fixed. Ctrl on Windows and Linux is ⌘ on a Mac, so hotkeys (and settings files) work on both; Control (⌃) on a Mac and the Windows key are left to the system.</p>
-        <div id="hotkey-list" class="hotkey-list"></div>
-        <div class="row"><button type="button" class="btn small" id="hotkeys-reset">Reset all hotkeys</button></div>
-      </section>
-
-      <section class="settings-pane" data-settings-pane="colors" hidden>
-        <h3>Colors</h3>
-        <p class="muted small">Colors of the marks drawn over figures: corners, colorbar, regions, profiles and flags. Pick colors that stand out from the figure's own colormap. Masks and flag layers keep their transparency.</p>
-        <div id="color-list" class="color-list"></div>
-        <div class="row"><button type="button" class="btn small" id="colors-reset">Reset all colors</button></div>
-      </section>
-
-      <section class="settings-pane" data-settings-pane="transfer" hidden>
-        <h3>Import and export</h3>
-        <p class="muted small">Save all settings (agent, matching, hotkeys and colors) to a zip, and load them in another browser or after clearing this one.</p>
-        <fieldset>
-          <legend>Export</legend>
-          <label class="check small"><input id="settings-include-key" type="checkbox"> Include the API key</label>
-          <p class="muted small">The key is stored as plain text in the zip. Anyone with the file can spend your OpenRouter credit.</p>
-          <div class="row"><button type="button" class="btn primary" id="settings-export">Export settings (.zip)</button></div>
-        </fieldset>
-        <fieldset>
-          <legend>Import</legend>
-          <p class="muted small">Replaces the current settings. If the file has no API key, the current key is kept.</p>
-          <div class="row"><label class="btn">Import settings…<input id="settings-import" type="file" accept=".zip,.json,application/zip,application/json" hidden></label></div>
-        </fieldset>
-        <fieldset>
-          <legend>Reset</legend>
-          <div class="row"><button type="button" class="btn danger" id="settings-reset">Reset all settings</button></div>
-          <p class="muted small">Back to the defaults; the API key is kept.</p>
-        </fieldset>
-      </section>
-    </div>
-  </dialog>
+  <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title"></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

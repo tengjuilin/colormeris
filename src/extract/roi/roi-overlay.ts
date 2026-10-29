@@ -4,7 +4,7 @@ import { boxLabel, colorbarProblem } from '../project/project.ts';
 import { drawScaleBar, drawScalePreview } from '../scale-bar.ts';
 import { hexToRgb } from '../settings/settings.ts';
 import { boxGeom, roiControlPoints, roiFromLocal, roiInstances, shapeOutline } from './geometry.ts';
-import { metricValue, panelClassifier, shortNumber } from './quantify.ts';
+import { metricFor, metricValue, panelClassifier, shortNumber } from './quantify.ts';
 import type { RoiToolContext } from './roi-tool.ts';
 
 // ROI tool, DOM: what the tool draws over the image (regions with their
@@ -44,7 +44,7 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
         const widthPx = (Math.max(...xs) - Math.min(...xs)) * v.scale;
         if (widthPx < 36) continue;
         const r = byInstance.get(`${roi.id}|${inst.row},${inst.col}`) || byInstance.get(`${roi.id}|null,null`);
-        const value = r ? metricValue(r.stats, state.metric) : null;
+        const value = r ? metricValue(r.stats, metricFor(state.metric, !!panel.scale)) : null;
         const label = value === null || value === undefined ? roi.name : `${roi.name}: ${shortNumber(value)}`;
         const s = v.toScreen({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: Math.min(...ys) });
         const w = ctx.measureText(label).width;

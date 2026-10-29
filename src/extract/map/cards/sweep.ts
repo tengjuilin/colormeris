@@ -1,21 +1,22 @@
-// Map tool, profile sweep: moves the edited profile along its normal and shows where the line is.
+// Map tool, profile sweep: moves the edited profile along its normal, one animation frame at a time. Imperative:
+// a frame redraws the plot and the "line at" text through refs (mctx.ui) and does not notify React, which would
+// re-render the cards 60 times a second; the card is told only when what it shows besides the plot changes.
 
-import { invertBilinear } from '../../../core/grid.ts';
 import type { Panel, PixelImage, Point, Profile } from '../../../types/index.ts';
-import { formatNumber } from '../../project/project-files.ts';
-import { mapCoord, profileDivisor, sampleProfile, sweepRange } from '../field.ts';
+import { profileDivisor, sampleProfile, sweepRange } from '../field.ts';
 import type { MapSweep, MapToolContext } from '../map-tool.ts';
+import { profileView, sweepAtText } from './profile-view.ts';
 
-export function setupSweep(mctx: MapToolContext) {
+export function createSweep(mctx: MapToolContext) {
   const { ws, state } = mctx;
-  const { $, app } = ws;
+  const { app } = ws;
 
   // state.sweep moves the edited profile along its normal, back and forth
   // between the edges of the plot area, one animation frame at a time. The
   // profile really moves; the undo step pushed at the start puts it back.
 
   const sweepSpeed = () => {
-    const v = Number($('profile-sweep-speed').value);
+    const v = state.sweepSpeed;
     return Number.isFinite(v) && v > 0 ? Math.min(500, v) : 20;
   };
   const shifted = (p: Point, n: Point, s: number) => ({ x: p.x + s * n.x, y: p.y + s * n.y });
@@ -25,7 +26,7 @@ export function setupSweep(mctx: MapToolContext) {
     const l = mctx.selectedProfile();
     const image = app.pages.get(panel.page)?.imageData;
     if (!l || !image || app.mode) return;
-    const range = sweepRange(panel.grid.corners, l.a, l.b, { runOff: $('profile-sweep-runoff').checked });
+    const range = sweepRange(panel.grid.corners, l.a, l.b, { runOff: state.sweepRunOff });
     if ('error' in range) return ws.toast(range.error, true);
     if (range.max - range.min < 1) return ws.toast('The profile has no room to move inside the plot area.', true);
     ws.pushHistory();
@@ -105,7 +106,7 @@ export function setupSweep(mctx: MapToolContext) {
     l.a = shifted(sw.a0, sw.n, sw.s);
     l.b = shifted(sw.b0, sw.n, sw.s);
     sw.set = { a: l.a, b: l.b };
-    ws.changed({ light: true });
+    refresh(panel, l);
     sw.frame = requestAnimationFrame(sweepFrame);
   }
 
@@ -113,10 +114,7 @@ export function setupSweep(mctx: MapToolContext) {
     if (!state.sweep) return;
     cancelAnimationFrame(state.sweep.frame);
     state.sweep = null;
-    // Also when another tool's sidebar is shown, so the button is right on return.
-    ws.setPressed($('profile-sweep'), false);
-    $('profile-sweep').textContent = 'Sweep';
-    $('profile-sweep').dataset.icon = 'play';
+    // A full change: the card's button reads state.sweep, also when another tool is shown.
     ws.changed();
   }
 
@@ -125,47 +123,30 @@ export function setupSweep(mctx: MapToolContext) {
     else startSweep();
   }
 
-  // The Sweep button, and where the line is across the plot: its midpoint
-  // on the axis it moves along.
-  function renderSweep(panel: Panel, sel: Profile) {
-    const btn = $('profile-sweep');
-    const on = !!state.sweep;
-    ws.setPressed(btn, on);
-    // Runs every frame while sweeping: touch the label only when it changes,
-    // so a press on the button is never cut short by a replaced text node.
-    const label = on ? 'Pause' : 'Sweep';
-    if (btn.textContent !== label) btn.textContent = label;
-    btn.dataset.icon = on ? 'pause' : 'play';
-    btn.disabled = !on && !panel.grid.corners;
-    const at = $('profile-sweep-at');
-    if (!panel.grid.corners) {
-      at.textContent = '';
-      return;
-    }
-    const across = Math.abs(sel.b.x - sel.a.x) >= Math.abs(sel.b.y - sel.a.y) ? 'y' : 'x';
-    const { u, v } = invertBilinear(panel.grid.corners, { x: (sel.a.x + sel.b.x) / 2, y: (sel.a.y + sel.b.y) / 2 });
-    // In the units of the Coordinates setting, as in the CSVs and status bar.
-    const c = mapCoord(panel, across);
-    const value = c.at!(across === 'x' ? u : v);
-    const unit = c.kind === 'px' ? ' px' : c.kind === 'length' ? ` ${panel.scale!.unit}` : '';
-    at.textContent = `Line at ${across} = ${c.kind === 'px' ? value.toFixed(1) : formatNumber(value)}${unit}`;
+  // One frame: the viewer and the plot follow the moved line. The card (its problem text, CSV button) is
+  // re-rendered only when those would change, e.g. the line runs off the plot.
+  function refresh(panel: Panel, sel: Profile) {
+    ws.viewer.requestDraw();
+    const view = profileView(mctx, panel, mctx.selectedProfiles());
+    if (view.signature !== mctx.ui.viewSignature) return ws.changed({ light: true });
+    mctx.plot.drawProfiles(panel, view.series);
+    if (mctx.ui.sweepAt) mctx.ui.sweepAt.textContent = sweepAtText(panel, sel);
   }
 
-  function bind() {
-    $('profile-sweep').addEventListener('click', toggleSweep);
-    // Switching edges mid-sweep: the new range around where it started.
-    $('profile-sweep-runoff').addEventListener('change', (e) => {
-      const sw = state.sweep;
-      if (!sw) return;
-      const panel = ws.activePanel();
-      const range = sweepRange(panel.grid.corners, sw.a0, sw.b0, { runOff: (e.target as HTMLInputElement).checked });
-      if ('error' in range) return;
-      Object.assign(sw, { min: range.min, max: range.max, s: Math.min(range.max, Math.max(range.min, sw.s)) });
-      const l = mctx.selectedProfile();
-      const image = app.pages.get(panel.page)?.imageData;
-      if (l && image) sw.yRange = sweepValueRange(image, panel, { ...l, a: sw.a0, b: sw.b0 }, sw);
-    });
+  // Switching edges mid-sweep: the new range around where it started.
+  function retarget() {
+    const sw = state.sweep;
+    if (!sw) return;
+    const panel = ws.activePanel();
+    const range = sweepRange(panel.grid.corners, sw.a0, sw.b0, { runOff: state.sweepRunOff });
+    if ('error' in range) return;
+    Object.assign(sw, { min: range.min, max: range.max, s: Math.min(range.max, Math.max(range.min, sw.s)) });
+    const l = mctx.selectedProfile();
+    const image = app.pages.get(panel.page)?.imageData;
+    if (l && image) sw.yRange = sweepValueRange(image, panel, { ...l, a: sw.a0, b: sw.b0 }, sw);
   }
 
-  return { renderSweep, stopSweep, toggleSweep, sweepValueRange, bind };
+  return { stopSweep, toggleSweep, sweepValueRange, retarget };
 }
+
+export type Sweep = ReturnType<typeof createSweep>;

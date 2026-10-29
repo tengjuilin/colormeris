@@ -18,6 +18,10 @@ import { createAxisTick, createProfile } from '../project/project.ts';
 import { formatNumber, mapPanelFiles } from '../project/project-files.ts';
 import { drawScaleBar, drawScalePreview, scaleBarClick } from '../scale-bar.ts';
 import { hexToRgb } from '../settings/settings.ts';
+import { focusAxisTick } from './cards/axis-tick-focus.ts';
+import { setMapToolContext } from './cards/map-context.ts';
+import { createProfilePlot, type ProfilePlot } from './cards/profile-plot.ts';
+import { createSweep, type Sweep } from './cards/sweep.ts';
 import {
   type AxisKey,
   axisT,
@@ -33,7 +37,7 @@ import {
   reconPixels,
   sampleProfiles,
 } from './field.ts';
-import { setupMapSidebar } from './map-sidebar.ts';
+import { reconcileSelection } from './selection.ts';
 
 /** A handle from hitTest: a profile end, a whole profile (with the drag's start) or an axis tick. */
 type MapHandle = Handle & {
@@ -46,7 +50,7 @@ type MapHandle = Handle & {
   started?: boolean;
 };
 
-/** The edited profile moving across the plot (map-sidebar.ts sweep). */
+/** The edited profile moving across the plot (cards/sweep.ts). */
 export interface MapSweep {
   frame: number;
   panelId: string;
@@ -83,6 +87,9 @@ export interface MapToolState {
   /** Traced sample of a profile. */
   trace: { id: string; i: number } | null;
   sweep: MapSweep | null;
+  /** Sweep speed in page px/s and whether it runs off the edge (the Profiles card's fields). */
+  sweepSpeed: number;
+  sweepRunOff: boolean;
   showRecon: boolean;
   showFlags: boolean;
   /** Panel id → cached field. */
@@ -92,8 +99,8 @@ export interface MapToolState {
 }
 
 /**
- * What map-tool.ts shares with map-sidebar.ts. deleteSelected and toggleMode
- * are added after the sidebar is set up and looked up at call time.
+ * What map-tool.ts shares with the Map cards (cards/*.tsx, which reach it through cards/map-context.ts).
+ * deleteSelected and toggleMode are added after the setup and looked up at call time.
  */
 export interface MapToolContext {
   ws: Workspace;
@@ -106,6 +113,11 @@ export interface MapToolContext {
   AXIS_COLORS: { readonly x: string; readonly y: string };
   deleteSelected: () => void;
   toggleMode: (type: string) => void;
+  /** The imperative profile plot (the card hands it its canvas) and the sweep animation. */
+  plot: ProfilePlot;
+  sweep: Sweep;
+  /** Elements and values the sweep's frames use to update the Profiles card without rendering it. */
+  ui: { sweepAt: HTMLElement | null; viewSignature: string | null };
 }
 
 // Map tool: read near-continuous fields (spectroscopy maps, fluorescence
@@ -114,7 +126,7 @@ export interface MapToolContext {
 // map.bin pixels (see map/field.js).
 //
 // This file sets up the tool, draws over the image and handles clicks and
-// drags; map-sidebar.js renders the cards. They share `mctx`.
+// drags; the cards in cards/ render the sidebar. They share `mctx`.
 
 // setupMapTool(ws) registers the tool with a workspace (workspace/workspace.js).
 export function setupMapTool(ws: Workspace) {
@@ -123,8 +135,10 @@ export function setupMapTool(ws: Workspace) {
     selectedId: null, // selected profile, edited in the card
     overlay: new Set(), // more selected profiles, plotted with it
     profileNorm: 'raw', // profile plot and CSV: 'raw', or divided by each 'max' or 'mean'
-    trace: null, // {id, i}: traced sample of a profile (see map-sidebar.js)
-    sweep: null, // the edited profile moving across the plot (see map-sidebar.js)
+    trace: null, // {id, i}: traced sample of a profile (cards/profile-plot.ts)
+    sweep: null, // the edited profile moving across the plot (cards/sweep.ts)
+    sweepSpeed: 20,
+    sweepRunOff: false,
     showRecon: false,
     showFlags: false,
     field: new Map(), // panel id → {key, image, result}
@@ -180,8 +194,13 @@ export function setupMapTool(ws: Workspace) {
     selectProfile,
     profileColor,
     AXIS_COLORS,
+    ui: { sweepAt: null, viewSignature: null },
   } as MapToolContext;
-  const { renderSidebar, focusAxisTick, setTrace, stopSweep, toggleSweep } = setupMapSidebar(mctx);
+  mctx.plot = createProfilePlot(mctx);
+  mctx.sweep = createSweep(mctx);
+  setMapToolContext(mctx);
+  const { setTrace } = mctx.plot;
+  const { stopSweep, toggleSweep } = mctx.sweep;
 
   // The field is the slow part (every pixel goes through the colorbar), so it
   // is cached apart from the profiles: drawing or dragging a profile must not
@@ -235,7 +254,8 @@ export function setupMapTool(ws: Workspace) {
     drawModePreview,
     hoverText,
     onKey,
-    renderSidebar,
+    // The cards render themselves; this only keeps the selection valid before they do.
+    renderSidebar: (panel) => reconcileSelection(state, panel.map.profiles),
   } satisfies ToolHooks);
 
   // ---------------------------------------------------------------- overlay
@@ -452,10 +472,6 @@ export function setupMapTool(ws: Workspace) {
 
   function onModeChange(type: string | null) {
     if (type) stopSweep();
-    ws.setPressed($('axis-x-add'), type === 'xtick');
-    ws.setPressed($('axis-y-add'), type === 'ytick');
-    ws.setPressed($('profile-add'), type === 'profile');
-    ws.setPressed($('scale-place'), type === 'scale');
   }
 
   function nextProfileName(panel: Panel) {

@@ -9,4 +9,5 @@ export { flushSafely } from './flush.ts';
 export { Actions, Field, Fields, InputPair, SplitActions } from './layout.tsx';
 export { Hint, Notice } from './messages.tsx';
 export { Options } from './options.tsx';
+export { SecretInput } from './secret-input.tsx';
 export { SettingsProvider, useSettings } from './settings-context.tsx';

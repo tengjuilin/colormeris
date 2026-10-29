@@ -1,39 +1,21 @@
-import JSZip from 'jszip';
-import { DECISION_SYSTEM_PROMPT } from '../../agent/decide.ts';
-import { LABELS_PROMPT } from '../../agent/labels.ts';
-import { AGENT_SYSTEM_PROMPT } from '../../agent/llm.ts';
-import type {
-  ColorItem,
-  DomEl,
-  HotkeyAction,
-  MatchingSettings,
-  Settings,
-  SettingsUi,
-  ToolKind,
-  Workspace,
-} from '../../types/index.ts';
+import type { Settings, SettingsUi, ToolKind, Workspace } from '../../types/index.ts';
+import { flushSafely } from '../../ui/flush.ts';
 import {
-  buildSettingsZip,
-  COLOR_GROUPS,
-  COLOR_ITEMS,
-  comboFromEvent,
   defaultSettings,
   formatCombo,
-  HOTKEY_ACTIONS,
-  HOTKEY_GROUPS,
-  hotkeyClashes,
   hotkeyTitle,
   isMacPlatform,
   MATCHING_DEFAULTS,
-  normalizeCombo,
   normalizeSettings,
-  readSettingsFile,
 } from './settings.ts';
+import { createDialogUi, type SettingsCtl } from './settings-ctl.ts';
+import { mountSettingsDialog } from './settings-ui.tsx';
 
-// Settings dialog: agent connection, matching defaults, hotkeys, overlay
-// colors, and settings zips. The settings object is ws.settings (see
-// settings.js for its shape); every change is saved in localStorage at once. The API key
-// is only stored when "Remember" is ticked, otherwise it lasts for this visit.
+// Settings dialog: agent connection, matching defaults, hotkeys, overlay colors, and settings zips. This file
+// owns the settings object (ws.settings, see settings.ts for its shape), its storage and change listeners,
+// and the <dialog> element; the content is React (settings-ui.tsx and the *-pane.tsx files). Every change is
+// saved in localStorage at once. The API key is only stored when "Remember" is ticked, otherwise it lasts for
+// this visit.
 
 const STORE = 'colormeris.settings';
 const OLD_AGENT_STORE = 'colormeris.agent'; // before the dialog, the Agent card saved here
@@ -53,10 +35,11 @@ function loadStored(): Settings {
 }
 
 export function setupSettings(ws: Workspace): SettingsUi {
-  const { $, app } = ws;
+  const { $ } = ws;
   const settings = loadStored();
   ws.settings = settings;
   const listeners: ((s: Settings) => void)[] = [];
+  const ui = createDialogUi();
 
   function save() {
     const stored = structuredClone(settings);
@@ -68,9 +51,16 @@ export function setupSettings(ws: Workspace): SettingsUi {
       // Storage can be unavailable (private windows, file://); settings then last for this visit.
     }
   }
+  function notifyOnly() {
+    const run = () => {
+      for (const fn of [...listeners]) fn(settings);
+    };
+    // Rendered at once, so a field that commits right after finds its model value current.
+    if (!flushSafely(run)) run();
+  }
   function changed() {
     save();
-    for (const fn of [...listeners]) fn(settings);
+    notifyOnly();
   }
 
   // Replace every value (import, reset) in place, so ws.settings stays the same object.
@@ -78,357 +68,11 @@ export function setupSettings(ws: Workspace): SettingsUi {
     for (const k of Object.keys(settings)) delete (settings as unknown as Record<string, unknown>)[k];
     Object.assign(settings, next);
     changed();
-    fill();
     for (const kind of Object.keys(MATCHING_DEFAULTS) as ToolKind[]) ws.applyMatching(kind, settings.matching[kind]);
   }
 
-  // ------------------------------------------------------------ dialog
-
-  const dialog = $('settings-dialog') as unknown as HTMLDialogElement;
-  function open(tab: string | null = null) {
-    if (tab) showTab(tab);
-    fill();
-    if (!dialog.open) dialog.showModal();
-  }
-  function showTab(name: string) {
-    for (const b of dialog.querySelectorAll<HTMLElement>('[data-settings-tab]'))
-      b.classList.toggle('active', b.dataset.settingsTab === name);
-    for (const p of dialog.querySelectorAll<HTMLElement>('[data-settings-pane]'))
-      p.hidden = p.dataset.settingsPane !== name;
-    stopCapture();
-  }
-  for (const b of dialog.querySelectorAll<HTMLElement>('[data-settings-tab]'))
-    b.addEventListener('click', () => showTab(b.dataset.settingsTab!));
-  $('btn-settings').addEventListener('click', () => open());
-  // Clicking the backdrop closes the dialog.
-  dialog.addEventListener('click', (e) => {
-    if (e.target === dialog) dialog.close();
-  });
-  dialog.addEventListener('cancel', (e) => {
-    if (capturing) e.preventDefault();
-  });
-  dialog.addEventListener('close', stopCapture);
-
-  function fill() {
-    const a = settings.agent;
-    ws.setValue($('agent-key'), a.key);
-    $('agent-remember').checked = a.rememberKey;
-    ws.setValue($('agent-minconf'), a.minConfidence);
-    ws.setValue($('agent-steps'), a.maxSteps);
-    ws.setValue($('agent-base'), a.base);
-    for (const p of PROMPTS) ws.setValue($(p.id), a[p.key] || p.fallback());
-    const hm = settings.matching.heatmap;
-    const iv = settings.matching.roi;
-    ws.setValue($('set-hm-distance'), hm.distance);
-    ws.setValue($('set-hm-maxde'), hm.maxDeltaE);
-    ws.setValue($('set-roi-distance'), iv.distance);
-    ws.setValue($('set-roi-maxde'), iv.maxDeltaE);
-    ws.setValue($('set-roi-gray'), iv.grayChroma!);
-    ws.setValue($('set-map-distance'), settings.matching.map.distance);
-    ws.setValue($('set-map-maxde'), settings.matching.map.maxDeltaE);
-    $('matching-note').textContent = matchingNote();
-    renderHotkeys();
-    renderColors();
-  }
-
-  // ------------------------------------------------------------ agent
-
-  $('agent-key').addEventListener('input', () => {
-    settings.agent.key = $('agent-key').value.trim();
-    for (const fn of [...listeners]) fn(settings);
-  });
-  $('agent-key').addEventListener('change', changed);
-  $('agent-remember').addEventListener('change', () => {
-    settings.agent.rememberKey = $('agent-remember').checked;
-    changed();
-  });
-  $('agent-base').addEventListener('input', () => {
-    settings.agent.base = $('agent-base').value.trim();
-    for (const fn of [...listeners]) fn(settings);
-  });
-  $('agent-base').addEventListener('change', changed);
-  // Prompts show the built-in text when not customized; saving it unchanged
-  // (or empty) stores '' so later versions of the built-in prompt still apply.
-  const PROMPTS: { id: string; key: 'prompt' | 'labelsPrompt' | 'decisionPrompt'; fallback: () => string }[] = [
-    { id: 'agent-prompt', key: 'prompt', fallback: () => AGENT_SYSTEM_PROMPT || '' },
-    { id: 'agent-labels-prompt', key: 'labelsPrompt', fallback: () => LABELS_PROMPT || '' },
-    { id: 'agent-decision-prompt', key: 'decisionPrompt', fallback: () => DECISION_SYSTEM_PROMPT || '' },
-  ];
-  for (const p of PROMPTS) {
-    $(p.id).addEventListener('change', () => {
-      const v = $(p.id).value.trim();
-      settings.agent[p.key] = v === p.fallback().trim() ? '' : v;
-      if (!v) ws.setValue($(p.id), p.fallback());
-      changed();
-    });
-    $(`${p.id}-reset`).addEventListener('click', () => {
-      settings.agent[p.key] = '';
-      ws.setValue($(p.id), p.fallback());
-      changed();
-    });
-  }
-  bindNumber('agent-minconf', 0, 1, (v) => (settings.agent.minConfidence = v));
-  bindNumber('agent-steps', 5, 400, (v) => (settings.agent.maxSteps = Math.round(v)));
-
-  // Numbers apply on change; an empty or invalid entry goes back to the stored value.
-  function bindNumber(id: string, lo: number, hi: number, apply: (v: number) => unknown) {
-    $(id).addEventListener('change', () => {
-      const v = Number($(id).value);
-      if ($(id).value !== '' && Number.isFinite(v)) {
-        apply(Math.min(hi, Math.max(lo, v)));
-        changed();
-      }
-      fill();
-    });
-  }
-
-  // ------------------------------------------------------------ matching
-
-  function setMatching(kind: ToolKind, key: string, value: unknown) {
-    (settings.matching[kind] as unknown as Record<string, unknown>)[key] = value;
-    ws.applyMatching(kind, settings.matching[kind]);
-  }
-  for (const [id, kind] of [
-    ['set-hm-distance', 'heatmap'],
-    ['set-roi-distance', 'roi'],
-    ['set-map-distance', 'map'],
-  ] as const) {
-    $(id).addEventListener('change', (e) => {
-      setMatching(kind, 'distance', (e.target as DomEl).value);
-      changed();
-      fill();
-    });
-  }
-  bindNumber('set-hm-maxde', 0, 1000, (v) => setMatching('heatmap', 'maxDeltaE', v));
-  bindNumber('set-roi-maxde', 0, 1000, (v) => setMatching('roi', 'maxDeltaE', v));
-  bindNumber('set-roi-gray', 0, 60, (v) => setMatching('roi', 'grayChroma', v));
-  bindNumber('set-map-maxde', 0, 1000, (v) => setMatching('map', 'maxDeltaE', v));
-  $('matching-reset').addEventListener('click', () => {
-    for (const [kind, defs] of Object.entries(MATCHING_DEFAULTS) as [ToolKind, MatchingSettings][]) {
-      settings.matching[kind] = { ...defs };
-      ws.applyMatching(kind, settings.matching[kind]);
-    }
-    changed();
-    fill();
-  });
-
-  // Panels of the open project can differ (an opened zip, or the agent's set_settings).
-  function matchingNote() {
-    if (!app.sourceCanvas) return '';
-    const parts: string[] = [];
-    for (const [kind, label] of [
-      ['heatmap', 'heatmap'],
-      ['roi', 'ROI'],
-      ['map', 'map'],
-    ] as const) {
-      const m = settings.matching[kind];
-      const n = app.project.panels.filter(
-        (p) =>
-          p.tool === kind &&
-          Object.entries(m).some(([k, v]) => (p.settings as unknown as Record<string, unknown>)[k] !== v),
-      ).length;
-      if (n) parts.push(`${n} ${label} panel${n === 1 ? '' : 's'}`);
-    }
-    const list = parts.length > 2 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts.join(' and ');
-    return parts.length
-      ? `In the open project, ${list} use other values. They keep them until you change a value of that tool here.`
-      : '';
-  }
-
-  // ------------------------------------------------------------ hotkeys
-
-  let capturing: string | null = null; // action id waiting for a key
-  const label = (combo: string) => formatCombo(combo, isMac);
-
-  // One fieldset per group (HOTKEY_GROUPS), like the Matching and Colors
-  // panes, each with a table of its actions.
-  function renderHotkeys() {
-    $('hotkey-list').replaceChildren(
-      ...HOTKEY_GROUPS.map((group) => {
-        const fs = document.createElement('fieldset');
-        fs.append(Object.assign(document.createElement('legend'), { textContent: group.label }));
-        const table = Object.assign(document.createElement('table'), { className: 'hotkeys' });
-        table.setAttribute('aria-label', `${group.label} hotkeys`);
-        const body = document.createElement('tbody');
-        body.append(...HOTKEY_ACTIONS.filter((a) => a.group === group.id).map(hotkeyRow));
-        table.append(body);
-        fs.append(table);
-        return fs;
-      }),
-    );
-  }
-
-  function hotkeyRow(action: HotkeyAction) {
-    const tr = document.createElement('tr');
-    tr.className = capturing === action.id ? 'capturing' : '';
-    const name = document.createElement('td');
-    name.textContent = action.label;
-    const keys = document.createElement('td');
-    const combos = settings.hotkeys[action.id] || [];
-    if (capturing === action.id) keys.textContent = 'Press a key… (Esc cancels)';
-    else if (!combos.length)
-      keys.append(Object.assign(document.createElement('span'), { className: 'muted', textContent: 'none' }));
-    else keys.append(...combos.map((c) => Object.assign(document.createElement('kbd'), { textContent: label(c) })));
-    const btns = document.createElement('td');
-    const change = button(capturing === action.id ? 'Cancel' : 'Change', () =>
-      capturing === action.id ? stopCapture() : startCapture(action.id),
-    );
-    const isDefault = JSON.stringify(combos) === JSON.stringify(action.keys);
-    const reset = button('Reset', () => setKeys(action.id, [...action.keys]));
-    reset.disabled = isDefault;
-    reset.title = `Default: ${action.keys.map(label).join(', ')}`;
-    const clear = button('Clear', () => setKeys(action.id, []));
-    clear.disabled = !combos.length;
-    btns.append(change, ' ', reset, ' ', clear);
-    tr.append(name, keys, btns);
-    return tr;
-  }
-
-  function button(text: string, onClick: () => void) {
-    const b = Object.assign(document.createElement('button'), {
-      type: 'button',
-      className: 'btn small',
-      textContent: text,
-    });
-    b.addEventListener('click', onClick);
-    return b;
-  }
-
-  function setKeys(id: string, keys: string[]) {
-    settings.hotkeys[id] = keys;
-    changed();
-    renderHotkeys();
-  }
-
-  function startCapture(id: string) {
-    capturing = id;
-    renderHotkeys();
-  }
-  function stopCapture() {
-    if (!capturing) return;
-    capturing = null;
-    renderHotkeys();
-  }
-
-  // Capture phase on window, so the key reaches neither the workspace nor the viewer.
-  window.addEventListener(
-    'keydown',
-    (e) => {
-      if (!capturing) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (e.key === 'Escape') return stopCapture();
-      const raw = comboFromEvent(e, isMac);
-      if (!raw) {
-        // Control on a Mac and the Windows key belong to the system.
-        const system = !['Control', 'Meta', 'OS'].includes(e.key) && (isMac ? e.ctrlKey : e.metaKey);
-        if (system)
-          ws.toast(
-            isMac
-              ? 'Control (⌃) chords belong to macOS; use ⌘ instead.'
-              : 'Windows-key chords belong to Windows; use Ctrl instead.',
-            true,
-          );
-        return; // otherwise a modifier on its own: wait for the key
-      }
-      const combo = normalizeCombo(raw);
-      if (!combo) {
-        ws.toast(`${label(raw)} is fixed and cannot be a hotkey.`, true);
-        return;
-      }
-      const id = capturing;
-      // Only actions that can be active together clash; another tool's
-      // action keeps the key.
-      for (const other of hotkeyClashes(settings.hotkeys, combo, id)) {
-        settings.hotkeys[other] = settings.hotkeys[other].filter((c) => c !== combo);
-        const a = HOTKEY_ACTIONS.find((x) => x.id === other);
-        ws.toast(`${label(combo)} moved from “${HOTKEY_GROUPS.find((g) => g.id === a!.group)!.label}: ${a!.label}”.`);
-      }
-      capturing = null;
-      setKeys(id, [combo]);
-    },
-    true,
-  );
-
-  $('hotkeys-reset').addEventListener('click', () => {
-    stopCapture();
-    settings.hotkeys = defaultSettings().hotkeys;
-    changed();
-    renderHotkeys();
-  });
-
-  // Tooltips name the current keys: data-title, with {key} where the keys go
-  // (otherwise they are added in parentheses). Buttons also show the first
-  // key as a key cap (data-key, drawn by CSS).
-  function updateTitles() {
-    // Buttons rendered by React (data-react) write their own title and key cap.
-    for (const el of document.querySelectorAll<HTMLElement>('[data-hotkey]:not([data-react])')) {
-      const { title, key } = hotkeyTitle(el.dataset.title || '', settings.hotkeys[el.dataset.hotkey!] || [], label);
-      el.dataset.key = key;
-      el.title = title;
-    }
-  }
-  listeners.push(updateTitles);
-  updateTitles();
-
-  // ------------------------------------------------------------ colors
-  // Overlay colors, one color input per color (several for a palette), in
-  // sections by COLOR_GROUPS. Changes redraw the figure at once.
-
-  function renderColors() {
-    $('color-list').replaceChildren(
-      ...COLOR_GROUPS.map((group) => {
-        const fs = document.createElement('fieldset');
-        fs.append(Object.assign(document.createElement('legend'), { textContent: group.label }));
-        for (const item of COLOR_ITEMS.filter((c) => c.group === group.id)) fs.append(colorRow(item));
-        return fs;
-      }),
-    );
-  }
-
-  function colorRow(item: ColorItem) {
-    const row = document.createElement('div');
-    row.className = 'color-row';
-    const name = Object.assign(document.createElement('span'), { className: 'color-name', textContent: item.label });
-    const swatches = document.createElement('span');
-    swatches.className = 'color-swatches';
-    const value = settings.colors[item.id];
-    const list = Array.isArray(value) ? value : [value];
-    list.forEach((c, i) => {
-      const input = Object.assign(document.createElement('input'), { type: 'color', value: c });
-      input.setAttribute('aria-label', Array.isArray(value) ? `${item.label}, color ${i + 1}` : item.label);
-      // input fires while the picker is open; save on change only.
-      input.addEventListener('input', () => setColor(item, i, input.value, false));
-      input.addEventListener('change', () => setColor(item, i, input.value, true));
-      swatches.append(input);
-    });
-    const isDefault = JSON.stringify(value) === JSON.stringify(item.value);
-    const reset = button('Reset', () => {
-      settings.colors[item.id] = structuredClone(item.value);
-      changed();
-      ws.changed({ light: true });
-      renderColors();
-    });
-    reset.disabled = isDefault;
-    row.append(name, swatches, reset);
-    return row;
-  }
-
-  function setColor(item: ColorItem, i: number, color: string, save: boolean) {
-    const current = settings.colors[item.id];
-    if (Array.isArray(current)) current[i] = color;
-    else settings.colors[item.id] = color;
-    applyCssColors();
-    // Redraws the figure; sidebar swatches (profile chips) and plots follow too.
-    ws.changed({ light: true });
-    if (save) {
-      changed();
-      renderColors();
-    }
-  }
-
-  // Sidebar marks (card dots, flagged and highlighted table cells) use CSS
-  // variables (base.css); they follow the overlay colors.
+  // Sidebar marks (card dots, flagged and highlighted table cells) use CSS variables (base.css); they follow
+  // the overlay colors.
   function applyCssColors() {
     const root = document.documentElement.style;
     for (const [name, id] of [
@@ -442,58 +86,57 @@ export function setupSettings(ws: Workspace): SettingsUi {
   listeners.push(applyCssColors);
   applyCssColors();
 
-  $('colors-reset').addEventListener('click', () => {
-    settings.colors = defaultSettings().colors;
-    changed();
-    ws.changed({ light: true });
-    renderColors();
-  });
-
-  // ------------------------------------------------------------ import / export / reset
-
-  $('settings-export').addEventListener('click', async () => {
-    const includeKey = $('settings-include-key').checked;
-    if (includeKey && !settings.agent.key) ws.toast('There is no API key to include.');
-    const blob = await buildSettingsZip(JSZip, settings, { includeKey });
-    ws.download(blob, 'colormeris-settings.zip');
-  });
-
-  $('settings-import').addEventListener('change', async (e) => {
-    const input = e.target as HTMLInputElement;
-    const file = input.files![0];
-    input.value = '';
-    if (!file) return;
-    try {
-      const { settings: next, hasKey } = await readSettingsFile(JSZip, file, file.name);
-      if (!hasKey) next.agent = { ...next.agent, key: settings.agent.key, rememberKey: settings.agent.rememberKey };
-      replaceAll(next);
-      ws.toast(`Settings imported from ${file.name}${hasKey ? ', with an API key' : ''}.`);
-    } catch (err) {
-      console.error(err);
-      ws.toast(`Could not import settings: ${(err as Error).message}`, true);
+  // Tooltips name the current keys: data-title, with {key} where the keys go (otherwise they are added in
+  // parentheses). Buttons also show the first key as a key cap (data-key, drawn by CSS). Buttons rendered by
+  // React (data-react) write their own title and key cap; this is for the static top bar and view bar.
+  const label = (combo: string) => formatCombo(combo, isMac);
+  function updateTitles() {
+    for (const el of document.querySelectorAll<HTMLElement>('[data-hotkey]:not([data-react])')) {
+      const { title, key } = hotkeyTitle(el.dataset.title || '', settings.hotkeys[el.dataset.hotkey!] || [], label);
+      el.dataset.key = key;
+      el.title = title;
     }
-  });
+  }
+  listeners.push(updateTitles);
+  updateTitles();
 
-  $('settings-reset').addEventListener('click', () => {
-    if (!confirm('Reset all settings to the defaults? The API key is kept.')) return;
-    const next = defaultSettings();
-    next.agent.key = settings.agent.key;
-    next.agent.rememberKey = settings.agent.rememberKey;
-    replaceAll(next);
-    ws.toast('Settings reset.');
-  });
+  // ------------------------------------------------------------ dialog
 
-  fill();
+  const ctl: SettingsCtl = { ws, settings, ui, mac: isMac, changed, notifyOnly, replaceAll, applyCssColors };
+  const source = {
+    get: () => settings,
+    onChange: (fn: () => void) => onChange(fn),
+  };
+  const dialog = $('settings-dialog') as unknown as HTMLDialogElement;
+  mountSettingsDialog(dialog, ctl, source);
+
+  function open(tab: string | null = null) {
+    // The panes render (the first time) before the dialog shows, and re-read the settings.
+    if (!flushSafely(() => ui.open(tab))) ui.open(tab);
+    if (!dialog.open) dialog.showModal();
+  }
+  $('btn-settings').addEventListener('click', () => open());
+  // Clicking the backdrop closes the dialog.
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close();
+  });
+  dialog.addEventListener('cancel', (e) => {
+    if (ui.get().capturing) e.preventDefault();
+  });
+  dialog.addEventListener('close', () => ui.setCapturing(null));
+
+  function onChange(fn: () => void) {
+    listeners.push(fn);
+    return () => {
+      const i = listeners.indexOf(fn);
+      if (i >= 0) listeners.splice(i, 1);
+    };
+  }
+
   return {
     get: () => settings,
     save: changed,
     open,
-    onChange: (fn) => {
-      listeners.push(fn);
-      return () => {
-        const i = listeners.indexOf(fn);
-        if (i >= 0) listeners.splice(i, 1);
-      };
-    },
+    onChange,
   };
 }

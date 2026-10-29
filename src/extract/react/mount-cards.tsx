@@ -3,8 +3,15 @@
 import { type ComponentType, StrictMode, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
+import { AgentCard } from '../../agent/ui/agent-card.tsx';
 import type { SettingsSource } from '../../types/index.ts';
 import { SettingsProvider } from '../../ui/index.ts';
+import { AxesCard } from '../map/cards/axes-card.tsx';
+import { MapResultsCard } from '../map/cards/map-results-card.tsx';
+import { ProfilesCard } from '../map/cards/profiles-card.tsx';
+import { RegionsCard } from '../roi/cards/regions-card.tsx';
+import { RoiResultsCard } from '../roi/cards/roi-results-card.tsx';
+import { ScaleCard } from '../scale-bar-card.tsx';
 import { ColorbarCard } from '../workspace/cards/colorbar-card.tsx';
 import { GridCard } from '../workspace/cards/grid-card.tsx';
 import { HeatmapResultsCard } from '../workspace/cards/heatmap-results-card.tsx';
@@ -17,6 +24,13 @@ export const CARD_REGISTRY: [sectionId: string, Component: ComponentType][] = [
   ['sec-grid', GridCard],
   ['sec-colorbar', ColorbarCard],
   ['sec-hm-results', HeatmapResultsCard],
+  ['sec-axes', AxesCard],
+  ['sec-profiles', ProfilesCard],
+  ['sec-map-results', MapResultsCard],
+  ['sec-agent', AgentCard],
+  ['sec-rois', RegionsCard],
+  ['sec-scale', ScaleCard],
+  ['sec-roi-results', RoiResultsCard],
 ];
 
 // A card renders nothing until its section is first shown (sections stay hidden until a file is loaded), so

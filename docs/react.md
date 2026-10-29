@@ -336,6 +336,11 @@ Every extract card copies `src/extract/workspace/cards/panels-card.tsx`.
 - Set a ref flag before the action. A `useLayoutEffect` focuses the element after the render that shows it, and the flag is reset in `finally`.
 - Do not focus straight after `changed()`: `notify` may defer to a microtask when a flush is already running.
 
+**Tool cards**
+- A tool's card checks `panel.tool` before computing or reading a result (`panel.tool === 'map' ? ws.resultFor(panel) : …`). Don't gate on `w.tool()`.
+- During a tool switch a render can run while the active panel already belongs to the new tool.
+- Tell results apart by their shape (`'error' in res`, `Array.isArray(res.rows)`), never by a field name another tool's result also has.
+
 **Visibility**
 - Cards stay mounted, so `<details>` open state and drafts survive a tool switch.
 - `useWorkspace` with the card's section skips re-renders while the section is hidden, and re-renders once when it is shown again.
