@@ -90,6 +90,10 @@ export interface AppState {
   /** Cell picked in a results table, highlighted on the image. */
   tableCell: Cell | null;
   showOverlay: boolean;
+  /** Grid card: dragging a corner keeps the grid a rectangle. */
+  keepRect: boolean;
+  /** Heatmap Results card: repaint the sampled areas with the colors of their values. */
+  showRecon: boolean;
 }
 
 /** Callbacks the Viewer gets from the workspace (extract/viewer.ts). */
@@ -273,11 +277,7 @@ export interface WorkspaceContext {
   /** b moved onto the horizontal or vertical through a when within a few degrees. */
   snapAxis: (a: Point, b: Point) => Point;
 
-  // ---- grid-card.ts
-  renderGridCard: (panel: Panel) => void;
-
-  // ---- colorbar-card.ts
-  renderColorbarCard: (panel: Panel) => void;
+  // ---- cards/tick-focus.ts
   focusTick: (id: string) => void;
 
   // ---- panels.ts
@@ -310,8 +310,7 @@ export type InteractMembers = Pick<
   WorkspaceContext,
   'onClick' | 'hitTest' | 'onHandleDrag' | 'onHandleDrop' | 'onHover' | 'handlePoint' | 'applyDetectedSize' | 'snapAxis'
 >;
-export type GridCardMembers = Pick<WorkspaceContext, 'renderGridCard'>;
-export type ColorbarCardMembers = Pick<WorkspaceContext, 'renderColorbarCard' | 'focusTick'>;
+export type ColorbarCardMembers = Pick<WorkspaceContext, 'focusTick'>;
 export type PanelsMembers = Pick<WorkspaceContext, 'addPanel' | 'removePanel' | 'isEmptyPanel' | 'ensurePagePanel'>;
 export type SourceMembers = Pick<
   WorkspaceContext,
@@ -326,7 +325,6 @@ export type WorkspaceCore = Omit<
   | keyof HistoryMembers
   | keyof OverlayMembers
   | keyof InteractMembers
-  | keyof GridCardMembers
   | keyof ColorbarCardMembers
   | keyof PanelsMembers
   | keyof SourceMembers

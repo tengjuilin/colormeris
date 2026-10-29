@@ -12,10 +12,10 @@ import type {
   Workspace,
 } from '../../types/index.ts';
 import { DEFAULT_DECISION_MODEL } from '../decide.ts';
-import { DEFAULT_LABELS_MODEL } from '../labels.ts';
 import { DEFAULT_LLM, parsePages } from '../llm.ts';
 import { loadOpenRouterSdk, makeDecisionClient, makeOpenRouterClient } from '../openrouter-client.ts';
 import { createAgentRunner } from '../runner.ts';
+import { setLabelsModelFocusHandler } from './labels-reader.ts';
 
 // Agent card of the heatmap tool: the mode (Agent only, or Agent decision
 // with a decision model, see agent/decide.js), model choice, running and
@@ -39,13 +39,11 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
 
   const agent = () => settingsUi.get().agent;
   $('agent-llm').value = agent().llm || DEFAULT_LLM;
-  $('agent-labels').value = agent().labels || DEFAULT_LABELS_MODEL;
   $('agent-decision').value = agent().decision || DEFAULT_DECISION_MODEL;
   for (const [id, key] of [
     ['agent-llm', 'llm'],
-    ['agent-labels', 'labels'],
     ['agent-decision', 'decision'],
-  ] as [string, 'llm' | 'labels' | 'decision'][]) {
+  ] as [string, 'llm' | 'decision'][]) {
     $(id).addEventListener('change', () => {
       agent()[key] = $(id).value.trim();
       settingsUi.save();
@@ -115,7 +113,8 @@ export function setupAgentPanel(ws: Workspace, api: ColormerisApi, settingsUi: S
     );
   }
   $('agent-llm').addEventListener('focus', loadModels);
-  $('agent-labels').addEventListener('focus', loadModels);
+  // The Model field of the Grid card (Read labels with AI) is React; it calls this on focus.
+  setLabelsModelFocusHandler(loadModels);
   $('agent-decision').addEventListener('focus', loadModels);
 
   // ------------------------------------------------------------ run

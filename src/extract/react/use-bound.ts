@@ -1,18 +1,18 @@
 // Workspace wrappers for BoundInput, replacing bindNumber / bindText: push history lazily (at the first
 // edit after a focus, so focus and blur alone leave no undo entry), apply while typing with a light change,
-// and do a full change on commit. Numbers that are empty or not finite are ignored
+// and do a full change on commit. They do not subscribe: the card using them decides when it re-renders. Numbers that are empty or not finite are ignored
 // while typing, as bindNumber does. Spread the result onto a BoundInput.
 
 import { useRef } from 'react';
 import type { Panel } from '../../types/index.ts';
 import { parseNumber } from '../../ui/bound-input.tsx';
-import { useWorkspace } from './use-workspace.ts';
+import { useWorkspaceContext } from './use-workspace.ts';
 
 export function useBoundNumber(
   apply: (panel: Panel, value: number) => void,
   opts: { accept?: (value: number) => boolean } = {},
 ) {
-  const { ws } = useWorkspace();
+  const { ws } = useWorkspaceContext();
   const pushed = useRef(false);
   return {
     onFocus: () => {
@@ -31,7 +31,7 @@ export function useBoundNumber(
 }
 
 export function useBoundText(apply: (panel: Panel, value: string) => void) {
-  const { ws } = useWorkspace();
+  const { ws } = useWorkspaceContext();
   const pushed = useRef(false);
   return {
     onFocus: () => {

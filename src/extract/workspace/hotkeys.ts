@@ -42,7 +42,8 @@ export function setupWorkspaceHotkeys(w: WorkspaceContext): HotkeysMembers {
   addHotkey('undo', w.undo, { always: true });
   addHotkey('redo', w.redo, { always: true });
   addHotkey('grid', () => w.setMode(app.mode?.type === 'grid' ? null : 'grid'));
-  addHotkey('colorbar', () => $('bar-place').click());
+  // The card mounts once a file is loaded; before that there is no button to press.
+  addHotkey('colorbar', () => document.getElementById('bar-place')?.click());
   addHotkey('ticks', () => w.setMode(app.mode?.type === 'tick' ? null : 'tick'));
   addHotkey('fit', () => w.viewer.fit());
   addHotkey('zoomIn', () => w.viewer.zoomBy(1.25));

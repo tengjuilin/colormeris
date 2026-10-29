@@ -20,9 +20,8 @@ import { createProject } from '../project/project.ts';
 import { mountCards } from '../react/mount-cards.tsx';
 import { COLOR_DEFAULTS, defaultSettings } from '../settings/settings.ts';
 import { Viewer } from '../viewer.ts';
-import { setupWorkspaceColorbarCard } from './colorbar-card.ts';
+import { setupWorkspaceTickFocus } from './cards/tick-focus.ts';
 import { setupWorkspaceExport } from './export.ts';
-import { setupWorkspaceGridCard } from './grid-card.ts';
 import { setupWorkspaceHistory } from './history.ts';
 import { setupWorkspaceHotkeys } from './hotkeys.ts';
 import { setupWorkspaceInteract } from './interact.ts';
@@ -75,8 +74,7 @@ import { notify } from './store.ts';
 //   history.js        undo/redo, commit
 //   overlay.js        drawing grids, colorbars, handles
 //   interact.js       clicks, handle drags, hover
-//   grid-card.js      the Grid card
-//   colorbar-card.js  the Colorbar card: ticks, strip, reference colormap
+//   cards/colorbar-card.tsx  the Colorbar card (React; cards/tick-focus.ts holds focusTick)
 //   panels.js         the Panels card; every page has a panel
 //   source.js         opening files and zips, pages, resolution, zoom box
 //   export.js         downloads and the project zip
@@ -123,6 +121,8 @@ export function createWorkspace(): Workspace {
     hoverCell: null,
     tableCell: null,
     showOverlay: true,
+    keepRect: true,
+    showRecon: false,
   };
 
   let tickSeq = 1;
@@ -183,9 +183,6 @@ export function createWorkspace(): Workspace {
     }
     app.mode = type ? { type, points: [] } : null;
     updateModebar();
-    setPressed($('grid-place'), type === 'grid');
-    setPressed($('bar-place'), type === 'colorbar');
-    setPressed($('tick-add'), type === 'tick');
     tool.onModeChange?.(type);
     viewer.requestDraw();
     // Light: nearly every caller follows with changed(), whose full notify renders once.
@@ -242,8 +239,6 @@ export function createWorkspace(): Workspace {
     if (!loaded) return;
 
     const panel = activePanel();
-    w.renderGridCard(panel);
-    w.renderColorbarCard(panel);
     tool.renderSidebar?.(panel, light);
   }
 
@@ -419,8 +414,7 @@ export function createWorkspace(): Workspace {
     setupWorkspaceHistory,
     setupWorkspaceOverlay,
     setupWorkspaceInteract,
-    setupWorkspaceGridCard,
-    setupWorkspaceColorbarCard,
+    setupWorkspaceTickFocus,
     setupWorkspacePanels,
     setupWorkspaceSource,
     setupWorkspaceExport,

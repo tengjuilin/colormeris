@@ -1,30 +1,19 @@
 import { rgbToHex } from '../../core/color.ts';
 import { colorAtT } from '../../core/colorbar.ts';
-import { bilinear, cellSamplePolygon, cornerCellCenters, outerCorners } from '../../core/grid.ts';
-import type {
-  Cell,
-  GridAnchor,
-  GridShape,
-  HeatmapCell,
-  HeatmapResult,
-  Panel,
-  Point,
-  Rgb,
-  ToolHooks,
-  ViewerApi,
-  Workspace,
-} from '../../types/index.ts';
-import { ANCHOR_DEFAULTS, effectiveLabels } from '../project/project.ts';
-import { formatNumber, heatmapPanelFiles, toLongCsv, toWideCsv } from '../project/project-files.ts';
+import { bilinear, cellSamplePolygon, outerCorners } from '../../core/grid.ts';
+import type { Cell, HeatmapResult, Panel, Point, ToolHooks, ViewerApi, Workspace } from '../../types/index.ts';
+import { effectiveLabels } from '../project/project.ts';
+import { formatNumber, heatmapPanelFiles } from '../project/project-files.ts';
+import { boundPrefix, highlightTableCell, luminance, OFF_MAP } from './results-table.ts';
 import { extractPanel, panelProblem } from './sampling.ts';
 
 // Heatmap tool: extract one value per grid cell by matching the cell's color
 // against the calibrated colorbar. setupHeatmapTool(ws) registers it with a
-// workspace (workspace.js).
+// workspace (workspace.js). Its sidebar is React: the Grid card (shared), the Results card
+// (workspace/cards/heatmap-results-card.tsx, table in results-table.ts).
 
 export function setupHeatmapTool(ws: Workspace) {
-  const state = { showRecon: false };
-  const { $, app, viewer } = ws;
+  const { app, viewer } = ws;
 
   ws.addTool({
     kind: 'heatmap',
@@ -36,11 +25,13 @@ export function setupHeatmapTool(ws: Workspace) {
     panelFiles: (panels, results, bases) => panels.flatMap((p, i) => heatmapPanelFiles(p, results[i], bases[i])),
     sections: ['sec-hm-results'],
     gridTexts: ['Click the outer top-left corner of the heatmap.', 'Click the outer bottom-right corner.'],
-    renderSidebar,
     drawUnderGrid,
     drawOverGrid,
     hoverText,
-    onHoverCell: (cell) => highlightTableCell(cell),
+    onHoverCell: (cell) => {
+      highlightTableCell(document.getElementById('result-table'), cell);
+      viewer.requestDraw();
+    },
   } satisfies ToolHooks);
 
   // ---------------------------------------------------------------- overlay
@@ -80,7 +71,7 @@ export function setupHeatmapTool(ws: Workspace) {
   // Reconstruction: repaint each sampled area with the color its value maps to,
   // one path and fill per color.
   function drawUnderGrid(ctx: CanvasRenderingContext2D, v: ViewerApi, panel: Panel, active: boolean) {
-    if (!active || !state.showRecon) return;
+    if (!active || !app.showRecon) return;
     const result = ws.resultFor(panel) as HeatmapResult;
     if (!result.cells) return;
     const g = panel.grid;
@@ -105,7 +96,7 @@ export function setupHeatmapTool(ws: Workspace) {
       (Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y) / g.cols) * v.scale,
       (Math.hypot(c[3].x - c[0].x, c[3].y - c[0].y) / g.rows) * v.scale,
     );
-    if (cellPx > 10 && !state.showRecon) {
+    if (cellPx > 10 && !app.showRecon) {
       // The outline adapts to the sampled color: dark on light cells, white on
       // dark ones. Before there is a result, white dashes over a dark line.
       const light = new Path2D();
@@ -164,14 +155,6 @@ export function setupHeatmapTool(ws: Workspace) {
     }
   }
 
-  // Why an off-map cell has no value, and the sign of a bound.
-  const OFF_MAP: Record<string, string> = {
-    gray: 'gray, not on the colorbar',
-    hue: 'a hue not on the colorbar',
-    far: 'far from every colorbar color',
-  };
-  const boundPrefix = (c: HeatmapCell) => (c.open === 'below' ? '≤' : c.open === 'above' ? '≥' : '');
-
   function hoverText(panel: Panel, cell: Cell | null) {
     if (!cell) return '';
     const rl = effectiveLabels(panel.grid.rowLabels, panel.grid.rows, 'R')[cell.row];
@@ -183,169 +166,4 @@ export function setupHeatmapTool(ws: Workspace) {
       ? `${rl} / ${cl}: ${boundPrefix(c)}${formatNumber(c.value)}  (ΔE ${c.deltaE.toFixed(1)})`
       : `${rl} / ${cl}`;
   }
-
-  // ---------------------------------------------------------------- sidebar
-
-  function renderSidebar(panel: Panel) {
-    const g = panel.grid;
-    const dots = g.anchor === 'centers';
-    ws.setValue($('grid-anchor'), g.anchor);
-    ws.setValue($('grid-shape'), g.shape);
-    $('grid-place-label').textContent = dots ? 'Place corner dots' : 'Place grid corners';
-    $('grid-fraction-field').title = dots
-      ? "Share of each dot's own radius that is averaged; lower it to stay clear of the dot's edge"
-      : 'Share of each cell that is averaged around its center; lower it to stay clear of cell borders';
-    $('grid-detect').title = dots
-      ? 'Type rows and columns: detection needs cell borders, which dot plots lack'
-      : 'Guess rows and columns from the image inside the grid';
-    if (dots) $('grid-detect').disabled = true;
-    ws.setValue($('grid-fraction'), panel.grid.sampleFraction);
-    $('grid-fraction-out').textContent = `${Math.round(panel.grid.sampleFraction * 100)}%`;
-    renderResults(panel);
-  }
-
-  function renderResults(panel: Panel) {
-    const res = ws.resultFor(panel) as HeatmapResult;
-    const table = $('result-table');
-    $('dl-csv').disabled = $('dl-long').disabled = $('copy-tsv').disabled = !!res.error;
-    if (res.error) {
-      $('result-problem').textContent = res.error;
-      $('result-summary').textContent = '';
-      table.replaceChildren();
-      return;
-    }
-    $('result-problem').textContent = '';
-    const values = res.cells
-      .flat()
-      .map((c) => c.value)
-      .filter(Number.isFinite);
-    const n = res.counts;
-    const flagged = n.flagged + n.offMap;
-    $('result-summary').textContent =
-      `${res.rows} × ${res.cols} cells` +
-      (values.length ? ` · range ${formatNumber(Math.min(...values))} – ${formatNumber(Math.max(...values))}` : '') +
-      (res.bins ? ` · binned colorbar (${res.bins.length} bins), bin middles` : '') +
-      (n.empty ? ` · ${n.empty} without a dot (blank)` : '') +
-      (n.offMap ? ` · ${n.offMap} not on the colorbar (blank)` : '') +
-      (n.open ? ` · ${n.open} bounds (≤ / ≥)` : '') +
-      ` · ${flagged ? `${flagged} flagged (ΔE > ${panel.settings.maxDeltaE} or off the colorbar) — outlined in red` : 'no flagged cells'}`;
-
-    const rowLabels = effectiveLabels(panel.grid.rowLabels, res.rows, 'R');
-    const colLabels = effectiveLabels(panel.grid.colLabels, res.cols, 'C');
-    const thead = document.createElement('thead');
-    const hr = document.createElement('tr');
-    hr.append(th('', true), ...colLabels.map((l) => th(l)));
-    thead.append(hr);
-    const tbody = document.createElement('tbody');
-    res.cells.forEach((row, r) => {
-      const tr = document.createElement('tr');
-      tr.append(th(rowLabels[r], true));
-      row.forEach((c, k) => {
-        const td = document.createElement('td');
-        td.dataset.r = String(r);
-        td.dataset.c = String(k);
-        if (c.empty) {
-          td.textContent = '–';
-          td.title = `${rowLabels[r]} / ${colLabels[k]}\nno dot (blank)`;
-          tr.append(td);
-          return;
-        }
-        const off = c.status === 'off-map';
-        td.textContent = off ? '–' : boundPrefix(c) + Number(c.value.toPrecision(4)).toString();
-        td.style.background = rgbToHex(c.rgb!);
-        td.style.color = luminance(c.rgb!) > 0.45 ? '#111' : '#fff';
-        td.title = off
-          ? `${rowLabels[r]} / ${colLabels[k]}\nno value: ${OFF_MAP[c.reason!] || 'not on the colorbar'}\nΔE ${c.deltaE.toFixed(2)}`
-          : `${rowLabels[r]} / ${colLabels[k]}\nvalue ${boundPrefix(c)}${formatNumber(c.value)}${c.status === 'clamped' ? " (past the colorbar's end)" : c.open ? ' (open end bin)' : ''}\nΔE ${c.deltaE.toFixed(2)}`;
-        td.dataset.r = String(r);
-        td.dataset.c = String(k);
-        if (c.flagged) td.classList.add('flagged');
-        tr.append(td);
-      });
-      tbody.append(tr);
-    });
-    table.replaceChildren(thead, tbody);
-    highlightTableCell(app.hoverCell);
-  }
-
-  function th(text: string, rowhead = false) {
-    const el = document.createElement('th');
-    el.textContent = text;
-    if (rowhead) el.className = 'rowhead';
-    return el;
-  }
-
-  function luminance([r, g, b]: Rgb) {
-    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  }
-
-  function highlightTableCell(cell: Cell | null) {
-    const table = $('result-table');
-    table.querySelector('td.hl')?.classList.remove('hl');
-    if (cell) table.querySelector(`td[data-r="${cell.row}"][data-c="${cell.col}"]`)?.classList.add('hl');
-    viewer.requestDraw();
-  }
-
-  async function copyTsv() {
-    const panel = ws.activePanel();
-    const res = ws.resultFor(panel) as HeatmapResult;
-    if (res.error) return;
-    const tsv = toWideCsv(panel, res)
-      .trim()
-      .split('\n')
-      .map((line) => line.replace(/"([^"]|"")*"|,/g, (m) => (m === ',' ? '\t' : m.slice(1, -1).replace(/""/g, '"'))))
-      .join('\n');
-    try {
-      await navigator.clipboard.writeText(tsv);
-      ws.toast('Table copied — paste into a spreadsheet.');
-    } catch {
-      ws.toast('Clipboard is not available here.', true);
-    }
-  }
-
-  // ---------------------------------------------------------------- bindings
-
-  ws.bindNumber('grid-fraction', (p, v) => (p.grid.sampleFraction = v));
-  // Switching what the clicks mean keeps the same cells: placed points are
-  // converted, and the shape and sampled area take the new mode's defaults.
-  $('grid-anchor').addEventListener('change', () => {
-    const anchor = $('grid-anchor').value as GridAnchor;
-    ws.commit((p) => {
-      const g = p.grid;
-      if (g.anchor === anchor) return;
-      if (g.corners) g.corners = anchor === 'centers' ? cornerCellCenters(g.corners, g.rows, g.cols) : outerCorners(g);
-      g.anchor = anchor;
-      Object.assign(g, ANCHOR_DEFAULTS[anchor]);
-    });
-    // Start placing right away: the old points no longer mean the same thing.
-    ws.setMode('grid');
-  });
-  $('grid-shape').addEventListener('change', () =>
-    ws.commit((p) => (p.grid.shape = $('grid-shape').value as GridShape)),
-  );
-  $('toggle-recon').addEventListener('change', (e) => {
-    state.showRecon = (e.target as HTMLInputElement).checked;
-    viewer.requestDraw();
-  });
-  $('dl-csv').addEventListener('click', () => {
-    const p = ws.activePanel();
-    const r = ws.resultFor(p) as HeatmapResult;
-    if (!r.error) ws.download(new Blob([toWideCsv(p, r)], { type: 'text/csv' }), ws.csvName(p));
-  });
-  $('dl-long').addEventListener('click', () => {
-    const p = ws.activePanel();
-    const r = ws.resultFor(p) as HeatmapResult;
-    if (!r.error)
-      ws.download(new Blob([toLongCsv([{ panel: p, result: r }])], { type: 'text/csv' }), ws.csvName(p, '_long'));
-  });
-  $('copy-tsv').addEventListener('click', copyTsv);
-  $('result-table').addEventListener('pointerover', (e) => {
-    const td = (e.target as HTMLElement).closest('td');
-    app.tableCell = td ? { row: Number(td.dataset.r), col: Number(td.dataset.c) } : null;
-    viewer.requestDraw();
-  });
-  $('result-table').addEventListener('pointerleave', () => {
-    app.tableCell = null;
-    viewer.requestDraw();
-  });
 }

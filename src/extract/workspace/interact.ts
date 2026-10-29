@@ -141,7 +141,7 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
       w.tool().onHandleDrag?.(handle, p, e);
     } else if (handle.kind === 'corner') {
       const c = panel.grid.corners!;
-      if ($('grid-rect').checked) {
+      if (app.keepRect) {
         const opposite = c[(handle.i! + 2) % 4];
         panel.grid.corners = rectCorners(p, opposite);
         // Keep dragging the corner that is now under the pointer.

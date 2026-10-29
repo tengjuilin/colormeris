@@ -105,121 +105,9 @@
       <section class="card" id="sec-panels" hidden>
       </section>
 
-      <section class="card" id="sec-grid" hidden>
-        <div class="card-head">
-          <h2><span class="step-dot grid-dot"></span><span data-tool="heatmap roi">Grid</span><span data-tool="map" hidden>Plot area</span> <span class="tag" data-tool="roi" hidden>optional</span></h2>
-          <span id="grid-state" class="badge"></span>
-          <div class="head-actions">
-            <button class="btn danger icon-only" id="grid-clear" data-icon="trash" title="Remove the grid or plot area" aria-label="Remove the grid or plot area"></button>
-          </div>
-        </div>
-        <button class="btn primary block" id="grid-place" data-icon="place" title="Shortcut: G" data-hotkey="grid" data-title="Shortcut: {key}"><span data-tool="heatmap roi" id="grid-place-label">Place grid corners</span><span data-tool="map" hidden>Place plot area</span></button>
-        <div class="fields" data-tool="heatmap">
-          <label class="field" title="Outer corners: click the grid's outer top-left and bottom-right corners (heatmaps). Dot centers: click the centers of the top-left and bottom-right dots (dot plots without cell borders); each dot is sampled inside its own radius and cells without a dot are left blank.">Click on
-            <select id="grid-anchor">
-              <option value="corners">Outer corners</option>
-              <option value="centers">Dot centers</option>
-            </select>
-          </label>
-        </div>
-        <div class="fields" data-tool="heatmap roi">
-          <label class="field">Rows <input id="grid-rows" type="number" min="1" max="1000"></label>
-          <label class="field">Columns <input id="grid-cols" type="number" min="1" max="1000"></label>
-        </div>
-        <button class="btn block" id="grid-detect" data-icon="detect" data-tool="heatmap roi" title="Guess rows and columns from the image inside the grid">Detect rows and columns</button>
-        <details class="options" data-tool="heatmap">
-          <summary>Row and column labels <span id="grid-labels-note" class="summary-note"></span></summary>
-          <div class="options-body">
-            <button class="btn primary block" id="grid-read-labels" data-icon="ai" title="Send the current view to a vision LLM (Agent card, Label reader) and fill in both lists for this panel. Zoom so the grid and its labels are visible.">Read labels with AI</button>
-            <label class="field" title="OpenRouter model id; needs vision and tools. Key and base URL are the Agent's (Settings → Agent).">Model
-              <input id="agent-labels" type="text" list="agent-llm-list" spellcheck="false">
-            </label>
-            <p class="hint" id="grid-read-labels-hint"></p>
-            <label class="field stack">Rows (top → bottom)
-              <textarea id="grid-row-labels" rows="3" spellcheck="false" placeholder="One per line or comma-separated; blank = R1, R2, …"></textarea>
-            </label>
-            <label class="field stack">Columns (left → right)
-              <textarea id="grid-col-labels" rows="3" spellcheck="false" placeholder="One per line or comma-separated; blank = C1, C2, …"></textarea>
-            </label>
-          </div>
-        </details>
-        <details class="options" data-tool="roi" hidden>
-          <summary>Box names <span id="grid-boxes-note" class="summary-note"></span></summary>
-          <div class="options-body">
-            <label class="field stack">Box names, left → right, top → bottom
-              <textarea id="grid-box-labels" rows="3" spellcheck="false" placeholder="One per line or comma-separated, e.g. B-a11, B-a16, C-a9 …; blank = R1 C1, R1 C2, …"></textarea>
-            </label>
-          </div>
-        </details>
-        <details class="options">
-          <summary>Options</summary>
-          <div class="options-body">
-            <div class="fields" data-tool="heatmap">
-              <label class="field" title="Shape of the sampled area in each cell">Shape
-                <select id="grid-shape">
-                  <option value="square">Square</option>
-                  <option value="circle">Circle</option>
-                </select>
-              </label>
-            </div>
-            <label class="field" data-tool="heatmap" id="grid-fraction-field" title="Share of each cell that is averaged around its center; lower it to stay clear of cell borders">Sampled area
-              <span class="range-row"><input id="grid-fraction" type="range" min="0.1" max="1" step="0.05"><output id="grid-fraction-out"></output></span>
-            </label>
-            <label class="check"><input id="grid-rect" type="checkbox" checked> Keep rectangular when dragging corners</label>
-          </div>
-        </details>
-      </section>
+      <section class="card" id="sec-grid" hidden></section>
 
       <section class="card" id="sec-colorbar" hidden>
-        <div class="card-head">
-          <h2><span class="step-dot bar-dot"></span>Colorbar</h2>
-          <span id="bar-state" class="badge"></span>
-        </div>
-        <button class="btn primary block" id="bar-place" data-icon="place" title="Shortcut: B" data-hotkey="colorbar" data-title="Shortcut: {key}">Place colorbar ends</button>
-        <div class="card-actions split">
-          <button class="btn" id="tick-add" data-icon="plus" title="Shortcut: T" data-hotkey="ticks" data-title="Shortcut: {key}">Add ticks</button>
-          <button class="btn" id="tick-type" data-icon="type" title="Add a tick by typing its value and its position in % along the colorbar (0% at the start, 100% at the end)">Type a tick</button>
-        </div>
-        <div class="fields">
-          <label class="field" title="Read the colors from the colorbar in the figure, or from a known colormap when the figure's bar is missing, small or compressed">Colors
-            <select id="bar-source">
-              <option value="figure">Colorbar in the figure</option>
-              <option value="colormap">Known colormap</option>
-            </select>
-          </label>
-        </div>
-        <div id="bar-cmap" class="fields bar-cmap" hidden>
-          <div class="field"><span>Colormap</span><div id="bar-cmap-pick"></div></div>
-          <label class="check" title="Run the colormap from its end to its start"><input id="bar-cmap-rev" type="checkbox"> Reversed</label>
-        </div>
-        <canvas id="bar-strip" class="bar-strip" width="600" height="28" aria-label="Sampled colorbar"></canvas>
-        <p id="bar-match" class="bar-match hint" aria-live="polite" hidden></p>
-        <table class="ticks">
-          <thead><tr><th>Tick value</th><th title="0% at the start of the colorbar (or colormap), 100% at its end">Position</th><th></th></tr></thead>
-          <tbody id="tick-list"></tbody>
-        </table>
-        <label class="field">Scale
-          <select id="bar-scale">
-            <option value="linear">Linear</option>
-            <option value="log10">Log₁₀ (tick values are raw numbers)</option>
-            <option value="piecewise" title="Uneven tick values, e.g. a binned colorbar: values are interpolated between neighbouring ticks">Piecewise (uneven ticks)</option>
-            <option value="piecewise-log10" title="Uneven positive tick values over decades: log10 between neighbouring ticks">Piecewise log10</option>
-          </select>
-        </label>
-        <details class="options">
-          <summary>Options</summary>
-          <div class="options-body">
-            <div class="fields">
-              <label class="field" title="Colors are averaged over this many pixels on each side of the colorbar line">Averaging (± px) <input id="bar-halfwidth" type="number" min="0" max="50" step="1"></label>
-            </div>
-            <label class="field" title="What happens to the ticks when you drag an end of the colorbar: move with the bar and keep their proportions, or stay on their marks on the page. Drag the line itself to move everything together.">When dragging an end, ticks
-              <select id="bar-tick-mode">
-                <option value="follow">Move with the bar (keep proportions)</option>
-                <option value="fixed">Stay in place on the page</option>
-              </select>
-            </label>
-          </div>
-        </details>
       </section>
 
       <section class="card" id="sec-rois" hidden>
@@ -367,20 +255,7 @@
         </div>
       </section>
 
-      <section class="card" id="sec-hm-results" hidden>
-        <div class="card-head">
-          <h2>Results</h2>
-          <label class="check"><input id="toggle-recon" type="checkbox"> Reconstruct</label>
-        </div>
-        <p id="result-problem" class="notice"></p>
-        <p id="result-summary" class="hint"></p>
-        <div class="table-wrap"><table id="result-table" class="result-table"></table></div>
-        <button class="btn primary block" id="dl-csv" data-icon="download" title="The table as shown: one row per grid row">Download CSV</button>
-        <div class="card-actions split">
-          <button class="btn" id="dl-long" data-icon="download" title="One line per cell with its color, ΔE and flag">Long CSV</button>
-          <button class="btn" id="copy-tsv" data-icon="copy" title="Copy the table to paste into a spreadsheet">Copy table</button>
-        </div>
-      </section>
+      <section class="card" id="sec-hm-results" hidden></section>
 
       <section class="card" id="sec-roi-results" hidden>
         <div class="card-head">

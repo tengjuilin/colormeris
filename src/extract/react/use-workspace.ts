@@ -42,6 +42,13 @@ export function useWorkspace({ section, light = true }: UseWorkspaceOptions = {}
   return ctx;
 }
 
+/** The workspace without subscribing: for hooks whose handlers only read live state (use-bound.ts). */
+export function useWorkspaceContext(): WsContextValue {
+  const ctx = useContext(WsContext);
+  if (!ctx) throw new Error('useWorkspaceContext needs a WsContext provider');
+  return ctx;
+}
+
 /** Whether a section is shown now (read during render, so use it in a card that subscribes with `section`). */
 export function useSectionVisible(sectionId: string): boolean {
   const ctx = useContext(WsContext);
