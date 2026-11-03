@@ -125,6 +125,8 @@ export function createDecisionTools(
 
   const page = () => app.pages.get(ws.currentPage())!;
   const size = () => ({ W: page().canvas.width, H: page().canvas.height });
+  // Agent actions run here for their effect; their state snapshot is not built.
+  const act = (name: string, args: ActionArgs) => api.run(name, args, { state: false });
   const must = (r: { ok: boolean; result?: unknown; error?: string }) => {
     if (!r.ok) throw new Error(r.error);
     return r.result;
@@ -150,7 +152,7 @@ export function createDecisionTools(
 
   // A named panel made active (switching page if needed), or the active one.
   async function takePanel(panelId?: string) {
-    if (panelId) must(await api.run('select_panel', { panelId }));
+    if (panelId) must(await act('select_panel', { panelId }));
     const panel = panelId ? app.project.panels.find((p) => p.id === panelId) : ws.activePanel();
     if (!panel) throw new Error(`No panel "${panelId}".`);
     return panel;
@@ -159,14 +161,13 @@ export function createDecisionTools(
   // The panel to calibrate: the one named, the active one while it is
   // still empty, or a new one.
   async function targetPanel({ name, panelId }: Args) {
-    if (panelId) must(await api.run('select_panel', { panelId }));
+    if (panelId) must(await act('select_panel', { panelId }));
     else {
       const active = ws.activePanel();
-      if (!active || active.page !== ws.currentPage() || panelStarted(active))
-        must(await api.run('add_panel', { name }));
+      if (!active || active.page !== ws.currentPage() || panelStarted(active)) must(await act('add_panel', { name }));
     }
     const panel = ws.activePanel();
-    if (panel.name !== name) must(await api.run('rename_panel', { panelId: panel.id, name }));
+    if (panel.name !== name) must(await act('rename_panel', { panelId: panel.id, name }));
     return panel;
   }
 
@@ -251,7 +252,7 @@ export function createDecisionTools(
   async function placeGrid(panel: Panel, box: Box) {
     const setGrid = async (b: Box) =>
       must(
-        await api.run('set_grid', {
+        await act('set_grid', {
           panelId: panel.id,
           topLeft: { x: b.x0, y: b.y0 },
           bottomRight: { x: b.x1, y: b.y1 },
@@ -263,14 +264,14 @@ export function createDecisionTools(
     trimmedByPanel.delete(panel.id);
     if (plan.cells !== box) trimmedByPanel.set(panel.id, { box, alt: plan.alt });
     if (panel.grid.rows !== plan.rows || panel.grid.cols !== plan.cols)
-      must(await api.run('set_grid_size', { panelId: panel.id, rows: plan.rows, cols: plan.cols }));
+      must(await act('set_grid_size', { panelId: panel.id, rows: plan.rows, cols: plan.cols }));
     unsureByPanel.set(panel.id, plan.unsure);
     const notes = [...plan.notes];
     for (const u of regridOthers(
       { id: panel.id, name: panel.name, cells: plan.cells, rows: plan.rows, cols: plan.cols, unsure: plan.unsure },
       others,
     )) {
-      must(await api.run('set_grid_size', { panelId: u.id, rows: u.rows, cols: u.cols }));
+      must(await act('set_grid_size', { panelId: u.id, rows: u.rows, cols: u.cols }));
       unsureByPanel.set(u.id, { row: false, col: false });
       notes.push(u.note);
     }
@@ -293,14 +294,14 @@ export function createDecisionTools(
 
   // A label just past a pale end extends the strip to it (findTickLabels).
   async function applyBar(panel: Panel, strip: Box) {
-    for (const k of [...panel.colorbar.ticks]) must(await api.run('remove_tick', { panelId: panel.id, tickId: k.id }));
+    for (const k of [...panel.colorbar.ticks]) must(await act('remove_tick', { panelId: panel.id, tickId: k.id }));
     const found = findTickLabels(page().imageData, strip, { exclude: cellBoxes() });
     const bar = found.bar || strip;
-    must(await api.run('set_colorbar', { panelId: panel.id, ...barLine(strip) }));
+    must(await act('set_colorbar', { panelId: panel.id, ...barLine(strip) }));
     // The snap would cut the pale end off again.
     if (found.bar)
       must(
-        await api.run('set_colorbar', {
+        await act('set_colorbar', {
           panelId: panel.id,
           ...barLine(bar),
           halfWidth: panel.colorbar.halfWidth,
@@ -504,10 +505,9 @@ export function createDecisionTools(
         throw new Error(`Panel ${src.id} is on page ${src.page}; a colorbar can only be shared on one page.`);
       const cb = src.colorbar;
       if (!cb.start || !cb.end) throw new Error(`Panel ${src.id} has no colorbar.`);
-      for (const k of [...panel.colorbar.ticks])
-        must(await api.run('remove_tick', { panelId: panel.id, tickId: k.id }));
+      for (const k of [...panel.colorbar.ticks]) must(await act('remove_tick', { panelId: panel.id, tickId: k.id }));
       must(
-        await api.run('set_colorbar', {
+        await act('set_colorbar', {
           panelId: panel.id,
           start: cb.start,
           end: cb.end,
@@ -517,8 +517,8 @@ export function createDecisionTools(
       );
       for (const k of ticksWithT(cb))
         if (Number.isFinite(k.t) && Number.isFinite(k.value))
-          must(await api.run('add_tick', { panelId: panel.id, t: k.t, value: k.value, snap: false }));
-      must(await api.run('set_colorbar_scale', { panelId: panel.id, scale: cb.scale }));
+          must(await act('add_tick', { panelId: panel.id, t: k.t, value: k.value, snap: false }));
+      must(await act('set_colorbar_scale', { panelId: panel.id, scale: cb.scale }));
       marksByPanel.set(panel.id, marksByPanel.get(src.id) || []);
       candidatesByPanel.delete(panel.id);
       return {
@@ -565,24 +565,24 @@ export function createDecisionTools(
           ? `No box ${bad.join(', ')}: the boxes are numbered 1 to ${marks.length}.`
           : 'This panel has no numbered boxes: give the ticks as {t, value}.',
       );
-    for (const k of [...cb.ticks]) must(await api.run('remove_tick', { panelId: panel.id, tickId: k.id }));
+    for (const k of [...cb.ticks]) must(await act('remove_tick', { panelId: panel.id, tickId: k.id }));
     for (const k of ticks) {
       const where = k.mark !== undefined ? { at: marks[k.mark - 1].at } : { t: tFromTopLeft(cb.start, cb.end, k.t) };
-      must(await api.run('add_tick', { panelId: panel.id, ...where, value: k.value }));
+      must(await act('add_tick', { panelId: panel.id, ...where, value: k.value }));
     }
     let note = '';
-    if (scale) must(await api.run('set_colorbar_scale', { panelId: panel.id, scale }));
+    if (scale) must(await act('set_colorbar_scale', { panelId: panel.id, scale }));
     else if ((ws.resultFor(panel) as HeatmapResult).bins) {
       // A binned bar labels its steps, often with uneven values.
       const s = scaleForBins(ticksWithT(panel.colorbar), panel.colorbar.scale);
       if (s) {
-        must(await api.run('set_colorbar_scale', { panelId: panel.id, scale: s }));
+        must(await act('set_colorbar_scale', { panelId: panel.id, scale: s }));
         note = ` The colorbar is binned, so the app set the scale to ${s}.`;
       }
     } else {
       const s = scaleForTicks(ticksWithT(panel.colorbar), panel.colorbar.scale);
       if (s) {
-        must(await api.run('set_colorbar_scale', { panelId: panel.id, scale: s }));
+        must(await act('set_colorbar_scale', { panelId: panel.id, scale: s }));
         note =
           s === 'log10'
             ? ' The tick values grow by constant factors, so the app set the scale to log10.'
@@ -653,7 +653,7 @@ export function createDecisionTools(
     const notes = [];
     const setGrid = async (b: Box) =>
       must(
-        await api.run('set_grid', {
+        await act('set_grid', {
           panelId: panel.id,
           topLeft: { x: b.x0, y: b.y0 },
           bottomRight: { x: b.x1, y: b.y1 },
@@ -683,7 +683,7 @@ export function createDecisionTools(
         trimmedByPanel.delete(panel.id);
       }
     }
-    must(await api.run('set_grid_size', { panelId: panel.id, rows, cols }));
+    must(await act('set_grid_size', { panelId: panel.id, rows, cols }));
     unsureByPanel.set(panel.id, { row: false, col: false });
     const view = await renderView({
       region: growBox(cornersBox(panel.grid.corners!), 0.05, 10, size().W, size().H),
@@ -756,7 +756,7 @@ export function createDecisionTools(
     // The agent action, with the check after it (a scale change can make
     // or break the tick fit).
     set_colorbar_scale: async (args) => {
-      const r = await api.run('set_colorbar_scale', args);
+      const r = await act('set_colorbar_scale', args);
       if (!r.ok) return r;
       const panel = await takePanel(args.panelId);
       return {

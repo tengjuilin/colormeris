@@ -716,11 +716,14 @@ interface GridDetection {
 export function openQuestions({
   panels,
   results,
+  hashes = {},
   detections,
   decisions,
 }: {
   panels: Panel[];
   results: Record<string, ResultJson>;
+  /** resultKeyHash of each result, when the caller has it already. */
+  hashes?: Record<string, string>;
   detections: Record<string, GridDetection | undefined>;
   decisions: Decision[];
 }): Question[] {
@@ -771,7 +774,7 @@ export function openQuestions({
     }
     const res = results[p.id] as unknown as ResultView | undefined;
     if (!res || res.error) continue;
-    const hash = resultKeyHash(res);
+    const hash = hashes[p.id] ?? resultKeyHash(res);
     if (p.tool === 'heatmap' && res.flagged.length > MAX_CELL_QUESTIONS) {
       // Many flagged cells usually mean one cause (often the colorbar), so
       // they get one question instead of one per cell.

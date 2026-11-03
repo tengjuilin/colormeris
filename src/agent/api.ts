@@ -35,10 +35,12 @@ import type {
   HeatmapResult,
   MapResult,
   Panel,
+  PanelResult,
   Point,
   Question,
   ResultJson,
   RoiResult,
+  RunOptions,
   Workspace,
 } from '../types/index.ts';
 import { round } from './round.ts';
@@ -90,18 +92,39 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
 
   const problems = () => Object.fromEntries(app.project.panels.map((p) => [p.id, ws.resultFor(p).error || null]));
 
-  function rawResultsJson(panel: Panel): ResultJson {
+  // A panel's result as agent JSON and the hash of its values, built once
+  // per result: ws.resultFor returns the same object while the panel's
+  // result key is unchanged, and state() asks for both after every action
+  // (review status, questions). `sig` covers what the JSON reads of the
+  // panel beyond its result (labels, maxDeltaE, scale, profile names),
+  // which the result key leaves out. The cached JSON is never mutated.
+  const resultMemo = new WeakMap<PanelResult, { sig: string; json: ResultJson; hash: string | null }>();
+  function resultEntry(panel: Panel) {
     const res = ws.resultFor(panel);
+    const sig = JSON.stringify([
+      panel.id,
+      panel.tool,
+      panel.grid,
+      panel.settings.maxDeltaE,
+      panel.colorbar.scale,
+      panel.tool === 'map' ? panel.map.profiles.map((l) => [l.id, l.name]) : null,
+    ]);
+    const hit = resultMemo.get(res);
+    if (hit && hit.sig === sig) return hit;
+    const json = toResultJson(panel, res);
+    const entry = { sig, json, hash: json.error ? null : resultKeyHash(json as { values?: unknown }) };
+    resultMemo.set(res, entry);
+    return entry;
+  }
+
+  function toResultJson(panel: Panel, res: PanelResult): ResultJson {
     if (panel.tool === 'heatmap') return heatmapResultJson(panel, res as HeatmapResult) as ResultJson;
     if (panel.tool === 'map') return mapResultJson(panel, res as MapResult) as ResultJson;
     return roiResultJson(panel, res as RoiResult, (r, c) => boxLabel(panel.grid, r, c)) as ResultJson;
   }
 
   // Hash of the panel's current values, or null while it has no result.
-  function currentHash(panel: Panel) {
-    const out = rawResultsJson(panel);
-    return out.error ? null : resultKeyHash(out as { values?: unknown });
-  }
+  const currentHash = (panel: Panel) => resultEntry(panel).hash;
 
   // 'accepted' | 'rejected' while the values are unchanged since the
   // review, 'stale' after they changed, null when never reviewed.
@@ -111,11 +134,11 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
   }
   ws.reviewStatus = reviewStatus;
 
-  function resultsJson(panel: Panel) {
-    const out = rawResultsJson(panel);
+  function resultsJson(panel: Panel): ResultJson {
+    const { json, hash } = resultEntry(panel);
+    const out: ResultJson = { ...json };
     if (out.error) return out;
     if (panel.tool === 'heatmap') {
-      const hash = resultKeyHash(out as { values?: unknown });
       const mine = decisions.filter((d) => d.applied && d.panelId === panel.id);
       out.excluded = [
         ...mine
@@ -145,13 +168,17 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     // The typed questions cover heatmaps and ROI; maps have none yet.
     const panels = app.project.panels.filter((p) => p.tool !== 'map' && (!panelId || p.id === panelId));
     const results: Record<string, ResultJson> = {};
+    const hashes: Record<string, string> = {};
     const detections: Record<string, ReturnType<typeof detectGridSize>> = {};
     for (const p of panels) {
       const img = imageOf(p);
       if (p.grid.corners && p.grid.autoSize && img) detections[p.id] = detectGridSize(img, p.grid.corners);
-      if (!ws.resultFor(p).error) results[p.id] = resultsJson(p);
+      const { hash } = resultEntry(p);
+      if (hash === null) continue;
+      results[p.id] = resultsJson(p);
+      hashes[p.id] = hash;
     }
-    return openQuestions({ panels, results, detections, decisions }).map((q) => {
+    return openQuestions({ panels, results, hashes, detections, decisions }).map((q) => {
       const last = [...decisions].reverse().find((d) => d.questionId === q.id);
       return last ? { ...q, escalated: { answer: last.answer, confidence: last.confidence, source: last.source } } : q;
     });
@@ -532,8 +559,9 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     export_project: async () => (needSource(), await ws.exportZip(), null),
   };
 
-  // Run one action. Never throws; mutating actions also return the new state.
-  async function run(name: string, rawArgs: ActionArgs = {}): Promise<ActionResult> {
+  // Run one action. Never throws; mutating actions also return the new state
+  // (unless `state: false`: callers that only want the effect skip building it).
+  async function run(name: string, rawArgs: ActionArgs = {}, opts: RunOptions = {}): Promise<ActionResult> {
     const { args, notes } = normalizeArgs(name, rawArgs);
     const errs = validateAction(name, args);
     if (errs.length) return { ok: false, error: errs.join('; ') };
@@ -543,7 +571,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       if (spec.mutates && app.mode) ws.setMode(null);
       const result = await handlers[name](args);
       if (spec.mutates) actionLog.push({ action: name, args, ok: true, time: new Date().toISOString() });
-      return spec.mutates
+      return spec.mutates && opts.state !== false
         ? { ok: true, result: result ?? null, ...extra, state: state() }
         : { ok: true, result: result ?? null, ...extra };
     } catch (err) {

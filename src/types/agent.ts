@@ -172,6 +172,11 @@ export type ActionResult =
   | { ok: true; result: unknown; notes?: string[]; state?: StateSnapshot }
   | { ok: false; error: string };
 
+/** api.run options. `state: false` skips the state snapshot of a mutating action (callers that discard it). */
+export interface RunOptions {
+  state?: boolean;
+}
+
 /** One step of api.batch. */
 export interface BatchAction {
   name: string;
@@ -181,7 +186,7 @@ export interface BatchAction {
 /** The typed agent API (createAgentApi), exposed as window.colormeris. */
 export interface ColormerisApi {
   version: number;
-  run: (name: string, args?: ActionArgs) => Promise<ActionResult>;
+  run: (name: string, args?: ActionArgs, opts?: RunOptions) => Promise<ActionResult>;
   /** Runs in order and stops at the first failure. */
   batch: (actions: BatchAction[]) => Promise<(ActionResult & { name: string })[]>;
   tools: () => ToolDefinition[];
