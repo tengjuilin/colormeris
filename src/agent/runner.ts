@@ -1,7 +1,7 @@
 import { rgbToHex } from '../core/color.ts';
 import { colorAtT } from '../core/colorbar.ts';
 import { bilinear, cellSamplePolygon, outerCorners } from '../core/grid.ts';
-import { renderPdfPage } from '../extract/pdf-loader.ts';
+import { canvasDataUrl, renderPdfPage } from '../extract/pdf-loader.ts';
 import { ticksWithT } from '../extract/project/project.ts';
 import type {
   Box,
@@ -75,7 +75,7 @@ export interface RenderViewOptions {
 }
 
 /** renderView: an image of the page or a region of it for a model. */
-export type RenderViewFn = (opts?: RenderViewOptions) => RenderedView;
+export type RenderViewFn = (opts?: RenderViewOptions) => Promise<RenderedView>;
 
 type ToView = (p: Point) => Point;
 
@@ -95,7 +95,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
   // `marks` are numbered boxes ({box, label}) drawn on top. Without rulers
   // (images for the decision model) the picture is padded with white to at
   // least `minSide` on each side and `frame` maps it back to the page.
-  function renderView({
+  async function renderView({
     region,
     overlay = 'none',
     maxSide = MAX_VIEW,
@@ -103,7 +103,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
     marks = [],
     minSide = 0,
     zoom = true,
-  }: RenderViewOptions = {}): RenderedView {
+  }: RenderViewOptions = {}): Promise<RenderedView> {
     const page = app.pages.get(ws.currentPage());
     if (!page) throw new Error('No page is shown.');
     const src = page.canvas;
@@ -129,7 +129,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
     if (overlay !== 'none') drawPanels(ctx, toView, scale, overlay);
     drawMarks(ctx, toView, marks);
     const frame = { x0, y0, scale, width: out.width, height: out.height };
-    if (!rulers) return { dataUrl: out.toDataURL('image/png'), frame };
+    if (!rulers) return { dataUrl: await canvasDataUrl(out, 'image/png'), frame };
 
     // Rulers (bottom and right) with faint guide lines across the picture.
     const step = niceStep(scale);
@@ -164,7 +164,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       ]);
     const r = (v: number) => Math.round(v * 100) / 100;
     return {
-      dataUrl: out.toDataURL('image/jpeg', 0.9),
+      dataUrl: await canvasDataUrl(out, 'image/jpeg', 0.9),
       note: `Page ${ws.currentPage()}, region x ${r(x0)}–${r(x1)}, y ${r(y0)}–${r(y1)}, drawn at ${r(scale)}× (${W} × ${H} image pixels plus rulers). Image pixel (0, 0) is page point (${r(x0)}, ${r(y0)}): page x = ${r(x0)} + image x / ${r(scale)}, page y = ${r(y0)} + image y / ${r(scale)}. The rulers on the bottom and right edges show the same page pixels.`,
       region: { x0, y0, scale },
       frame,
@@ -312,7 +312,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       ctx.fillText(`Page ${t.p}`, x, y + 18);
       ctx.drawImage(t.canvas, x, y + 24);
     });
-    return { dataUrl: out.toDataURL('image/jpeg', 0.85), note: `Pages ${from}–${to} of ${n}.` };
+    return { dataUrl: await canvasDataUrl(out, 'image/jpeg', 0.85), note: `Pages ${from}–${to} of ${n}.` };
   }
 
   // ------------------------------------------------------------ run
@@ -382,7 +382,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
         // In decision mode a new page comes with its image (one step less).
         if (decisionMode && name === 'go_to_page' && r.ok) {
           viewedPages.add(ws.currentPage());
-          return { ok: true, result: `Page ${args.page} shown.`, image: renderView() };
+          return { ok: true, result: `Page ${args.page} shown.`, image: await renderView() };
         }
         // Keep results small: the active panel instead of the full state
         // (in decision mode without its label lists).
@@ -397,7 +397,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       const errs = validateRunnerTool(name, args);
       if (errs.length) return { ok: false, error: errs.join('; ') };
       if (name === 'view_page') {
-        const image = renderView(args);
+        const image = await renderView(args);
         viewedPages.add(ws.currentPage());
         return { ok: true, image };
       }
@@ -430,7 +430,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
     const opening =
       pages.length > 1 && app.pdfDoc
         ? await renderOverview(pages[0], pages[Math.min(pages.length, 12) - 1])
-        : renderView();
+        : await renderView();
     if (!(pages.length > 1 && app.pdfDoc)) viewedPages.add(ws.currentPage());
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt || (decisionMode ? DECISION_SYSTEM_PROMPT : AGENT_SYSTEM_PROMPT) },
@@ -516,6 +516,9 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
         const panelKey = args?.panelId || ws.activePanel()?.id;
         if (!result) {
           emit('tool', { name, args });
+          // A task boundary before each tool: its pixel work is synchronous,
+          // and the card's clock and the log only update in between.
+          await new Promise((resolve) => setTimeout(resolve, 0));
           result = guard.before(name, panelKey);
           if (!result) {
             try {

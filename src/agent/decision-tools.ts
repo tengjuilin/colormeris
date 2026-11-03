@@ -116,6 +116,8 @@ export function createDecisionTools(
   // up with it may settle them).
   const unsureByPanel = new Map<string, { row?: boolean; col?: boolean } | undefined>();
 
+  const breathe = () => new Promise((resolve) => setTimeout(resolve, 0));
+
   async function ask(state: DecisionImagePart[], questions: Record<string, DecisionQuestion>) {
     const res = await decide({ model, state, questions }, { signal });
     usage.decisions++;
@@ -124,7 +126,7 @@ export function createDecisionTools(
   }
   // One image of a page region and the questions about it.
   async function askRegion(region: Box | null, questions: Record<string, DecisionQuestion>, maxSide = JEV.cropSide) {
-    const view = renderView({ region, rulers: false, maxSide, minSide: JEV.minSide, zoom: false });
+    const view = await renderView({ region, rulers: false, maxSide, minSide: JEV.minSide, zoom: false });
     return { answers: await ask([imagePart(view.dataUrl)], questions), frame: view.frame! };
   }
 
@@ -353,8 +355,8 @@ export function createDecisionTools(
   }
 
   // The page with lettered colorbar candidates, rulers for rough boxes.
-  function candidatesView(list: CandidateList, name: string) {
-    const view = renderView({
+  async function candidatesView(list: CandidateList, name: string) {
+    const view = await renderView({
       overlay: 'calibration',
       marks: list.map((c) => ({ box: c.bar, label: c.letter, color: CANDIDATE_COLOR })),
       zoom: false,
@@ -369,7 +371,7 @@ export function createDecisionTools(
   // numbered boxes, cropped at the white gaps around them so a
   // neighbouring panel's colorbar cannot be mistaken for this one. After a
   // partial snap it also shows the whole guessed area.
-  function panelView(cells: Box, extra: Box[], marks: Mark[]) {
+  async function panelView(cells: Box, extra: Box[], marks: Mark[]) {
     const img = page().imageData;
     const { W, H } = size();
     const ext = union([cells, ...extra, ...marks.map((m) => m.box)]);
@@ -380,7 +382,7 @@ export function createDecisionTools(
       x1: Math.min(W, Math.max(ext.x1, labelReach(img, cells, 'right', reach)) + 30),
       y1: Math.min(H, Math.max(ext.y1, labelReach(img, cells, 'below', reach)) + 8),
     };
-    const view = renderView({ region, overlay: 'calibration', rulers: false, maxSide: 900, marks });
+    const view = await renderView({ region, overlay: 'calibration', rulers: false, maxSide: 900, marks });
     ws.zoomToPoints([
       { x: region.x0, y: region.y0 },
       { x: region.x1, y: region.y1 },
@@ -389,10 +391,10 @@ export function createDecisionTools(
   }
 
   // A colorbar with its numbered tick-label boxes, on its own.
-  function barView(panel: Panel, bar: Box, marks: Mark[]) {
+  async function barView(panel: Panel, bar: Box, marks: Mark[]) {
     const { W, H } = size();
     const region = growBox(union([bar, ...marks.map((m) => m.box)]), 0.1, 40, W, H);
-    const view = renderView({ region, overlay: 'calibration', rulers: false, maxSide: 700, marks, zoom: false });
+    const view = await renderView({ region, overlay: 'calibration', rulers: false, maxSide: 700, marks, zoom: false });
     return {
       dataUrl: view.dataUrl,
       note: `Colorbar of ${panel.name} (panel ${panel.id}) with numbered tick-label boxes.`,
@@ -409,6 +411,9 @@ export function createDecisionTools(
     const located = box
       ? { cells: snapEdges(page().imageData, clip(box)) || clip(box), rough: null }
       : await cellsFromJev(description, notes);
+    // Task boundaries between the pixel-heavy steps (snap, count, colorbars)
+    // so the Agent card's clock keeps ticking.
+    await breathe();
     const placed = await placeGrid(panel, located.cells);
     const cells = placed.cells;
     if (placed.note) notes.push(placed.note);
@@ -421,6 +426,7 @@ export function createDecisionTools(
       );
 
     const grid = { rows: placed.rows, cols: placed.cols };
+    await breathe();
     const { candidates, none } = await colorbarCandidates(cells, grid);
     const choice = chooseColorbar(cells, candidates, grid) as Choice;
     let bar: Box | null = null;
@@ -429,6 +435,7 @@ export function createDecisionTools(
     const images: RenderedView[] = [];
     if (choice.bar) {
       bar = choice.bar;
+      await breathe();
       const applied = await applyBar(panel, bar);
       [bar, marks] = [applied.bar, applied.marks];
       boxesText = applied.text;
@@ -448,7 +455,7 @@ export function createDecisionTools(
       notes.push(
         `It is not clear which colorbar is this heatmap's. Candidates: ${lines.join('; ')}. Choose with use_colorbar {candidate}, or {fromPanel} if it shares a calibrated panel's colorbar.`,
       );
-      images.push(candidatesView(choice.list, name));
+      images.push(await candidatesView(choice.list, name));
     } else {
       marksByPanel.set(panel.id, []);
       notes.push(
@@ -459,8 +466,8 @@ export function createDecisionTools(
     // A colorbar away from the cells gets its own image; one image of
     // both would shrink the cells (test-1: 2600 px apart).
     const apart = bar && choice.how !== 'beside';
-    if (apart) images.push(barView(panel, bar!, marks));
-    const view = panelView(
+    if (apart) images.push(await barView(panel, bar!, marks));
+    const view = await panelView(
       cells,
       [...(located.rough ? [located.rough] : []), ...(bar && !apart ? [bar] : [])],
       apart ? [] : marks,
@@ -551,7 +558,7 @@ export function createDecisionTools(
     }
     const applied = await applyBar(panel, bar!);
     const text = `Colorbar of ${panel.name}: ${orientation(applied.bar)}, ${boxText(applied.bar)}.${note} ${applied.text} Next: set_ticks.`;
-    return { ok: true, result: text, image: barView(panel, applied.bar, applied.marks) };
+    return { ok: true, result: text, image: await barView(panel, applied.bar, applied.marks) };
   }
 
   async function setTicks({ panelId, ticks, scale }: Args): Promise<ToolCallResult> {
@@ -593,7 +600,7 @@ export function createDecisionTools(
     return {
       ok: true,
       result: `${ticks.length} ticks set.${note} ${(await check(panel)).text}`,
-      image: ticksView(panel),
+      image: await ticksView(panel),
     };
   }
 
@@ -601,7 +608,7 @@ export function createDecisionTools(
   // their values, so the LLM sees each dot level with its printed label
   // before finish (it rarely looked again by itself). Only the bar and its
   // labels when it lies far from the cells; 640 px at most.
-  function ticksView(panel: Panel) {
+  async function ticksView(panel: Panel) {
     const { W, H } = size();
     const cb = panel.colorbar;
     const cells = gridBox(panel);
@@ -614,7 +621,7 @@ export function createDecisionTools(
     const labels = (marksByPanel.get(panel.id) || []).map((m) => m.box);
     const apart = sideGap(cells, bar) > 0.5 * Math.max(cells.x1 - cells.x0, cells.y1 - cells.y0);
     const region = growBox(union(apart ? [bar, ...labels] : [cells, bar, ...labels]), 0.04, 20, W, H);
-    const view = renderView({ region, overlay: 'calibration', rulers: false, maxSide: 640, zoom: false });
+    const view = await renderView({ region, overlay: 'calibration', rulers: false, maxSide: 640, zoom: false });
     return {
       dataUrl: view.dataUrl,
       note: `${panel.name} (panel ${panel.id}) after set_ticks: orange dots are the ticks with their values; each should sit level with its printed label${apart ? '' : ', and the magenta grid on the cells'}.`,
@@ -686,7 +693,7 @@ export function createDecisionTools(
     }
     must(await api.run('set_grid_size', { panelId: panel.id, rows, cols }));
     unsureByPanel.set(panel.id, { row: false, col: false });
-    const view = renderView({
+    const view = await renderView({
       region: growBox(gridBox(panel), 0.05, 10, size().W, size().H),
       overlay: 'calibration',
       rulers: false,
@@ -730,7 +737,7 @@ export function createDecisionTools(
   }
 
   async function askTool({ region, overlay = 'none', questions }: Args): Promise<ToolCallResult> {
-    const view = renderView({
+    const view = await renderView({
       region,
       overlay,
       rulers: false,

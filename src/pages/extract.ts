@@ -16,6 +16,7 @@ import { setupHeatmapTool } from '../extract/heatmap/heatmap-tool.ts';
 import * as m_heatmap_sampling from '../extract/heatmap/sampling.ts';
 import * as m_map_field from '../extract/map/field.ts';
 import { setupMapTool } from '../extract/map/map-tool.ts';
+import { preloadPdfjs } from '../extract/pdf-loader.ts';
 import * as m_project_project from '../extract/project/project.ts';
 import * as m_project_projectFiles from '../extract/project/project-files.ts';
 import * as m_roi_geometry from '../extract/roi/geometry.ts';
@@ -92,6 +93,9 @@ try {
   setupAgentPanel(ws, window.colormeris, settings);
   // Grid card: read row and column labels with a vision LLM (agent/ui/labels-reader.ts).
   setupLabelReader(ws, settings);
+  // pdf.js and its worker, ready before the first PDF is opened.
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(preloadPdfjs, { timeout: 2000 });
+  else setTimeout(preloadPdfjs, 500);
 } catch (err) {
   showStartupError(err);
 }

@@ -1,4 +1,4 @@
-import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { PDFDocumentProxy, PDFWorker } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 // Turn uploaded PDFs and images into a canvas whose pixels are analysed.
@@ -31,6 +31,32 @@ function loadPdfjs() {
   return pdfjsPromise;
 }
 
+// One worker for every document. Starting one costs ~130 ms (it parses the
+// 1.2 MB worker script); a started one opens a document in ~5 ms.
+let workerPromise: Promise<PDFWorker> | null = null;
+
+function sharedWorker(lib: PdfjsLib) {
+  if (!workerPromise) {
+    const worker = new lib.PDFWorker();
+    workerPromise = worker.promise.then(
+      () => worker,
+      (err) => {
+        workerPromise = null;
+        throw err;
+      },
+    );
+  }
+  return workerPromise;
+}
+
+// Load pdf.js and start its worker before the first PDF is opened (on idle
+// after page load), so opening one waits only for parsing and rendering.
+export function preloadPdfjs() {
+  loadPdfjs()
+    .then(sharedWorker)
+    .catch((err) => console.warn('Could not preload pdf.js', err));
+}
+
 export function fileKind(file: File | Blob) {
   const name = ((file as File).name || '').toLowerCase();
   const type = file.type || '';
@@ -41,10 +67,12 @@ export function fileKind(file: File | Blob) {
 }
 
 export async function openPdf(blob: Blob): Promise<PDFDocumentProxy> {
-  const lib = await loadPdfjs();
-  const data = new Uint8Array(await blob.arrayBuffer());
+  const [lib, buffer] = await Promise.all([loadPdfjs(), blob.arrayBuffer()]);
+  // pdf.js destroys only workers it made itself, so this one outlives the document.
+  const worker = await sharedWorker(lib);
   const options = {
-    data,
+    data: new Uint8Array(buffer),
+    worker,
     isEvalSupported: false,
     cMapUrl: `${PDFJS_DATA}cmaps/`,
     cMapPacked: true,
@@ -98,6 +126,20 @@ export function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise<Blob>((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not encode PNG.'))), 'image/png'),
   );
+}
+
+// canvas.toDataURL without blocking: the browser encodes off the main thread
+// (a 1568 px PNG for the decision model took ~70 ms with toDataURL).
+export async function canvasDataUrl(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<string> {
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error(`Could not encode ${type}.`))), type, quality),
+  );
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 export async function sha256Hex(blob: Blob) {

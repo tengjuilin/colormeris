@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type {
   DomEl,
   GoToPageOptions,
@@ -54,18 +55,19 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
         height: 0,
         sha256: null,
       };
-      app.pdfDoc = null;
+      let doc: PDFDocumentProxy | null = null;
       let canvas: HTMLCanvasElement;
       if (kind === 'pdf') {
-        app.pdfDoc = await openPdf(file);
-        project.source.pageCount = app.pdfDoc.numPages;
+        doc = await openPdf(file);
+        project.source.pageCount = doc.numPages;
         const scale = Number($('scale-select').value);
-        const r = await renderPdfPage(app.pdfDoc, 1, scale);
+        const r = await renderPdfPage(doc, 1, scale);
         canvas = r.canvas;
         project.source.renderScale = r.scale;
       } else {
         canvas = await imageToCanvas(file);
       }
+      replacePdfDoc(doc);
       app.project = project;
       app.originalFile = file;
       w.clearHistory();
@@ -80,6 +82,12 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
       w.status('');
       w.toast(`Could not open ${file.name}: ${(err as Error).message}`, true);
     }
+  }
+
+  // The previous document is destroyed: it holds the whole file and its parsed pages in the worker.
+  function replacePdfDoc(doc: PDFDocumentProxy | null) {
+    if (app.pdfDoc && app.pdfDoc !== doc) app.pdfDoc.loadingTask.destroy().catch(() => {});
+    app.pdfDoc = doc;
   }
 
   function hasCalibration() {
@@ -218,15 +226,16 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
     w.status(`Opening ${file.name}…`);
     const { project, pageImages, originalFile } = await readProjectZip(JSZip, file);
     const src = (project.source || {}) as Partial<SourceInfo>;
-    app.pdfDoc = null;
     const origFile = originalFile ? new File([originalFile.blob], originalFile.name, { type: src.mime || '' }) : null;
+    let doc: PDFDocumentProxy | null = null;
     if (origFile && fileKind(origFile) === 'pdf') {
       try {
-        app.pdfDoc = await openPdf(origFile);
+        doc = await openPdf(origFile);
       } catch (err) {
         console.warn('Could not reopen the original PDF', err);
       }
     }
+    replacePdfDoc(doc);
     const pages = new Map<number, PageImage>();
     for (const [page, blob] of pageImages) {
       const canvas = await imageToCanvas(blob);

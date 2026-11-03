@@ -2,7 +2,7 @@
 
 import type { Box, PixelImage } from '../../types/index.ts';
 import { readPixel } from '../grid.ts';
-import { background, clamp, components, differs, mean, median, STRONG, TEXT } from './helpers.ts';
+import { background, clamp, components, differsAt, mean, median, STRONG, TEXT } from './helpers.ts';
 import { tickMarks } from './tick-marks.ts';
 import type { Component, FrameComp, TickBest, TickLabel, TickLabelsResult } from './types.ts';
 
@@ -72,8 +72,8 @@ export function findTickLabels(
     const wy0 = clamp(Math.round(y0), 0, img.height - 1);
     const wy1 = clamp(Math.round(y1), wy0 + 1, img.height);
     if (wx1 - wx0 < 3 || wy1 - wy0 < 3) continue;
-    const dark = differs(background(img, wx0, wy0, wx1, wy1), TEXT);
-    const comps = components(wx0, wy0, wx1, wy1, (x, y) => !excluded(x, y) && dark(readPixel(img, x, y)));
+    const dark = differsAt(img, background(img, wx0, wy0, wx1, wy1), TEXT);
+    const comps = components(wx0, wy0, wx1, wy1, (x, y) => dark(x, y) && !excluded(x, y));
     // In the bar's frame: along (u) and distance from the strip (d).
     const frame = (c: Component): FrameComp => ({
       ...c,

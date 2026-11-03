@@ -236,6 +236,22 @@ export function bestCount(profile: ArrayLike<number>) {
 // colors change. Returns {rows, cols, rowConfidence, colConfidence}; a
 // confidence below ~1.3 means the guess is uncertain.
 export function detectGridSize(img: PixelImage, corners: Corners) {
+  // Kept per page image and corners: the agent API asks again for the same
+  // grid after every action (set_grid, then its state's open questions).
+  let byCorners = sizeCache.get(img.data);
+  if (!byCorners) sizeCache.set(img.data, (byCorners = new Map()));
+  const key = corners.map((c) => `${c.x},${c.y}`).join(';');
+  const hit = byCorners.get(key);
+  if (hit) return { ...hit };
+  const out = measureGridSize(img, corners);
+  if (byCorners.size >= 64) byCorners.delete(byCorners.keys().next().value!);
+  byCorners.set(key, out);
+  return { ...out };
+}
+type GridSize = { rows: number; cols: number; rowConfidence: number; colConfidence: number };
+const sizeCache = new WeakMap<PixelImage['data'], Map<string, GridSize>>();
+
+function measureGridSize(img: PixelImage, corners: Corners): GridSize {
   const { width, height } = gridPixelSize(corners);
   const W = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(width)));
   const H = Math.max(2, Math.min(MAX_PROFILE_SAMPLES, Math.round(height)));

@@ -2,7 +2,7 @@
 
 import type { Box, PixelImage, Rgb } from '../../types/index.ts';
 import { readPixel } from '../grid.ts';
-import { background, clamp, differs, FILL, mean, NEUTRAL, noiseTol, PALE, stroke } from './helpers.ts';
+import { background, clamp, differs, FILL, mean, NEUTRAL, noiseTol, PALE, STRONG, stroke } from './helpers.ts';
 import type { Bar } from './types.ts';
 
 // Colorbars. A colorbar is a strip at least BAR_THICK px thick and 3 times
@@ -23,13 +23,37 @@ export function barTools(img: PixelImage, region: Box) {
   const x1 = clamp(Math.ceil(region.x1), x0 + 1, img.width);
   const y1 = clamp(Math.ceil(region.y1), y0 + 1, img.height);
   const bg = background(img, x0, y0, x1, y1);
-  const pale = differs(bg, Math.max(noiseTol(img, x0, y0, x1, y1, bg), PALE));
+  const tol = Math.max(noiseTol(img, x0, y0, x1, y1, bg), PALE);
+  const pale = differs(bg, tol);
   const strong = stroke(bg);
   const chroma = (rgb: Rgb) => Math.max(...rgb) - Math.min(...rgb);
   // Tinted, and not a near-black outline (a dark red frame is 20 levels
   // of chroma; a gray-blue end of a colormap is lighter).
   const colored = (rgb: Rgb) => pale(rgb) && chroma(rgb) >= BAR_CHROMA && !(strong(rgb) && mean(rgb) < 100);
-  return { x0, y0, x1, y1, bg, pale, strong, colored };
+  // colored(readPixel(img, x, y)) for integer x, y, without allocating:
+  // findColorbars runs it on every pixel of the page (4 M at 3×), where
+  // the array and spreads cost ~300 ms.
+  const [br, bgg, bb] = bg;
+  const bgMean = mean(bg);
+  const d = img.data;
+  const coloredAt = (x: number, y: number) => {
+    const i = (y * img.width + x) * 4;
+    let r = d[i];
+    let g = d[i + 1];
+    let b = d[i + 2];
+    const a = d[i + 3] / 255;
+    if (a < 1) {
+      r = r * a + 255 * (1 - a);
+      g = g * a + 255 * (1 - a);
+      b = b * a + 255 * (1 - a);
+    }
+    if (Math.abs(r - br) <= tol && Math.abs(g - bgg) <= tol && Math.abs(b - bb) <= tol) return false;
+    const c = Math.max(r, g, b) - Math.min(r, g, b);
+    if (c < BAR_CHROMA) return false;
+    const m = (r + g + b) / 3;
+    return !(c < NEUTRAL && Math.abs(m - bgMean) > STRONG && m < 100);
+  };
+  return { x0, y0, x1, y1, bg, tol, pale, strong, colored, coloredAt };
 }
 
 // The strip that a seed box (a colored component, or a rough box around a

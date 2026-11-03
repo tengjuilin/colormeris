@@ -4,8 +4,8 @@ import type { Box, PixelImage, Rgb } from '../../types/index.ts';
 import { readPixel } from '../grid.ts';
 import type { BarTools } from './bar-strips.ts';
 import { BAR_STEP, BAR_THICK, barTools, followStrip } from './bar-strips.ts';
-import { components, median } from './helpers.ts';
-import type { Bar, BarCandidate, StripKind } from './types.ts';
+import { componentsOf, median } from './helpers.ts';
+import type { Bar, BarCandidate, Component, StripKind } from './types.ts';
 
 // What the colors along a strip look like: the median color of each
 // line across it. Gradual change along it makes a smooth colorbar, 5 or
@@ -88,6 +88,63 @@ interface Stretch {
 
 const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
+// The connected colored pixels (B.coloredAt) of a region, with each
+// pixel's component label, kept per page image: the decision agent looks
+// for colorbars once per heatmap on the same page, with only the excluded
+// cells changing. Region pixels, in the order of their first pixel.
+const compCache = new WeakMap<
+  PixelImage['data'],
+  {
+    key: string;
+    comps: (Component & { first: number })[];
+    labels: Int32Array;
+    strips: Map<string, { bar: Bar | null; dashed?: boolean; kind?: StripKind | null }>;
+  }
+>();
+function coloredComponents(img: PixelImage, B: BarTools) {
+  const key = [B.x0, B.y0, B.x1, B.y1, B.tol, ...B.bg].join();
+  const hit = compCache.get(img.data);
+  if (hit?.key === key) return hit;
+  const RW = B.x1 - B.x0;
+  const RH = B.y1 - B.y0;
+  const on = new Uint8Array(RW * RH);
+  for (let y = 0; y < RH; y++) for (let x = 0; x < RW; x++) if (B.coloredAt(B.x0 + x, B.y0 + y)) on[y * RW + x] = 1;
+  const labels = new Int32Array(RW * RH);
+  const entry = { key, comps: componentsOf(on, RW, RH, labels), labels, strips: new Map() };
+  compCache.set(img.data, entry);
+  return entry;
+}
+
+// coloredComponents with the `out` pixels (a region mask) left out, as
+// components(region, coloredAt && !out) would find them: only components
+// that reach into an `outBoxes` box (region pixels) are split again.
+function componentsWithout(img: PixelImage, B: BarTools, out: Uint8Array, outBoxes: Box[]) {
+  const { comps, labels } = coloredComponents(img, B);
+  const RW = B.x1 - B.x0;
+  const found: (Component & { first: number })[] = [];
+  comps.forEach((c, k) => {
+    if (!outBoxes.some((b) => c.x0 < b.x1 && b.x0 < c.x1 && c.y0 < b.y1 && b.y0 < c.y1)) {
+      found.push(c);
+      return;
+    }
+    const w = c.x1 - c.x0;
+    const on = new Uint8Array(w * (c.y1 - c.y0));
+    for (let y = c.y0; y < c.y1; y++)
+      for (let x = c.x0; x < c.x1; x++) {
+        const i = y * RW + x;
+        if (labels[i] === k + 1 && !out[i]) on[(y - c.y0) * w + x - c.x0] = 1;
+      }
+    for (const p of componentsOf(on, w, c.y1 - c.y0)) {
+      const fx = p.first % w;
+      const first = ((p.first - fx) / w + c.y0) * RW + fx + c.x0;
+      found.push({ x0: p.x0 + c.x0, y0: p.y0 + c.y0, x1: p.x1 + c.x0, y1: p.y1 + c.y0, n: p.n, first });
+    }
+  });
+  return found
+    .sort((a, b) => a.first - b.first)
+    .map((c) => ({ x0: c.x0 + B.x0, y0: c.y0 + B.y0, x1: c.x1 + B.x0, y1: c.y1 + B.y0, n: c.n }));
+}
+
 // Every colorbar candidate in `region` (the whole page by default), with
 // `exclude` boxes (heatmap cells) left out: [{x0, y0, x1, y1, vertical,
 // kind}] with kind 'smooth', 'binned' or 'categorical' (a group strip; a
@@ -101,8 +158,19 @@ export function findColorbars(
   const B = barTools(img, region);
   const out: BarCandidate[] = [];
   const grown = exclude.map((b) => ({ x0: b.x0 - 2, y0: b.y0 - 2, x1: b.x1 + 2, y1: b.y1 + 2 }));
-  const excluded = (x: number, y: number) => grown.some((b) => x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1);
-  const comps = components(B.x0, B.y0, B.x1, B.y1, (x, y) => B.colored(readPixel(img, x, y)) && !excluded(x, y));
+  // The excluded pixels as a region mask, and the boxes they fill (region pixels).
+  const RW = B.x1 - B.x0;
+  const out0 = new Uint8Array(RW * (B.y1 - B.y0));
+  const outBoxes: Box[] = [];
+  for (const b of grown) {
+    const [ex0, ex1] = [Math.max(B.x0, Math.ceil(b.x0)), Math.min(B.x1, Math.ceil(b.x1))];
+    const [ey0, ey1] = [Math.max(B.y0, Math.ceil(b.y0)), Math.min(B.y1, Math.ceil(b.y1))];
+    if (ex1 <= ex0 || ey1 <= ey0) continue;
+    for (let y = ey0; y < ey1; y++) out0.fill(1, (y - B.y0) * RW + ex0 - B.x0, (y - B.y0) * RW + ex1 - B.x0);
+    outBoxes.push({ x0: ex0 - B.x0, y0: ey0 - B.y0, x1: ex1 - B.x0, y1: ey1 - B.y0 });
+  }
+  const comps = componentsWithout(img, B, out0, outBoxes);
+  const { strips } = coloredComponents(img, B);
   // Big pieces first, so the halves of a diverging bar join the first one's strip.
   comps.sort((a, b) => b.n - a.n);
   for (const c of comps) {
@@ -110,11 +178,16 @@ export function findColorbars(
     const h = c.y1 - c.y0;
     if (Math.min(w, h) < BAR_THICK || Math.max(w, h) < 1.5 * Math.min(w, h) || c.n < 0.5 * w * h) continue;
     if (out.some((b) => overlaps(b, c))) continue;
-    const bar = followStrip(img, B, c, h >= w);
-    if (!bar || out.some((b) => overlaps(b, bar)) || grown.some((b) => overlaps(b, bar)) || dashed(img, B, bar))
-      continue;
-    const kind = stripKind(img, bar);
-    if (kind) out.push({ ...bar, kind });
+    // The strip a component lies on depends only on the page: kept with the components.
+    const key = `${c.x0},${c.y0},${c.x1},${c.y1}`;
+    let strip = strips.get(key);
+    if (!strip) strips.set(key, (strip = { bar: followStrip(img, B, c, h >= w) }));
+    const bar = strip.bar;
+    if (!bar || out.some((b) => overlaps(b, bar)) || grown.some((b) => overlaps(b, bar))) continue;
+    strip.dashed ??= dashed(img, B, bar);
+    if (strip.dashed) continue;
+    if (strip.kind === undefined) strip.kind = stripKind(img, bar);
+    if (strip.kind) out.push({ ...bar, kind: strip.kind });
   }
   const len = (b: Bar) => (b.vertical ? b.y1 - b.y0 : b.x1 - b.x0);
   return mergeFragments(img, B, out).sort((a, b) => len(b) - len(a));

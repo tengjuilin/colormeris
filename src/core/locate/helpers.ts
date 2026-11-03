@@ -83,6 +83,20 @@ export const differs =
   (bg: Rgb, tol: number): PixelTest =>
   (rgb) =>
     Math.max(Math.abs(rgb[0] - bg[0]), Math.abs(rgb[1] - bg[1]), Math.abs(rgb[2] - bg[2])) > tol;
+// differs(bg, tol)(readPixel(img, x, y)) for integer x, y inside the image,
+// without allocating: for masks over whole windows.
+export function differsAt(img: PixelImage, bg: Rgb, tol: number) {
+  const d = img.data;
+  const [br, bgg, bb] = bg;
+  return (x: number, y: number) => {
+    const i = (y * img.width + x) * 4;
+    const a = d[i + 3] / 255;
+    const r = a < 1 ? d[i] * a + 255 * (1 - a) : d[i];
+    const g = a < 1 ? d[i + 1] * a + 255 * (1 - a) : d[i + 1];
+    const b = a < 1 ? d[i + 2] * a + 255 * (1 - a) : d[i + 2];
+    return Math.abs(r - br) > tol || Math.abs(g - bgg) > tol || Math.abs(b - bb) > tol;
+  };
+}
 // Gray and much darker (or lighter) than the page: lines and text.
 export const stroke =
   (bg: Rgb): PixelTest =>
@@ -115,7 +129,14 @@ export function components(
   const H = y1 - y0;
   const on = new Uint8Array(W * H);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) on[y * W + x] = mask(x0 + x, y0 + y) ? 1 : 0;
-  const out: Component[] = [];
+  return componentsOf(on, W, H).map((c) => ({ x0: c.x0 + x0, y0: c.y0 + y0, x1: c.x1 + x0, y1: c.y1 + y0, n: c.n }));
+}
+
+// Connected components (8-neighbour) of a 0/1 mask W wide (`on` is used
+// up), in window pixels, in the order of their first pixel (`first`, its
+// index in `on`). With `labels`, each pixel gets its component's index + 1.
+export function componentsOf(on: Uint8Array, W: number, H: number, labels?: Int32Array) {
+  const out: (Component & { first: number })[] = [];
   const stack: number[] = [];
   for (let i = 0; i < on.length; i++) {
     if (on[i] !== 1) continue;
@@ -124,6 +145,7 @@ export function components(
     const c = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity, n: 0 };
     while (stack.length) {
       const j = stack.pop()!;
+      if (labels) labels[j] = out.length + 1;
       const x = j % W;
       const y = (j - x) / W;
       c.n++;
@@ -144,7 +166,7 @@ export function components(
         }
       }
     }
-    out.push({ x0: c.x0 + x0, y0: c.y0 + y0, x1: c.x1 + x0 + 1, y1: c.y1 + y0 + 1, n: c.n });
+    out.push({ x0: c.x0, y0: c.y0, x1: c.x1 + 1, y1: c.y1 + 1, n: c.n, first: i });
   }
   return out;
 }
