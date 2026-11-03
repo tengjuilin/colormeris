@@ -6,6 +6,7 @@ import { BoundInput, Btn, Check, Field, Fields, Hint, Notice, SplitActions } fro
 import { formatNumber, mapLongCsv, mapMatrixCsv } from '../../project/project-files.ts';
 import { useBoundNumber } from '../../react/use-bound.ts';
 import { useWorkspace } from '../../react/use-workspace.ts';
+import { downloadCsv } from '../../results-actions.ts';
 import { notify } from '../../workspace/store.ts';
 import { axisFn, coordKind, mapSize } from '../field.ts';
 import { useMapTool } from './map-context.ts';
@@ -48,9 +49,8 @@ export function MapResultsCard() {
     const p = ws.activePanel();
     const r = ws.resultFor(p) as MapResult;
     if (r.error) return;
-    if (long)
-      ws.download(new Blob([mapLongCsv([{ panel: p, result: r }])], { type: 'text/csv' }), ws.csvName(p, '_map_long'));
-    else ws.download(new Blob([mapMatrixCsv(p, r as MapField)], { type: 'text/csv' }), ws.csvName(p, '_map'));
+    if (long) downloadCsv(ws, p, mapLongCsv([{ panel: p, result: r }]), '_map_long');
+    else downloadCsv(ws, p, mapMatrixCsv(p, r as MapField), '_map');
   };
   const toggle = (key: 'showRecon' | 'showFlags', on: boolean) => {
     // Only the drawing changes: redraw, and re-render the toggle (no project change, no listeners).

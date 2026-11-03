@@ -23,6 +23,7 @@ import {
 import { profileCsv, profilesCsv, safeFileName } from '../../project/project-files.ts';
 import { useBoundNumber, useBoundText } from '../../react/use-bound.ts';
 import { useWorkspace } from '../../react/use-workspace.ts';
+import { downloadCsv } from '../../results-actions.ts';
 import { notify } from '../../workspace/store.ts';
 import { lengthPerPixel, profileAxisKey, profileDivisor, profileEndForLength, profileLength } from '../field.ts';
 import type { MapToolContext } from '../map-tool.ts';
@@ -51,7 +52,7 @@ function PlotCanvas({ mctx }: { mctx: MapToolContext }) {
   );
 }
 
-function downloadCsv(mctx: MapToolContext) {
+function downloadProfileCsv(mctx: MapToolContext) {
   const { ws, state } = mctx;
   const panel = ws.activePanel();
   const results = (ws.resultFor(panel) as MapResult).profiles || {};
@@ -75,7 +76,7 @@ function downloadCsv(mctx: MapToolContext) {
     entries.length === 1
       ? [profileCsv(entries[0].samples, entries[0].norm, unit), `_profile_${safeFileName(entries[0].name)}`]
       : [profilesCsv(entries, unit), '_profiles'];
-  ws.download(new Blob([csv], { type: 'text/csv' }), ws.csvName(panel, suffix));
+  downloadCsv(ws, panel, csv, suffix);
 }
 
 export function ProfilesCard() {
@@ -328,7 +329,12 @@ export function ProfilesCard() {
           ref={at}
         />
         <PlotCanvas mctx={mctx} />
-        <MainStep id="profile-csv" icon="download" disabled={!view?.series.length} onClick={() => downloadCsv(mctx)}>
+        <MainStep
+          id="profile-csv"
+          icon="download"
+          disabled={!view?.series.length}
+          onClick={() => downloadProfileCsv(mctx)}
+        >
           {csvLabel}
         </MainStep>
       </div>

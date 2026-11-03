@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { AgentCard } from '../../agent/ui/agent-card.tsx';
 import type { SettingsSource } from '../../types/index.ts';
 import { SettingsProvider } from '../../ui/index.ts';
+import { HeatmapResultsCard } from '../heatmap/cards/heatmap-results-card.tsx';
 import { AxesCard } from '../map/cards/axes-card.tsx';
 import { MapResultsCard } from '../map/cards/map-results-card.tsx';
 import { ProfilesCard } from '../map/cards/profiles-card.tsx';
@@ -14,7 +15,6 @@ import { RoiResultsCard } from '../roi/cards/roi-results-card.tsx';
 import { ScaleCard } from '../scale-bar-card.tsx';
 import { ColorbarCard } from '../workspace/cards/colorbar-card.tsx';
 import { GridCard } from '../workspace/cards/grid-card.tsx';
-import { HeatmapResultsCard } from '../workspace/cards/heatmap-results-card.tsx';
 import { PanelsCard } from '../workspace/cards/panels-card.tsx';
 import { useSectionVisible, useWorkspace, WsContext, type WsContextValue } from './use-workspace.ts';
 

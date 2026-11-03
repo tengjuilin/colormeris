@@ -11,7 +11,7 @@ import { extractPanel, panelProblem } from './sampling.ts';
 // Heatmap tool: extract one value per grid cell by matching the cell's color
 // against the calibrated colorbar. setupHeatmapTool(ws) registers it with a
 // workspace (workspace.ts). Its sidebar is React: the Grid card (shared), the Results card
-// (workspace/cards/heatmap-results-card.tsx, table in results-table.ts).
+// (cards/heatmap-results-card.tsx, table in results-table.ts).
 
 export function setupHeatmapTool(ws: Workspace) {
   const { app, viewer } = ws;

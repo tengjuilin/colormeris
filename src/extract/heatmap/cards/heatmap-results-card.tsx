@@ -2,13 +2,15 @@
 // toggle. The table stays imperative (results-table.ts) inside a ref host: it can hold a million cells and the
 // hover highlight adds a class (`td.hl`) that React would wipe on a re-render. It is rebuilt only when the
 // cached result changes. Read in render, write in handlers (docs/react.md, "The card pattern").
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import type { HeatmapResult, Panel, Workspace, WorkspaceContext } from '../../../types/index.ts';
 import { Btn, Check, Hint, MainStep, Notice, SplitActions } from '../../../ui/index.ts';
-import { fillResultTable, heatmapSummary, highlightTableCell } from '../../heatmap/results-table.ts';
 import { toLongCsv, toWideCsv } from '../../project/project-files.ts';
+import { useTableHover } from '../../react/use-table-hover.ts';
 import { useWorkspace } from '../../react/use-workspace.ts';
-import { notify } from '../store.ts';
+import { copyTable, downloadCsv } from '../../results-actions.ts';
+import { notify } from '../../workspace/store.ts';
+import { fillResultTable, heatmapSummary, highlightTableCell } from '../results-table.ts';
 
 type Result = HeatmapResult | { error: string };
 
@@ -21,24 +23,18 @@ export function toTsv(panel: Panel, res: HeatmapResult): string {
     .join('\n');
 }
 
-async function copyTable(ws: Workspace) {
+function copy(ws: Workspace) {
   const panel = ws.activePanel();
   const res = ws.resultFor(panel) as HeatmapResult;
-  if (res.error) return;
-  try {
-    await navigator.clipboard.writeText(toTsv(panel, res));
-    ws.toast('Table copied — paste into a spreadsheet.');
-  } catch {
-    ws.toast('Clipboard is not available here.', true);
-  }
+  if (!res.error) void copyTable(ws, toTsv(panel, res));
 }
 
 function download(ws: Workspace, long: boolean) {
   const p = ws.activePanel();
   const r = ws.resultFor(p) as HeatmapResult;
   if (r.error) return;
-  if (long) ws.download(new Blob([toLongCsv([{ panel: p, result: r }])], { type: 'text/csv' }), ws.csvName(p, '_long'));
-  else ws.download(new Blob([toWideCsv(p, r)], { type: 'text/csv' }), ws.csvName(p));
+  if (long) downloadCsv(ws, p, toLongCsv([{ panel: p, result: r }]), '_long');
+  else downloadCsv(ws, p, toWideCsv(p, r));
 }
 
 /**
@@ -59,25 +55,7 @@ function ResultTable({ w, panel, res }: { w: WorkspaceContext; panel: Panel; res
     highlightTableCell(table.current, w.app.hoverCell);
   }, [panel, res, w, rowLabels, colLabels, dragging]);
 
-  useEffect(() => {
-    const el = table.current;
-    if (!el) return;
-    const over = (e: PointerEvent) => {
-      const td = (e.target as HTMLElement).closest('td');
-      w.app.tableCell = td ? { row: Number(td.dataset.r), col: Number(td.dataset.c) } : null;
-      w.viewer.requestDraw();
-    };
-    const leave = () => {
-      w.app.tableCell = null;
-      w.viewer.requestDraw();
-    };
-    el.addEventListener('pointerover', over);
-    el.addEventListener('pointerleave', leave);
-    return () => {
-      el.removeEventListener('pointerover', over);
-      el.removeEventListener('pointerleave', leave);
-    };
-  }, [w]);
+  useTableHover(w, table);
 
   return (
     <div className="table-wrap">
@@ -141,7 +119,7 @@ export function HeatmapResultsCard() {
           icon="copy"
           title="Copy the table to paste into a spreadsheet"
           disabled={!!error}
-          onClick={() => void copyTable(ws)}
+          onClick={() => copy(ws)}
         >
           Copy table
         </Btn>

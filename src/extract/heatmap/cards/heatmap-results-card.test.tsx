@@ -6,10 +6,10 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, test, vi } from 'vitest';
 import type { HeatmapCell, HeatmapResult, Panel, Workspace, WorkspaceContext } from '../../../types/index.ts';
-import { highlightTableCell } from '../../heatmap/results-table.ts';
 import { createProject } from '../../project/project.ts';
 import { WsContext } from '../../react/use-workspace.ts';
-import { notify } from '../store.ts';
+import { notify } from '../../workspace/store.ts';
+import { highlightTableCell } from '../results-table.ts';
 import { HeatmapResultsCard, toTsv } from './heatmap-results-card.tsx';
 
 afterEach(() => {
