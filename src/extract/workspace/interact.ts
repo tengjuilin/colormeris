@@ -4,6 +4,7 @@ import { cellAt, detectGridSize, readPixel, rectCorners } from '../../core/grid.
 import type { Cell, Handle, InteractMembers, Panel, Point, WorkspaceContext } from '../../types/index.ts';
 import { distanceToSegment, lockAxis } from '../edit-math.ts';
 import { ticksWithT } from '../project/project.ts';
+import { barTicksAfterDrag, dragRectCorner } from './drag-math.ts';
 
 // Pointer input on the viewer: clicks while placing the grid, colorbar and
 // ticks, dragging handles (grid corners, colorbar ends, the bar, ticks) and
@@ -141,10 +142,8 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
     } else if (handle.kind === 'corner') {
       const c = panel.grid.corners!;
       if (app.keepRect) {
-        const opposite = c[(handle.i! + 2) % 4];
-        panel.grid.corners = rectCorners(p, opposite);
         // Keep dragging the corner that is now under the pointer.
-        handle.i = panel.grid.corners.findIndex((q) => q.x === p.x && q.y === p.y);
+        ({ corners: panel.grid.corners, i: handle.i } = dragRectCorner(c, handle.i!, p));
       } else {
         c[handle.i!] = p;
       }
@@ -161,21 +160,20 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
       // with it. Distances are taken once, at the start of the drag:
       // re-projecting the moved ticks on every event shrank them towards the
       // fixed end whenever the line turned.
-      const fixed = app.barTickMode === 'fixed';
       const len = () => Math.hypot(cb.end!.x - cb.start!.x, cb.end!.y - cb.start!.y);
       handle.ts ??= ticksWithT(cb).map((k) => k.t);
       handle.len ??= len();
       if (handle.kind === 'barStart') cb.start = q;
       else cb.end = q;
-      const L = len() || 1e-9;
-      const tAt = (t0: number) =>
-        handle.kind === 'barEnd' ? (t0 * handle.len!) / L : 1 - ((1 - t0) * handle.len!) / L;
-      // Ticks typed along a known colormap have no page point to move.
-      cb.ticks.forEach(
-        (k, i) =>
-          Number.isFinite(k.x) &&
-          Object.assign(k, pointAtT(cb.start!, cb.end!, fixed ? tAt(handle.ts![i]) : handle.ts![i])),
+      const ts = barTicksAfterDrag(
+        handle.ts,
+        handle.len,
+        len(),
+        handle.kind === 'barEnd' ? 'end' : 'start',
+        app.barTickMode,
       );
+      // Ticks typed along a known colormap have no page point to move.
+      cb.ticks.forEach((k, i) => Number.isFinite(k.x) && Object.assign(k, pointAtT(cb.start!, cb.end!, ts[i])));
     } else if (handle.kind === 'bar') {
       // Move the line and its ticks together, from where the drag started.
       // Shift: only along the axis the pointer has moved furthest on.

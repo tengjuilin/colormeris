@@ -43,7 +43,7 @@ import {
   sampleProfiles,
   withCoords,
 } from './field.ts';
-import { reconcileSelection } from './selection.ts';
+import { reconcileSelection, selectInSet } from './selection.ts';
 
 /** The edited profile moving across the plot (cards/sweep.ts). */
 export interface MapSweep {
@@ -164,19 +164,7 @@ export function setupMapTool(ws: Workspace) {
   // Select profile id (null: none). With add, toggle it in the selection
   // instead; a profile added becomes the one edited.
   function selectProfile(id: string | null, { add = false }: { add?: boolean } = {}) {
-    if (!add || !id) {
-      state.selectedId = id;
-      state.overlay.clear();
-    } else if (isSelected(id)) {
-      state.overlay.delete(id);
-      if (state.selectedId === id) {
-        state.selectedId = [...state.overlay].pop() ?? null;
-        state.overlay.delete(state.selectedId!);
-      }
-    } else {
-      if (state.selectedId) state.overlay.add(state.selectedId!);
-      state.selectedId = id;
-    }
+    selectInSet(state, id, add);
     ws.changed();
   }
 
