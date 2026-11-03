@@ -25,7 +25,8 @@ import { createSweep, type Sweep } from './cards/sweep.ts';
 import {
   type AxisKey,
   axisT,
-  extractField,
+  extractFieldValues,
+  type FieldValues,
   FLAG_DELTA_E,
   FLAG_HIGH,
   FLAG_LOW,
@@ -36,6 +37,7 @@ import {
   pastedProfiles,
   reconPixels,
   sampleProfiles,
+  withCoords,
 } from './field.ts';
 import { reconcileSelection } from './selection.ts';
 
@@ -92,8 +94,8 @@ export interface MapToolState {
   sweepRunOff: boolean;
   showRecon: boolean;
   showFlags: boolean;
-  /** Panel id → cached field. */
-  field: Map<string, { key: string; image: ImageData | PixelImage; result: MapField | ErrorResult }>;
+  /** Panel id → cached field values (without coordinates: those are cheap and follow the axes). */
+  field: Map<string, { key: string; image: ImageData | PixelImage; values: FieldValues | ErrorResult }>;
   /** Field values array → {recon, flags} canvases. */
   layers: WeakMap<Float64Array, FieldLayers>;
 }
@@ -123,12 +125,12 @@ export interface MapToolContext {
 // Map tool: read near-continuous fields (spectroscopy maps, fluorescence
 // images) as a dense value matrix with axis coordinates, plus line profiles.
 // The grid is the plot area (TOOL_HOOKS plotArea), sampled in bins of
-// map.bin pixels (see map/field.js).
+// map.bin pixels (see map/field.ts).
 //
 // This file sets up the tool, draws over the image and handles clicks and
 // drags; the cards in cards/ render the sidebar. They share `mctx`.
 
-// setupMapTool(ws) registers the tool with a workspace (workspace/workspace.js).
+// setupMapTool(ws) registers the tool with a workspace (workspace/workspace.ts).
 export function setupMapTool(ws: Workspace) {
   const { $, app, viewer } = ws;
   const state: MapToolState = {
@@ -202,26 +204,20 @@ export function setupMapTool(ws: Workspace) {
   const { setTrace } = mctx.plot;
   const { stopSweep, toggleSweep } = mctx.sweep;
 
-  // The field is the slow part (every pixel goes through the colorbar), so it
-  // is cached apart from the profiles: drawing or dragging a profile must not
-  // read the whole map again.
+  // The field is the slow part (every pixel goes through the colorbar), so its values are cached apart from
+  // their coordinates and the profiles: editing the axes, the units or the scale bar, or drawing or dragging a
+  // profile, must not read the whole map again. While a handle is dragged (a plot-area corner, the colorbar)
+  // the last values stay, as the heatmap's results table waits for the drop; resultKey has the drag in it, so
+  // the drop reads the field once more.
   function computeResult(panel: Panel, image: ImageData | PixelImage) {
-    const key = JSON.stringify([
-      panel.grid.corners,
-      panel.colorbar,
-      panel.settings,
-      panel.map.bin,
-      panel.map.x,
-      panel.map.y,
-      panel.map.units,
-      panel.scale,
-    ]);
+    const key = JSON.stringify([panel.grid.corners, panel.colorbar, panel.settings, panel.map.bin]);
     let hit = state.field.get(panel.id);
-    if (!hit || hit.key !== key || hit.image !== image) {
-      hit = { key, image, result: extractField(image, panel) };
+    if (!hit || hit.image !== image || (hit.key !== key && !app.drag)) {
+      hit = { key, image, values: extractFieldValues(image, panel) };
       state.field.set(panel.id, hit);
     }
-    return { ...hit.result, profiles: sampleProfiles(image, panel) };
+    const v = hit.values;
+    return { ...(v.error ? v : withCoords(v as FieldValues, panel)), profiles: sampleProfiles(image, panel) };
   }
 
   ws.addTool({
@@ -230,7 +226,7 @@ export function setupMapTool(ws: Workspace) {
     title: 'Colormeris · Map',
     plotArea: true,
     computeResult,
-    resultKey: (panel) => [panel.grid.corners, panel.colorbar, panel.settings, panel.map, panel.scale],
+    resultKey: (panel) => [panel.grid.corners, panel.colorbar, panel.settings, panel.map, panel.scale, !!app.drag],
     panelProblem: mapProblem,
     panelFiles: (panels, results, bases) =>
       panels.flatMap((p, i) => mapPanelFiles(p, results[i] as MapResult, bases[i])),

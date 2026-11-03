@@ -11,7 +11,10 @@ import {
   axisEdgePoint,
   axisFn,
   colorbarLevels,
+  extractField,
+  extractFieldValues,
   extractMap,
+  type FieldValues,
   FLAG_HIGH,
   lengthPerPixel,
   MAX_MAP_CELLS,
@@ -28,6 +31,7 @@ import {
   reconPixels,
   sampleProfile,
   sweepRange,
+  withCoords,
 } from './field.ts';
 
 const close = (a: number, b: number, eps: number) => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b}`);
@@ -114,6 +118,24 @@ test('extractMap refuses more values than MAX_MAP_CELLS', () => {
   panel.map.bin = 2;
   assert.equal(mapProblem(panel), null);
   assert.deepEqual([mapSize(panel).cols, mapSize(panel).rows], [1000, 500]);
+});
+
+test('the values do not depend on the axes: values plus coordinates make extractField', () => {
+  const { img, panel } = scene();
+  const values = extractFieldValues(img, panel) as FieldValues;
+  // Axes, units and the scale bar only change the coordinates (the Map tool caches the values alone).
+  panel.map.x.ticks = [
+    createAxisTick({ x: X0, y: Y0 + H + 5 }, 400),
+    createAxisTick({ x: X0 + W, y: Y0 + H + 5 }, 700),
+  ];
+  panel.scale = { p1: { x: 0, y: 0 }, p2: { x: 100, y: 0 }, length: 50, unit: 'µm' };
+  panel.map.units = 'length';
+  const full = extractField(img, panel) as MapField;
+  const joined = withCoords(values, panel);
+  assert.deepEqual(Object.keys(joined), Object.keys(full));
+  assert.deepEqual(joined, full);
+  assert.equal(joined.xName, 'x_µm');
+  assert.deepEqual(extractFieldValues(img, panel), values);
 });
 
 test('axis ticks give axis coordinates, linear or log', () => {
