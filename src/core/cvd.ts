@@ -298,11 +298,5 @@ export function lightnessStats(Ls: number[], tol = 0.5) {
   };
 }
 
-// 'rrggbbrrggbb…' (as in core/colormap-library.js) → [[r, g, b], …].
-export function parseHexColors(s: string) {
-  const out: Rgb[] = [];
-  for (let i = 0; i + 6 <= s.length; i += 6) {
-    out.push([0, 2, 4].map((k) => parseInt(s.slice(i + k, i + k + 2), 16)));
-  }
-  return out;
-}
+// Kept here for the importers that read colors next to their CVD views.
+export { parseHexColors } from './color.ts';

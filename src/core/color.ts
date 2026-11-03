@@ -148,3 +148,12 @@ export function colorDistance(name: DistanceName | string) {
 export function rgbToHex([r, g, b]: Rgb) {
   return '#' + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
 }
+
+// 'rrggbbrrggbb…' (the library's `colors`, core/colormap-library.ts) → [[r, g, b], …].
+export function parseHexColors(s: string) {
+  const out: Rgb[] = [];
+  for (let i = 0; i + 6 <= s.length; i += 6) {
+    out.push([0, 2, 4].map((k) => parseInt(s.slice(i + k, i + k + 2), 16)));
+  }
+  return out;
+}

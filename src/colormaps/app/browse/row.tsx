@@ -1,5 +1,5 @@
 import { createContext, type Dispatch, memo, useCallback, useContext, useLayoutEffect, useRef } from 'react';
-import { cmapData } from '../../../core/colormap-library.ts';
+import { mapByName } from '../../../core/colormap-library.ts';
 import type { ColormapEntry } from '../../../types/index.ts';
 import { VIEWS } from '../../common.ts';
 import { COMPARE_MAX } from '../../route.ts';
@@ -24,8 +24,6 @@ import { useRowVisible } from './use-row-visible.ts';
 // (it is not a prop). What only a built row shows (its direction, the strip
 // view, whether the comparison is full) reaches it through RowViewContext, so
 // only built rows (and the open detail under a row) re-render for those.
-
-const BY_NAME = new Map<string, ColormapEntry>(cmapData.maps.map((m) => [m.name, m]));
 
 export interface RowProps {
   name: string;
@@ -115,7 +113,7 @@ function openAncestors(item: HTMLElement | null) {
 const directionOf = (view: RowView, name: string) => view.reversed !== view.flipped.has(name);
 
 export const Row = memo(function Row({ name, index, compared, open, inline, forceBuild, dispatch }: RowProps) {
-  const map = BY_NAME.get(name) as ColormapEntry;
+  const map = mapByName(name) as ColormapEntry;
   const item = useRef<HTMLDivElement>(null);
   const built = useRowVisible(item, forceBuild > 0 || open);
   const panelId = `cmap-panel-${index + 1}`;

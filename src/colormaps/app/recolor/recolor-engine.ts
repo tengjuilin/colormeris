@@ -1,10 +1,9 @@
 import { rgbToHex } from '../../../core/color.ts';
 import { colorAtT, refineColorbar, sampleColorbar } from '../../../core/colorbar.ts';
-import { cmapData } from '../../../core/colormap-library.ts';
+import { libraryMaps, mapByName, mapColors } from '../../../core/colormap-library.ts';
 import { identifyColorbar } from '../../../core/colormap-match.ts';
 import type { ColorbarSample, Rgb } from '../../../types/index.ts';
 import { pct, roundRgb } from '../../common.ts';
-import { base } from '../../library-cache.ts';
 import {
   type ColorIndex,
   createIndexer,
@@ -70,8 +69,6 @@ export interface RecolorEnv {
 }
 
 const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-const mapByName = new Map(cmapData.maps.map((m) => [m.name, m]));
-let idMaps: { name: string; kind: string; rgbs: ReturnType<typeof base> }[] | null = null; // built once; the matcher caches each map's Lab by its colors
 
 export function createRecolorEngine(env: RecolorEnv) {
   const { ui } = env;
@@ -93,8 +90,8 @@ export function createRecolorEngine(env: RecolorEnv) {
   let stopped = false; // between stop() and start(): React's StrictMode mounts, unmounts and mounts again
 
   const newMap = () => {
-    const m = (mapByName.get(env.settings().chosen) || mapByName.get(DEFAULT_MAP))!;
-    return { name: m.name, kind: m.kind, rgbs: base(m) };
+    const m = (mapByName(env.settings().chosen) || mapByName(DEFAULT_MAP))!;
+    return { name: m.name, kind: m.kind, rgbs: mapColors(m) };
   };
 
   // ---- the figure's drawing options (figure-input reads them at event time) ----
@@ -148,8 +145,8 @@ export function createRecolorEngine(env: RecolorEnv) {
   // Name the old map when it is a known one, and read the bar in its
   // direction, so the low end stays the low end whichever way it was drawn.
   function describeOld(rgbs: ColorbarSample['rgb'][], snapped: boolean) {
-    idMaps ??= cmapData.maps.map((m) => ({ name: m.name, kind: m.kind, rgbs: base(m) }));
-    const best = identifyColorbar(rgbs, idMaps)[0];
+    // The matcher caches each library map's Lab by its colors, so this is cheap the second time.
+    const best = identifyColorbar(rgbs, libraryMaps())[0];
     const note = describeOldMap(best, snapped);
     flip = note.flip;
     ui.setNote(note);

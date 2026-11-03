@@ -1,6 +1,6 @@
 import type { ColorbarSample, Lab, Rgb } from '../types/index.ts';
 import { deltaE2000, rgbToLab } from './color.ts';
-import { cmapData } from './colormap-library.ts';
+import { libraryMaps, mapByName, mapColors } from './colormap-library.ts';
 
 // Which known colormap is this? Two ways for the colormap viewer:
 //   identifyColorbar   colors sampled along a colorbar, start → end. Also
@@ -261,23 +261,6 @@ export function matchLevel(score: number) {
   return score < MATCH_LEVELS.exact ? 'exact' : score < MATCH_LEVELS.close ? 'close' : 'none';
 }
 
-// 'rrggbb…' → [[r, g, b], …]. Kept here so the heatmap page needs no cvd.js.
-function unpack(hex: string) {
-  const out: Rgb[] = [];
-  for (let i = 0; i + 6 <= hex.length; i += 6)
-    out.push([0, 2, 4].map((k) => parseInt(hex.slice(i + k, i + k + 2), 16)));
-  return out;
-}
-
-// The maps of core/colormap-library.js in the form above, parsed once.
-let known: MatchMap[] | null = null;
-function knownMaps() {
-  if (!known && cmapData) {
-    known = cmapData.maps.map((m) => ({ name: m.name, kind: m.kind, source: m.source, rgbs: unpack(m.colors) }));
-  }
-  return known || [];
-}
-
 // A reference colormap for a calibrated colorbar (heatmap and ROI tools).
 //   rgbs        colors sampled from the bar's start to its end
 //   lowAtStart  true / false when the ticks say which end has the lower
@@ -287,7 +270,7 @@ function knownMaps() {
 // colors] }. With byValue, reversed is relative to rising values (as
 // matplotlib names it); otherwise relative to start → end.
 export function suggestColormap(rgbs: Rgb[], { lowAtStart = null }: { lowAtStart?: boolean | null } = {}) {
-  const maps = knownMaps();
+  const maps = libraryMaps();
   if (!maps.length || rgbs.length < 2) return null;
   // Only the best map and its ties (`same`) are shown.
   const ranked = identifyColorbar(rgbs, maps, { within: 0.01 });
@@ -302,7 +285,7 @@ export function suggestColormap(rgbs: Rgb[], { lowAtStart = null }: { lowAtStart
   return {
     name: best.name,
     mplName: name(best),
-    source: knownMaps().find((m) => m.name === best.name)!.source,
+    source: mapByName(best.name)!.source,
     reversed: flip(best.reversed),
     byValue,
     score: best.score,
@@ -319,14 +302,12 @@ export function colormapSamples(
   colormap: { name: string; reversed?: boolean } | null | undefined,
   n = 256,
 ): ColorbarSample[] | null {
-  const map = colormap && knownMaps().find((m) => m.name === colormap.name);
-  if (!map) return null;
+  const entry = colormap && mapByName(colormap.name);
+  if (!entry) return null;
+  const map: MatchMap = { name: entry.name, kind: entry.kind, rgbs: mapColors(entry) };
   return Array.from({ length: n }, (_, i) => {
     const t = i / (n - 1);
     const rgb = colorAt(map, colormap.reversed ? 1 - t : t);
     return { t, rgb, lab: rgbToLab(rgb) };
   });
 }
-
-// [[r, g, b], …] of a known map, or null.
-export const cmapRgbs = (name: string) => knownMaps().find((m) => m.name === name)?.rgbs || null;

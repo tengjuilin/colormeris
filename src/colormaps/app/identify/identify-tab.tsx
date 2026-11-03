@@ -1,12 +1,11 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { rgbToHex } from '../../../core/color.ts';
 import { refineColorbar, sampleColorbar } from '../../../core/colorbar.ts';
-import { cmapData } from '../../../core/colormap-library.ts';
+import { cmapData, mapByName, mapColors } from '../../../core/colormap-library.ts';
 import { identifyColorbar, identifyColors } from '../../../core/colormap-match.ts';
 import type { Rgb } from '../../../types/index.ts';
 import { clamp8, roundRgb } from '../../common.ts';
 import type { FigureLine } from '../../figure-input.ts';
-import { base } from '../../library-cache.ts';
 import { FigureCanvas, type FigureHandle, FigureInput, useFigureInput } from '../shared/figure-input.tsx';
 import { Strip } from '../shared/strip.tsx';
 import { describeMatches, identifyMaps, wholeImagePixels } from './identify-model.ts';
@@ -37,7 +36,6 @@ const HINTS = {
     'Drag along the colorbar from one end to the other. Drag from the low end to the high end to read the direction. Or use the whole image if there is no colorbar.',
 };
 const hexOf = (rgb: Rgb) => rgbToHex(rgb.map(clamp8));
-const byName = new Map(cmapData.maps.map((m) => [m.name, m]));
 
 export function IdentifyTab({ getTab, compared, onShowRow, onCompare, onRecolor }: IdentifyTabProps) {
   const [canWhole, setCanWhole] = useState(false);
@@ -145,8 +143,8 @@ export function IdentifyTab({ getTab, compared, onShowRow, onCompare, onRecolor 
   if (outcome?.mode === 'whole')
     note = 'The direction cannot be known this way. A line along the colorbar is more reliable.';
   else if (outcome && desc?.best.reversed) {
-    const map = byName.get(desc.best.name);
-    const last = map ? base(map).slice(-1)[0] : null;
+    const map = mapByName(desc.best.name);
+    const last = map ? mapColors(map).slice(-1)[0] : null;
     note = last ? (
       <>
         Reversed means the end where you started is the map’s last color{' '}

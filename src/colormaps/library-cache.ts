@@ -1,4 +1,5 @@
-import { CVD_TYPES, grayscale, lightness, parseHexColors, simulateCvd } from '../core/cvd.ts';
+import { mapColors } from '../core/colormap-library.ts';
+import { CVD_TYPES, grayscale, lightness, simulateCvd } from '../core/cvd.ts';
 import type { ColormapEntry, Rgb, ViewData, ViewKey } from '../types/index.ts';
 import { roundRgb } from './common.ts';
 import type { ColormapMetrics } from './metrics.ts';
@@ -21,20 +22,12 @@ export const isRev = (state: DirectionState, name: string): boolean => state.rev
 
 type Views = Record<ViewKey, ViewData>;
 
-const baseOf = new Map<string, Rgb[]>();
 const viewsOf = new Map<string, Views>(); // `${name}|${reversed}`
 const metricsOf = new Map<string, ColormapMetrics>();
 const notesCache = new Map<string, ReturnType<typeof ratingNotes>>();
 
-/** The map's original colors, parsed once. */
-export function base(map: ColormapEntry): Rgb[] {
-  let colors = baseOf.get(map.name);
-  if (!colors) {
-    colors = parseHexColors(map.colors);
-    baseOf.set(map.name, colors);
-  }
-  return colors;
-}
+/** The map's original colors, parsed once (the library's shared array). */
+export const base: (map: ColormapEntry) => Rgb[] = mapColors;
 
 /** The colors of one view, with their lightness (L* is added on first use). */
 export function viewData(map: ColormapEntry, view: ViewKey, reversed: boolean): ViewData {
