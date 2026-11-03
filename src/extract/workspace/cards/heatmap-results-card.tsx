@@ -41,15 +41,23 @@ function download(ws: Workspace, long: boolean) {
   else ws.download(new Blob([toWideCsv(p, r)], { type: 'text/csv' }), ws.csvName(p));
 }
 
-/** The table host: rebuilt when `res` changes, hover on a cell marks it on the image. */
+/**
+ * The table host: rebuilt when `res` or the labels change, hover on a cell marks it on the image. While a
+ * handle is dragged the table waits for the drop: rebuilding a large one on every move (and the layout that
+ * follows) took longer than a frame.
+ */
 function ResultTable({ w, panel, res }: { w: WorkspaceContext; panel: Panel; res: Result }) {
   const table = useRef<HTMLTableElement>(null);
+  // The result's cache key leaves the labels out, and typing replaces the arrays (grid-labels.tsx).
+  const { rowLabels, colLabels } = panel.grid;
+  const dragging = !!w.app.drag;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the labels are read by fillResultTable through panel
   useLayoutEffect(() => {
-    if (!table.current) return;
+    if (!table.current || dragging) return;
     fillResultTable(table.current, panel, res);
     highlightTableCell(table.current, w.app.hoverCell);
-  }, [panel, res, w]);
+  }, [panel, res, w, rowLabels, colLabels, dragging]);
 
   useEffect(() => {
     const el = table.current;

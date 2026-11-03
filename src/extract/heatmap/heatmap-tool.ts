@@ -2,7 +2,7 @@ import { rgbToHex } from '../../core/color.ts';
 import { colorAtT } from '../../core/colorbar.ts';
 import { bilinear, cellSamplePolygon, outerCorners } from '../../core/grid.ts';
 import type { Cell, HeatmapResult, Panel, Point, ToolHooks, ViewerApi, Workspace } from '../../types/index.ts';
-import { effectiveLabels } from '../project/project.ts';
+import { effectiveLabels, gridGeometry } from '../project/project.ts';
 import { formatNumber, heatmapPanelFiles } from '../project/project-files.ts';
 import { boundPrefix, highlightTableCell, luminance, OFF_MAP } from './results-table.ts';
 import { extractPanel, panelProblem } from './sampling.ts';
@@ -20,7 +20,7 @@ export function setupHeatmapTool(ws: Workspace) {
     label: 'heatmap',
     title: 'Colormeris · Heatmap',
     computeResult: (panel, image) => extractPanel(image, panel),
-    resultKey: (panel) => [panel.grid, panel.colorbar, panel.settings],
+    resultKey: (panel) => [gridGeometry(panel.grid), panel.colorbar, panel.settings],
     panelProblem,
     panelFiles: (panels, results, bases) => panels.flatMap((p, i) => heatmapPanelFiles(p, results[i], bases[i])),
     sections: ['sec-hm-results'],

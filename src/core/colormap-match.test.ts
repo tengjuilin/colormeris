@@ -44,6 +44,22 @@ test('overshoot into the frame is trimmed off', () => {
   assert.ok(best.trim[0] > 0 && best.trim[1] > 0);
 });
 
+test('within: the same best maps and scores as the full ranking', () => {
+  const bars = [
+    bar('viridis'),
+    bar('RdBu', { reversed: true }),
+    bar('tab10'),
+    bar('gray'),
+    Array.from({ length: 100 }, (_, i) => [255 - Math.round(2.55 * i), Math.round(2.55 * i), 0]),
+    Array.from({ length: 60 }, () => noisy([128, 128, 128])),
+  ];
+  for (const s of bars) {
+    const full = identifyColorbar(s, maps);
+    const near = full.filter((r) => r.score <= full[0].score + 0.5);
+    assert.deepEqual(identifyColorbar(s, maps, { within: 0.5 }), near);
+  }
+}, 20_000);
+
 test('an unknown map gets no exact match', () => {
   // Pure red to pure green is in none of the matplotlib maps.
   const s = Array.from({ length: 100 }, (_, i) => [255 - Math.round(2.55 * i), Math.round(2.55 * i), 0]);

@@ -130,6 +130,13 @@ export function effectiveLabels(labels: unknown[], count: number, prefix: string
   return out;
 }
 
+// The grid without its labels: what extraction depends on. Result cache keys use it, so typing a label
+// does not re-extract the panel (the tables read the labels from the panel when they render).
+export function gridGeometry(grid: Grid) {
+  const { rowLabels, colLabels, boxLabels, autoSize, ...geometry } = grid;
+  return geometry;
+}
+
 // Name of box (row, col): its own label in reading order if given, else
 // "<row label> <col label>".
 export function boxLabel(grid: Grid, row: number, col: number): string {

@@ -89,7 +89,14 @@ function mapLabs(map: MatchMap, key: string, make: () => Lab[]): Lab[] {
 
 // samples: [[r, g, b], …] along the bar, at least 2.
 // Returns [{ name, reversed, score, mean, max, trim: [start, end] }].
-export function identifyColorbar(samples: Rgb[], maps: MatchMap[], { n = MATCH_N }: { n?: number } = {}) {
+// With `within`, only the maps scoring at most `within` above the best are returned (the same scores, in the
+// same order); the rest are dropped as soon as their score is sure to be higher, which makes the match several
+// times faster (the Colorbar card only shows the best map and its exact ties).
+export function identifyColorbar(
+  samples: Rgb[],
+  maps: MatchMap[],
+  { n = MATCH_N, within }: { n?: number; within?: number } = {},
+) {
   if (samples.length < 2) return [];
   const ts = Array.from({ length: n }, (_, i) => i / (n - 1));
   // Sample colors for each trim pair, as Lab.
@@ -100,28 +107,85 @@ export function identifyColorbar(samples: Rgb[], maps: MatchMap[], { n = MATCH_N
       trimmed.push({ trim: [a, b], labs });
     }
   }
-  const out: MatchResult[] = [];
-  for (const map of maps) {
+  const cands = maps.flatMap((map, m) => {
     const fwd = mapLabs(map, `bar${n}`, () => ts.map((t) => rgbToLab(colorAt(map, t))));
-    for (const reversed of [false, true]) {
-      const ref = reversed ? fwd.slice().reverse() : fwd;
-      let best: { score: number; d: number[]; trim: number[] } | null = null;
-      for (const { trim, labs } of trimmed) {
-        const d = labs.map((lab, i) => deltaE2000(lab, ref[i]));
-        const score = robustMean(d);
-        if (!best || score < best.score) best = { score, d, trim };
-      }
-      out.push({
-        name: map.name,
-        reversed,
-        score: best!.score,
-        mean: best!.d.reduce((x, y) => x + y, 0) / n,
-        max: Math.max(...best!.d),
-        trim: best!.trim,
-      });
-    }
+    return [false, true].map((reversed) => ({
+      map,
+      reversed,
+      ref: reversed ? fwd.slice().reverse() : fwd,
+      order: 2 * m + +reversed,
+    }));
+  });
+  // Pruning needs a low bound early: likely maps first (squared ΔE76 of the untrimmed samples).
+  if (within !== undefined) {
+    const labs = trimmed[0].labs;
+    const rough = (ref: Lab[]) => {
+      let s = 0;
+      for (let i = 0; i < n; i += 4)
+        s += (labs[i][0] - ref[i][0]) ** 2 + (labs[i][1] - ref[i][1]) ** 2 + (labs[i][2] - ref[i][2]) ** 2;
+      return s;
+    };
+    const keyed = cands.map((c) => ({ c, r: rough(c.ref) }));
+    keyed.sort((x, y) => x.r - y.r);
+    cands.splice(0, cands.length, ...keyed.map((k) => k.c));
   }
-  return out.sort((x, y) => x.score - y.score);
+  const keep = Math.max(1, Math.round(n * KEEP));
+  const drop = n - keep;
+  let bound = Infinity; // best score so far + within
+  const out: (MatchResult & { order: number })[] = [];
+  for (const { map, reversed, ref, order } of cands) {
+    let best: { score: number; d: number[]; trim: number[] } | null = null;
+    for (const { trim, labs } of trimmed) {
+      const d: number[] = [];
+      // robustMean(d) ≥ (sum of the known values − their `drop` largest) / keep: the values still to come
+      // could only push out the largest ones.
+      let sum = 0;
+      let topSum = 0;
+      const top: number[] = [];
+      let pruned = false;
+      for (let i = 0; i < n; i++) {
+        const e = deltaE2000(labs[i], ref[i]);
+        d.push(e);
+        sum += e;
+        if (top.length < drop) {
+          top.push(e);
+          topSum += e;
+          continue;
+        }
+        if (drop) {
+          let lo = 0;
+          for (let j = 1; j < drop; j++) if (top[j] < top[lo]) lo = j;
+          if (e > top[lo]) {
+            topSum += e - top[lo];
+            top[lo] = e;
+          }
+        }
+        if ((sum - topSum) / keep > bound + 1e-9) {
+          pruned = true;
+          break;
+        }
+      }
+      if (pruned) continue;
+      const score = robustMean(d);
+      if (!best || score < best.score) best = { score, d, trim };
+    }
+    if (!best) continue;
+    if (within !== undefined) bound = Math.min(bound, best.score + within);
+    out.push({
+      name: map.name,
+      reversed,
+      score: best.score,
+      mean: best.d.reduce((x, y) => x + y, 0) / n,
+      max: Math.max(...best.d),
+      trim: best.trim,
+      order,
+    });
+  }
+  // Ties keep the maps' order, as an unpruned run returns them.
+  return out
+    .filter((r) => r.score <= bound)
+    .sort((x, y) => x.score - y.score || x.order - y.order)
+    .map(({ order, ...r }) => r);
 }
 
 // Many loose colors (pixels). Repeated colors are counted once, so a large
@@ -225,7 +289,8 @@ function knownMaps() {
 export function suggestColormap(rgbs: Rgb[], { lowAtStart = null }: { lowAtStart?: boolean | null } = {}) {
   const maps = knownMaps();
   if (!maps.length || rgbs.length < 2) return null;
-  const ranked = identifyColorbar(rgbs, maps);
+  // Only the best map and its ties (`same`) are shown.
+  const ranked = identifyColorbar(rgbs, maps, { within: 0.01 });
   const best = ranked[0];
   const byValue = lowAtStart != null;
   const flip = (r: boolean) => (lowAtStart === false ? !r : r);

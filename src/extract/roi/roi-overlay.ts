@@ -109,8 +109,9 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
     if (colorbarProblem(panel)) return;
     const img = ws.app.imageData!;
     const tint = [ws.color('roiSignal') as string, ws.color('roiFlagged') as string];
-    const key = JSON.stringify([ws.currentPage(), img.width, panel.colorbar, panel.settings, tint]);
-    if (state.mask?.key !== key) {
+    const key = JSON.stringify([panel.colorbar, panel.settings, tint]);
+    // The image itself, not its page number: another file can have a page 1 of the same size.
+    if (state.mask?.key !== key || state.mask.img !== img) {
       const classify = panelClassifier(img, panel);
       const at =
         classify.img === img
@@ -131,7 +132,7 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
         if (c.signal) px[i] = c.flagged ? flagged : signal;
       }
       mctx.putImageData(out, 0, 0);
-      state.mask = { key, canvas };
+      state.mask = { key, img, canvas };
     }
     ctx.imageSmoothingEnabled = v.scale < 2;
     ctx.drawImage(state.mask!.canvas, v.ox, v.oy, img.width * v.scale, img.height * v.scale);

@@ -1,6 +1,6 @@
 // Which known colormap the calibrated colorbar looks like (core/colormap-match.ts), shown under the strip.
-// Matching takes about 70 ms, so it waits until the bar stops moving and is cached per bar position; the tick
-// values only decide the direction. The result goes into a module cache and a state bump re-renders the card.
+// Matching takes about 30 ms (identifyColorbar with `within` skips maps that cannot win), waits until the bar
+// stops moving and is cached per bar position; the tick values only decide the direction. The result goes into a module cache and a state bump re-renders the card.
 import { useEffect, useState } from 'react';
 import { makeValueFn, sampleColorbar } from '../../../core/colorbar.ts';
 import { cmapData } from '../../../core/colormap-library.ts';

@@ -16,7 +16,7 @@ import type {
   ToolHooks,
   Workspace,
 } from '../../types/index.ts';
-import { createRoi } from '../project/project.ts';
+import { createRoi, gridGeometry } from '../project/project.ts';
 import { roiCsv } from '../project/project-files.ts';
 import { scaleBarClick } from '../scale-bar.ts';
 import { setRoiContext } from './cards/roi-context.ts';
@@ -68,7 +68,7 @@ export interface RoiToolState {
   showMask: boolean;
   /** "Copy new regions into every grid box". */
   replicate: boolean;
-  mask: { key: string; canvas: HTMLCanvasElement } | null;
+  mask: { key: string; img: ImageData; canvas: HTMLCanvasElement } | null;
   metric: keyof RoiStats;
 }
 
@@ -110,7 +110,7 @@ export function setupRoiTool(ws: Workspace) {
     draft: null, // {shape, a, b, equal} while dragging a new ellipse/rect
     showMask: false,
     replicate: true,
-    mask: null, // {key, canvas}
+    mask: null, // {key, img, canvas}
     metric: 'sum',
   };
   const selectedRoi = () => ws.activePanel().rois.find((r) => r.id === state.selectedId) || null;
@@ -128,7 +128,7 @@ export function setupRoiTool(ws: Workspace) {
     label: 'ROI',
     title: 'Colormeris · ROI',
     computeResult: (panel, image) => quantifyPanel(image, panel),
-    resultKey: (panel) => [panel.grid, panel.colorbar, panel.settings, panel.rois, panel.scale],
+    resultKey: (panel) => [gridGeometry(panel.grid), panel.colorbar, panel.settings, panel.rois, panel.scale],
     panelProblem: roiPanelProblem,
     panelFiles: (panels, results, bases) =>
       panels.flatMap((p, i) =>
