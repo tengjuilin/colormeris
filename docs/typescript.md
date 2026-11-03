@@ -5,7 +5,7 @@ Colormeris is strict TypeScript in ES modules, bundled by Vite (see CLAUDE.md fo
 ## Ground rules
 
 - `strict: true`. Pure modules (no DOM: `src/core`, `project/`, `settings/settings.ts`, `heatmap/sampling.ts`, `roi/geometry.ts`, `roi/quantify.ts`, `map/field.ts`, agent `schema`/`llm`/`decide`/`labels`, colormaps `metrics`/`route`/`recolor`/`references`) are fully typed: no `any`. Prefer `unknown` plus a check, `Record<string, unknown>` for open objects. Untrusted JSON read field by field uses the one `Raw` alias in project.ts / settings.ts.
-- No `any` anywhere: Biome's `noExplicitAny` is an error. A seam that really needs it (one options bag in `colormaps/figure-input.ts`) carries a `biome-ignore` with the reason; casts that the types can't express yet are marked `// TODO(types)`.
+- No `any` anywhere: Biome's `noExplicitAny` is an error. A seam that really needs it carries a `biome-ignore` with the reason; casts that the types can't express yet are marked `// TODO(types)`.
 - `import type { … }` for types (`verbatimModuleSyntax`), always with the `.ts` extension: `import { rgbToLab } from '../core/color.ts'`.
 - Every file starts with a comment saying what it does; comments explain why. Keep exported names stable: the agent API, docs/agent.md and tests use them.
 - Libraries come from npm (pinned in `package.json`): `import JSZip from 'jszip'`; pdf.js is loaded lazily in `pdf-loader.ts`; the OpenRouter SDK is a lazy `import('@openrouter/sdk')` in `openrouter-client.ts`, which returns a pre-set `globalThis.OpenRouterSDK` first (mocks). Static files are in `public/` and are fetched relative to the page (`examples/example.pdf`).
