@@ -3,7 +3,7 @@
 // and the decision model (agent/decide.ts, agent/decision-tools.ts,
 // agent/openrouter-client.ts). Results the LLM only reads stay loose.
 
-import type { Point } from './image.ts';
+import type { Box, Point } from './image.ts';
 import type { ColorbarScale, ColormapRef, PanelSettings, ToolKind } from './project.ts';
 
 // ---------------------------------------------------------------- JSON Schema
@@ -389,4 +389,20 @@ export interface DecisionTools {
   prefetch: (calls: { name: string; args: ActionArgs | null }[]) => void;
   handles: (name: string) => boolean;
   call: (name: string, args: ActionArgs | null) => Promise<ToolCallResult>;
+}
+
+/** Arguments of the decision-mode tools (DECISION_TOOLS, and set_colorbar_scale with its check), as validated. */
+export interface DecisionArgsMap {
+  locate_heatmap: { name: string; description: string; panelId?: string; box?: Box };
+  set_ticks: { panelId?: string; ticks: { mark?: number; t?: number; value: number }[]; scale?: ColorbarScale };
+  use_colorbar: { panelId?: string; candidate?: string; fromPanel?: string; box?: Box };
+  correct_grid_size: { panelId?: string; rows: number; cols: number; reason: string; box?: Box };
+  check_printed: { panelId?: string; cells: { row: number; col: number; value: number }[] };
+  check_panel: { panelId?: string };
+  ask: {
+    region?: Box;
+    overlay?: 'none' | 'calibration' | 'reconstruction';
+    questions: Record<string, DecisionQuestion>;
+  };
+  set_colorbar_scale: { panelId?: string; scale: ColorbarScale };
 }

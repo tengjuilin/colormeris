@@ -73,3 +73,12 @@ export function scaleForTicks(ticks: TickTV[], current = 'linear') {
   if (!slopes.every((s) => Number.isFinite(s) && s && Math.sign(s) === Math.sign(slopes[0]))) return null;
   return slopes.slice(1).every((s, i) => s / slopes[i] <= 2.5 && slopes[i] / s <= 2.5) ? piecewise : null;
 }
+
+// What set_ticks says when the app picked the scale `s` (scaleForBins for
+// a binned bar, else scaleForTicks): a sentence starting with a space.
+export function scaleNote(s: string, binned: boolean) {
+  if (binned) return ` The colorbar is binned, so the app set the scale to ${s}.`;
+  return s === 'log10'
+    ? ' The tick values grow by constant factors, so the app set the scale to log10.'
+    : ` The ticks are unevenly spaced along the bar for their values, so the app set the scale to ${s} (values between neighbouring ticks).`;
+}
