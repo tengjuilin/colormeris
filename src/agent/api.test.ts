@@ -3,8 +3,17 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
 import { rectCorners } from '../core/grid.ts';
-import { createProject } from '../extract/project/project.ts';
-import type { HeatmapResult, Panel, PanelResult, StateSnapshot, Workspace } from '../types/index.ts';
+import { createPanel, createProject } from '../extract/project/project.ts';
+import type {
+  HeatmapResult,
+  MapResult,
+  Panel,
+  PanelResult,
+  RoiResult,
+  StateSnapshot,
+  ToolKind,
+  Workspace,
+} from '../types/index.ts';
 import { createAgentApi } from './api.ts';
 import * as schema from './schema.ts';
 
@@ -118,4 +127,71 @@ test('answers apply by question type: a human accept sets the review', async () 
   assert.equal(api.reviewStatus(panel), 'accepted');
   const after = (await api.run('get_questions')) as { result: { type: string }[] };
   assert.ok(!after.result.some((x) => x.type === 'confirm_extraction'));
+});
+
+// Map and ROI panels: get_results, get_state and get_questions on panels without heatmap values.
+test('map and ROI panels: results, state and questions work, and a map review goes stale', async () => {
+  const project = createProject('map');
+  const map = project.panels[0];
+  const roi = createPanel('Panel 2', 1, 'roi');
+  project.panels.push(roi);
+  project.activePanelId = map.id;
+  project.source = { page: 1, pageCount: 1, width: 100, height: 100, renderScale: 1 } as typeof project.source;
+  let max = 1;
+  let kind: ToolKind = 'map';
+  const mapResult = () =>
+    ({
+      rows: 2,
+      cols: 2,
+      bin: 1,
+      xAxis: false,
+      yAxis: false,
+      stats: { min: 0, max, flagged: 0, clippedLow: 0, clippedHigh: 0, levels: 256 },
+      profiles: {},
+    }) as unknown as MapResult;
+  const roiResult = {
+    rows: [{ roi: { id: 'r1', name: 'ROI 1' }, row: null, col: null, outline: [], stats: { mean: 2, max: 3 } }],
+    pxArea: null,
+    unit: null,
+  } as unknown as RoiResult;
+  const cache = new Map<string, { key: number; result: PanelResult }>();
+  const ws = {
+    app: { project, sourceCanvas: {}, pages: new Map(), mode: null },
+    zipExtras: [],
+    tool: () => ({ kind }),
+    setTool: (k: ToolKind) => (kind = k),
+    activePanel: () => project.panels.find((p) => p.id === project.activePanelId)!,
+    currentPage: () => 1,
+    canUndo: () => false,
+    canRedo: () => false,
+    changed: () => {},
+    commit: (fn: (p: Panel) => void) => fn(map),
+    resultFor: (p: Panel) => {
+      if (p.tool === 'roi') return roiResult;
+      const hit = cache.get(p.id);
+      if (hit?.key === max) return hit.result;
+      const result = mapResult();
+      cache.set(p.id, { key: max, result });
+      return result;
+    },
+    reviewStatus: null,
+  } as unknown as Workspace;
+  const api = createAgentApi(ws);
+
+  const m = (await api.run('get_results')) as { ok: boolean; result: { tool: string; max: number } };
+  assert.ok(m.ok, JSON.stringify(m));
+  assert.equal(m.result.tool, 'map');
+  assert.equal(m.result.max, 1);
+  const r = (await api.run('get_results', { panelId: roi.id })) as { ok: boolean; result: { regions: unknown[] } };
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.equal(r.result.regions.length, 1);
+  const st = (await api.run('get_state')) as { ok: boolean; result: StateSnapshot };
+  assert.ok(st.ok, JSON.stringify(st));
+  assert.equal(st.result.panels.length, 2);
+  assert.ok((await api.run('get_questions')).ok);
+
+  assert.ok((await api.run('set_review', { status: 'accepted', panelId: map.id })).ok);
+  assert.equal(api.reviewStatus(map), 'accepted');
+  max = 2;
+  assert.equal(api.reviewStatus(map), 'stale');
 });

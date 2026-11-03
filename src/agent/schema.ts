@@ -861,9 +861,11 @@ const MAX_CELL_QUESTIONS = 3;
 const nonEmpty = (labels: unknown[]) => labels.filter((l) => String(l).trim() !== '').length;
 const cornerKey = (cs: Point[]) => cs.map((c) => `${Math.round(c.x)},${Math.round(c.y)}`).join(';');
 
-// Short, stable hash of a result's numbers (FNV-1a over its JSON).
+// Short, stable hash of a result's numbers (FNV-1a over its JSON). A map's
+// JSON is a summary with neither values nor regions, so the summary is hashed
+// (JSON.stringify(undefined) is undefined, which threw on get_results).
 export function resultKeyHash(res: { values?: unknown; regions?: unknown }) {
-  const s = JSON.stringify(res.values ?? res.regions);
+  const s = JSON.stringify(res.values ?? res.regions ?? res);
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
   return h.toString(16);
