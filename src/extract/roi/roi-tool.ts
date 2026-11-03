@@ -5,6 +5,8 @@ import type {
   Handle,
   Mode,
   Panel,
+  PanelResult,
+  PixelImage,
   Point,
   PolygonGeom,
   Roi,
@@ -27,6 +29,7 @@ import {
   centroid,
   clampPoint,
   clampShift,
+  createInstanceCache,
   equalBoxGeom,
   fitGeom,
   fromBox,
@@ -34,9 +37,9 @@ import {
   gridBoxSize,
   offsetKey,
   pointInPolygon,
+  type RoiInstance,
   roiControlPoints,
   roiFromLocal,
-  roiInstances,
   roiToLocal,
   toBox,
   translateGeom,
@@ -89,6 +92,8 @@ export interface RoiToolContext {
   selectedRoi: () => Roi | null;
   roiColor: (panel: Panel, roi: Roi) => string;
   regionAt: (p: Point) => RegionHit | null;
+  /** Every copy of a region with its outline (roiInstances), cached while the region and the grid are unchanged. */
+  instances: (roi: Roi, grid: Grid) => RoiInstance[];
   deleteSelected: () => void;
   toggleTool: (type: string) => void;
 }
@@ -119,16 +124,36 @@ export function setupRoiTool(ws: Workspace) {
     const palette = ws.color('roiPalette') as string[];
     return palette[Math.max(0, panel.rois.indexOf(roi)) % palette.length];
   };
-  const rctx: RoiToolContext = { ws, state, selectedRoi, roiColor, regionAt, deleteSelected, toggleTool };
+  const instances = createInstanceCache();
+  const rctx: RoiToolContext = { ws, state, selectedRoi, roiColor, regionAt, instances, deleteSelected, toggleTool };
   const { drawOverlay, drawModePreview, hoverText } = setupRoiOverlay(rctx);
   setRoiContext(rctx);
+
+  // While a handle is dragged (a region, a corner, the colorbar) the labels, hover text and table keep the
+  // last numbers: quantifying every region on each pointer move cost more than a frame. resultKey has the drag
+  // in it, so the drop quantifies once.
+  const lastResult = new Map<string, { image: ImageData | PixelImage; result: PanelResult }>();
+  function computeResult(panel: Panel, image: ImageData | PixelImage): PanelResult {
+    const last = lastResult.get(panel.id);
+    if (app.drag && last?.image === image) return last.result;
+    const result = quantifyPanel(image, panel);
+    lastResult.set(panel.id, { image, result });
+    return result;
+  }
 
   ws.addTool({
     kind: 'roi',
     label: 'ROI',
     title: 'Colormeris · ROI',
-    computeResult: (panel, image) => quantifyPanel(image, panel),
-    resultKey: (panel) => [gridGeometry(panel.grid), panel.colorbar, panel.settings, panel.rois, panel.scale],
+    computeResult,
+    resultKey: (panel) => [
+      gridGeometry(panel.grid),
+      panel.colorbar,
+      panel.settings,
+      panel.rois,
+      panel.scale,
+      !!app.drag,
+    ],
     panelProblem: roiPanelProblem,
     panelFiles: (panels, results, bases) =>
       panels.flatMap((p, i) =>
@@ -297,7 +322,7 @@ export function setupRoiTool(ws: Workspace) {
     const panel = ws.activePanel();
     const order = [...panel.rois].sort((a, b) => Number(b.id === state.selectedId) - Number(a.id === state.selectedId));
     for (const roi of order) {
-      for (const inst of roiInstances(roi, panel.grid)) {
+      for (const inst of instances(roi, panel.grid)) {
         if (pointInPolygon(p, inst.outline)) return { roi, row: inst.row, col: inst.col };
       }
     }
@@ -315,7 +340,7 @@ export function setupRoiTool(ws: Workspace) {
     const panel = ws.activePanel();
     const sel = selectedRoi();
     if (sel) {
-      for (const inst of roiInstances(sel, panel.grid)) {
+      for (const inst of instances(sel, panel.grid)) {
         const pts = roiControlPoints(sel).map((q) => roiFromLocal(sel, panel.grid, inst.row!, inst.col!, q));
         const i = pts.findIndex((q) => Math.hypot(q.x - p.x, q.y - p.y) <= tol);
         if (i >= 0)

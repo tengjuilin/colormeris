@@ -8,6 +8,7 @@ import {
   boxGeom,
   clampPoint,
   clampShift,
+  createInstanceCache,
   equalBoxGeom,
   fitGeom,
   forEachPixelInPolygon,
@@ -119,6 +120,26 @@ test('replicated regions are copied into every box, with per-box nudges', () => 
     roiInstances(single, grid).map((i) => [i.row, i.col]),
     [[null, null]],
   );
+});
+
+test('createInstanceCache reuses outlines until the region or the grid changes', () => {
+  const instances = createInstanceCache();
+  const roi = createRoi('ellipse', { cx: 0.5, cy: 0.5, rx: 0.2, ry: 0.2 });
+  const g = structuredClone(grid);
+  const first = instances(roi, g);
+  assert.deepEqual(first, roiInstances(roi, g));
+  assert.equal(instances(roi, g), first);
+  // In-place edits, as drags make them, are seen.
+  roi.offsets['0,0'] = { dx: 0.1, dy: 0 };
+  const nudged = instances(roi, g);
+  assert.notEqual(nudged, first);
+  assert.deepEqual(nudged, roiInstances(roi, g));
+  (roi.geom as ShapeGeom).rx = 0.3;
+  assert.deepEqual(instances(roi, g), roiInstances(roi, g));
+  g.corners![2].x += 10;
+  assert.deepEqual(instances(roi, g), roiInstances(roi, g));
+  g.rows = 1;
+  assert.equal(instances(roi, g).length, g.cols);
 });
 
 test('box coordinates round-trip on a skewed grid', () => {

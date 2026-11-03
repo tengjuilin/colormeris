@@ -80,6 +80,31 @@ export function roiInstances(roi: Roi, grid: Grid | null | undefined): RoiInstan
   return out;
 }
 
+// roiInstances, kept per region while its shape, copies and the grid stay
+// the same: hit testing on hover and the overlay ask for every copy's outline
+// on each pointer move and frame. Geometry is mutated in place by drags, so
+// the cache compares values (a short key), not references. The outlines
+// returned are shared: callers must not change them.
+export function createInstanceCache() {
+  const cache = new WeakMap<Roi, { key: string; instances: RoiInstance[] }>();
+  return (roi: Roi, grid: Grid | null | undefined): RoiInstance[] => {
+    const key = JSON.stringify([
+      roi.shape,
+      roi.geom,
+      roi.replicate,
+      roi.replicate ? roi.offsets : null,
+      grid?.corners,
+      grid?.rows,
+      grid?.cols,
+    ]);
+    const hit = cache.get(roi);
+    if (hit && hit.key === key) return hit.instances;
+    const instances = roiInstances(roi, grid);
+    cache.set(roi, { key, instances });
+    return instances;
+  };
+}
+
 export function pointInPolygon(p: Point, poly: Point[]) {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {

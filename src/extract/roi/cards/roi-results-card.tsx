@@ -139,10 +139,13 @@ function ResultTable({
   metric: keyof RoiStats;
 }) {
   const table = useRef<HTMLTableElement>(null);
+  // While a handle is dragged the table waits for the drop, as the heatmap's does: rebuilding it on every move
+  // took longer than a frame.
+  const dragging = !!w.app.drag;
   // panel.rois names are part of the header: rebuild when the result object changes (it does for any edit).
   useLayoutEffect(() => {
-    if (table.current) fillRoiTable(table.current, panel, res, metric);
-  }, [panel, res, metric]);
+    if (table.current && !dragging) fillRoiTable(table.current, panel, res, metric);
+  }, [panel, res, metric, dragging]);
 
   useEffect(() => {
     const el = table.current;

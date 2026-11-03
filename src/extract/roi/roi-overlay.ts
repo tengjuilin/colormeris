@@ -3,15 +3,15 @@ import type { Cell, Mode, Panel, Point, Roi, RoiResult, RoiRow, ViewerApi } from
 import { boxLabel, colorbarProblem } from '../project/project.ts';
 import { drawScaleBar, drawScalePreview } from '../scale-bar.ts';
 import { hexToRgb } from '../settings/settings.ts';
-import { boxGeom, roiControlPoints, roiFromLocal, roiInstances, shapeOutline } from './geometry.ts';
+import { boxGeom, roiControlPoints, roiFromLocal, shapeOutline } from './geometry.ts';
 import { metricFor, metricValue, panelClassifier, shortNumber } from './quantify.ts';
 import type { RoiToolContext } from './roi-tool.ts';
 
 // ROI tool, DOM: what the tool draws over the image (regions with their
 // labels, edit handles, the scale bar, the signal mask, previews while
-// drawing) and the status-bar hover text. Set up by roi-tool.js.
+// drawing) and the status-bar hover text. Set up by roi-tool.ts.
 //
-// rctx: { ws, state, selectedRoi, roiColor, regionAt } (see roi-tool.ts).
+// rctx: { ws, state, selectedRoi, roiColor, regionAt, instances } (see roi-tool.ts).
 export function setupRoiOverlay(rctx: RoiToolContext) {
   const { ws, state } = rctx;
 
@@ -27,7 +27,7 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
       const selected = roi.id === state.selectedId;
       // All copies of a region as one path: one fill and stroke per region,
       // not per copy.
-      const instances = roiInstances(roi, panel.grid);
+      const instances = rctx.instances(roi, panel.grid);
       ctx.beginPath();
       for (const inst of instances) addPolygon(ctx, v, inst.outline);
       if (selected) {
@@ -58,7 +58,7 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
     const sel = rctx.selectedRoi();
     if (sel) {
       const color = rctx.roiColor(panel, sel);
-      for (const inst of roiInstances(sel, panel.grid)) {
+      for (const inst of rctx.instances(sel, panel.grid)) {
         for (const q of roiControlPoints(sel))
           ws.drawHandle(
             ctx,
