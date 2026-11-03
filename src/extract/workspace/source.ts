@@ -12,7 +12,7 @@ import type {
 import { canvasImageData, fileKind, imageToCanvas, openPdf, renderPdfPage, sha256Hex } from '../pdf-loader.ts';
 import { createProject, rescalePanel } from '../project/project.ts';
 import { readProjectZip } from '../project/project-files.ts';
-import { isTextEntry } from '../typing.ts';
+import { isFormField } from '../typing.ts';
 
 // The source file and its pages: opening PDFs, images and project zips
 // (file dialog, examples, drag and drop, paste), PDF pages, render
@@ -332,7 +332,8 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
     openFile(e.dataTransfer?.files?.[0]);
   });
   window.addEventListener('paste', (e) => {
-    if (isTextEntry(e.target)) return;
+    // Pasting into any form field, a checkbox included, does not open the clipboard image.
+    if (isFormField(e.target)) return;
     const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
     if (!item) return;
     const blob = item.getAsFile();
