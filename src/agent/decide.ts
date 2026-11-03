@@ -6,6 +6,7 @@
 //   choose-colorbar.ts chooseColorbar
 //   geometry.ts        boxToPage, growBox, besideBox, barLine, tFromTopLeft, boxToSpan; area, overlaps, iou, union, cornersBox
 //   grid-plan.ts       planGrid, planCounts, gridNeighbours, regridOthers
+//   panel-memo.ts      panelMemo and its signatures (per-panel values tied to a bar or grid)
 //   prompt.ts          DECISION_SYSTEM_PROMPT, DEFAULT_DECISION_MODEL
 //   questions.ts       decisionQuestions (asked of the decision model)
 //   strip-side.ts      besideCheck, nearCheck, sideOf, flankInk
@@ -33,6 +34,7 @@ export {
   union,
 } from './decide/geometry.ts';
 export { gridNeighbours, planCounts, planGrid, regridOthers } from './decide/grid-plan.ts';
+export { barSignature, countSignature, gridSignature, panelMemo } from './decide/panel-memo.ts';
 export { DECISION_SYSTEM_PROMPT, DEFAULT_DECISION_MODEL } from './decide/prompt.ts';
 export { decisionQuestions } from './decide/questions.ts';
 export { besideCheck, flankInk } from './decide/strip-side.ts';

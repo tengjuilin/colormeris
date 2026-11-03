@@ -30,6 +30,7 @@ import type {
 import {
   area,
   barLine,
+  barSignature,
   besideBox,
   boxText,
   boxToPage,
@@ -40,13 +41,16 @@ import {
   cleanDecisionArgs,
   clipBox,
   cornersBox,
+  countSignature,
   DECISION_TOOLS,
   decisionQuestions,
+  gridSignature,
   iou,
   likelySides,
   orientation,
   overlaps,
   pageColorbars,
+  panelMemo,
   planGrid,
   printedCheck,
   regions,
@@ -104,13 +108,16 @@ export function createDecisionTools(
   const { app } = ws;
   // Per panel: tick-label boxes numbered from 1, the lettered colorbar
   // candidates last shown, and the box before its grid was cut to the
-  // counted cells (to put a white end row back).
-  const marksByPanel = new Map<string, Mark[]>();
-  const candidatesByPanel = new Map<string, CandidateList>();
-  const trimmedByPanel = new Map<string, { box: Box; alt: Partial<Record<'row' | 'col', number>> }>();
+  // counted cells (to put a white end row back). Each holds only while its
+  // colorbar (marks) or grid (the rest) is unchanged (panelMemo): undo,
+  // remove_panel or the LLM's own set_colorbar must not leave boxes of a
+  // bar that is gone.
+  const marksByPanel = panelMemo<Mark[]>(barSignature);
+  const candidatesByPanel = panelMemo<CandidateList>(gridSignature);
+  const trimmedByPanel = panelMemo<{ box: Box; alt: Partial<Record<'row' | 'col', number>> }>(gridSignature);
   // Per panel: axes whose count the app was unsure of (a later panel lined
   // up with it may settle them).
-  const unsureByPanel = new Map<string, { row?: boolean; col?: boolean } | undefined>();
+  const unsureByPanel = panelMemo<{ row?: boolean; col?: boolean } | undefined>(countSignature);
 
   const breathe = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -168,7 +175,7 @@ export function createDecisionTools(
         cells: gridBox(p),
         rows: p.grid.rows,
         cols: p.grid.cols,
-        unsure: unsureByPanel.get(p.id),
+        unsure: unsureByPanel.get(p),
       }));
 
   // A named panel made active (switching page if needed), or the active one.
@@ -217,6 +224,9 @@ export function createDecisionTools(
   // `calls`: [{name, args}] of one LLM turn. Only locates on the page shown
   // (no page change in the turn, no panelId or box), two or more.
   function prefetch(calls: { name: string; args: ActionArgs | null }[]) {
+    // Boxes asked for an earlier turn whose locate never ran (it failed
+    // first, or the LLM changed its mind) are not reused.
+    pendingBoxes.clear();
     if (calls.some((c) => c.name === 'go_to_page' || c.name === 'select_panel')) return;
     const locates = calls.filter(
       (c) =>
@@ -276,18 +286,19 @@ export function createDecisionTools(
     const others = pageGrids().filter((g) => g.id !== panel.id);
     const plan = planGrid(page().imageData, box, others);
     await setGridBox(panel, plan.cells);
-    trimmedByPanel.delete(panel.id);
-    if (plan.cells !== box) trimmedByPanel.set(panel.id, { box, alt: plan.alt });
+    trimmedByPanel.delete(panel);
+    if (plan.cells !== box) trimmedByPanel.set(panel, { box, alt: plan.alt });
     if (panel.grid.rows !== plan.rows || panel.grid.cols !== plan.cols)
       await act('set_grid_size', { panelId: panel.id, rows: plan.rows, cols: plan.cols });
-    unsureByPanel.set(panel.id, plan.unsure);
+    unsureByPanel.set(panel, plan.unsure);
     const notes = [...plan.notes];
     for (const u of regridOthers(
       { id: panel.id, name: panel.name, cells: plan.cells, rows: plan.rows, cols: plan.cols, unsure: plan.unsure },
       others,
     )) {
       await act('set_grid_size', { panelId: u.id, rows: u.rows, cols: u.cols });
-      unsureByPanel.set(u.id, { row: false, col: false });
+      const other = app.project.panels.find((p) => p.id === u.id);
+      if (other) unsureByPanel.set(other, { row: false, col: false });
       notes.push(u.note);
     }
     return { cells: plan.cells, rows: plan.rows, cols: plan.cols, note: notes.join(' ') };
@@ -336,8 +347,8 @@ export function createDecisionTools(
         snap: false,
       });
     const marks = found.marks.map((m, i) => ({ ...m, label: String(i + 1) }));
-    marksByPanel.set(panel.id, marks);
-    candidatesByPanel.delete(panel.id);
+    marksByPanel.set(panel, marks);
+    candidatesByPanel.delete(panel);
     return { bar, marks, text: tickBoxesText(marks, { extended: !!found.bar }) };
   }
 
@@ -393,14 +404,14 @@ export function createDecisionTools(
       return { bar: applied.bar as Box | null, marks: applied.marks, boxesText: applied.text, how: choice.how };
     }
     if (choice.list.length) {
-      candidatesByPanel.set(panel.id, choice.list);
-      marksByPanel.set(panel.id, []);
+      candidatesByPanel.set(panel, choice.list);
+      marksByPanel.delete(panel);
       notes.push(
         `It is not clear which colorbar is this heatmap's. Candidates: ${candidateLines(cells, choice.list).join('; ')}. Choose with use_colorbar {candidate}, or {fromPanel} if it shares a calibrated panel's colorbar.`,
       );
       images.push(await candidatesView(choice.list, name));
     } else {
-      marksByPanel.set(panel.id, []);
+      marksByPanel.delete(panel);
       notes.push(
         `No colorbar was found${none !== null ? ` (the decision model sees none: ${none})` : ''}. If this heatmap has one, use_colorbar with box (its rough extent) or fromPanel; if it has none, remove_panel it.`,
       );
@@ -480,7 +491,7 @@ export function createDecisionTools(
   async function ticksView(panel: Panel) {
     const { W, H } = size();
     const cb = panel.colorbar;
-    const labels = (marksByPanel.get(panel.id) || []).map((m) => m.box);
+    const labels = (marksByPanel.get(panel) || []).map((m) => m.box);
     const { region, apart } = regions.ticks(gridBox(panel), cb.start!, cb.end!, labels, W, H);
     const view = await renderView({
       region,
@@ -543,7 +554,7 @@ export function createDecisionTools(
     const ticks = ticksWithT(cb);
     const misfit = tickMisfit(ticks, cb.scale);
     // Box number of the worst tick, when it came from a numbered box.
-    const marks = marksByPanel.get(panel.id) || [];
+    const marks = marksByPanel.get(panel) || [];
     const worst = misfit && ticks[misfit.index];
     const mark = worst
       ? marks.findIndex((m) => Math.abs(projectT(cb.start!, cb.end!, m.at) - worst.t) < VIEW.tickMatch) + 1 || null
@@ -585,7 +596,7 @@ export function createDecisionTools(
       const panel = await takePanel(panelId);
       const cb = panel.colorbar;
       if (!cb.start || !cb.end) throw new Error('This panel has no colorbar yet. Use use_colorbar first.');
-      const marks = marksByPanel.get(panel.id) || [];
+      const marks = marksByPanel.get(panel) || [];
       const bad = ticks.filter((k) => k.mark !== undefined && !marks[k.mark - 1]).map((k) => k.mark);
       if (bad.length)
         throw new Error(
@@ -639,8 +650,8 @@ export function createDecisionTools(
           if (Number.isFinite(k.t) && Number.isFinite(k.value))
             await act('add_tick', { panelId: panel.id, t: k.t, value: k.value, snap: false });
         await act('set_colorbar_scale', { panelId: panel.id, scale: cb.scale });
-        marksByPanel.set(panel.id, marksByPanel.get(src.id) || []);
-        candidatesByPanel.delete(panel.id);
+        marksByPanel.set(panel, marksByPanel.get(src) || []);
+        candidatesByPanel.delete(panel);
         return {
           ok: true,
           result: `${panel.name} now uses the colorbar of ${src.name} (${cb.ticks.length} ticks, ${cb.scale}). ${(await check(panel)).text}`,
@@ -649,7 +660,7 @@ export function createDecisionTools(
       let bar: Box | undefined;
       let note = '';
       if (candidate) {
-        const list = candidatesByPanel.get(panel.id) || [];
+        const list = candidatesByPanel.get(panel) || [];
         bar = list.find((c) => c.letter === candidate.trim().toUpperCase())?.bar;
         if (!bar)
           throw new Error(
@@ -679,11 +690,11 @@ export function createDecisionTools(
       if (box) {
         const b = snapEdges(page().imageData, clip(box)) || clip(box);
         await setGridBox(panel, b);
-        trimmedByPanel.delete(panel.id);
+        trimmedByPanel.delete(panel);
         notes.push(`Grid edges now at ${boxText(b)}.`);
       } else {
         // The count of a white end row or column the app left out puts it back.
-        const cut = trimmedByPanel.get(panel.id);
+        const cut = trimmedByPanel.get(panel);
         const g = gridBox(panel);
         const backRows = cut && cut.alt.row === rows;
         const backCols = cut && cut.alt.col === cols;
@@ -697,11 +708,11 @@ export function createDecisionTools(
           notes.push(
             `The white ${[backRows && 'row', backCols && 'column'].filter(Boolean).join(' and ')} is back in the grid.`,
           );
-          trimmedByPanel.delete(panel.id);
+          trimmedByPanel.delete(panel);
         }
       }
       await act('set_grid_size', { panelId: panel.id, rows, cols });
-      unsureByPanel.set(panel.id, { row: false, col: false });
+      unsureByPanel.set(panel, { row: false, col: false });
       const view = await renderView({
         region: regions.grid(gridBox(panel), size().W, size().H),
         overlay: 'calibration',
