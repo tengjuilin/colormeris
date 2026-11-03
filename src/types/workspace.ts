@@ -190,7 +190,8 @@ export interface ToolHooks {
   hasCalibration?: (panel: Panel) => boolean;
   /** Ids of the tool's sidebar cards, shown once a file is loaded. */
   sections?: string[];
-  renderSidebar?: (panel: Panel, light: boolean) => void;
+  /** Runs after every change, before the cards re-render: drops tool state the change made stale (a deleted selection). */
+  reconcile?: (panel: Panel, light: boolean) => void;
   modeTexts?: Partial<Record<ModeType, ModeTexts>>;
   onModeChange?: (type: ModeType | null) => void;
   /** Return true when handled. */

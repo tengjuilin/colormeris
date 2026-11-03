@@ -50,10 +50,10 @@ const MAP_UNITS: MapUnits[] = ['axis', 'px', 'length'];
 
 // `page` is the 1-based PDF page the panel's coordinates refer to (always 1
 // for images). `tool` is 'heatmap', 'roi' or 'map'. `rois` are used by
-// the ROI tool (see roi/geometry.js); `scale` (a scale bar) by the ROI and
+// the ROI tool (see roi/geometry.ts); `scale` (a scale bar) by the ROI and
 // Map tools; `settings.grayChroma` is the ROI
 // tool's background threshold (CIELAB chroma). `map` is used by the Map tool (see
-// map/field.js): bin size in rendered pixels, units (see MAP_UNITS), axis ticks in page pixels, and
+// map/field.ts): bin size in rendered pixels, units (see MAP_UNITS), axis ticks in page pixels, and
 // line profiles.
 export function createPanel(name = 'Panel 1', page = 1, tool: ToolKind = 'heatmap'): Panel {
   const panel: Panel = {
@@ -81,7 +81,7 @@ export function createPanel(name = 'Panel 1', page = 1, tool: ToolKind = 'heatma
     map: { bin: 1, units: 'axis', x: { ticks: [], scale: 'linear' }, y: { ticks: [], scale: 'linear' }, profiles: [] },
     // Review of the extraction: {status: 'accepted' | 'rejected', by,
     // confidence, note, resultHash, time}. It applies while the values
-    // still hash to resultHash (see agent/schema.js).
+    // still hash to resultHash (see agent/schema.ts).
     review: null,
   };
   // IVIS photos carry JPEG color noise up to about chroma 20 (measured on
@@ -146,7 +146,7 @@ export function boxLabel(grid: Grid, row: number, col: number): string {
 }
 
 // Grid anchors (what the clicked points are) and sampling shapes, with each
-// anchor's default shape and sampled area (core/grid.js: outerCorners, dotRadius).
+// anchor's default shape and sampled area (core/grid.ts: outerCorners, dotRadius).
 export const GRID_ANCHORS: GridAnchor[] = ['corners', 'centers'];
 export const GRID_SHAPES: GridShape[] = ['square', 'circle'];
 export const ANCHOR_DEFAULTS: Record<GridAnchor, { shape: GridShape; sampleFraction: number }> = {

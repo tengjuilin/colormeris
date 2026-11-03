@@ -95,13 +95,13 @@ export interface RoiToolContext {
 // ROI tool: quantify luminescence overlays inside drawn regions (ellipses,
 // rectangles, polygons). Colored pixels are read through the colorbar and
 // grayscale pixels (the photograph) count as no signal. With a grid, a region
-// drawn in one box is copied into every box (see roi/geometry.js).
+// drawn in one box is copied into every box (see roi/geometry.ts).
 //
 // This file sets up the tool and handles drawing and editing regions.
 // roi-overlay.ts draws over the image, the cards (roi/cards/, React) are the
 // sidebar; all share `rctx` (state, selection, colors, hit testing).
 
-// setupRoiTool(ws) registers the tool with a workspace (workspace/workspace.js).
+// setupRoiTool(ws) registers the tool with a workspace (workspace/workspace.ts).
 export function setupRoiTool(ws: Workspace) {
   const { app, viewer } = ws;
   const state: RoiToolState = {
@@ -189,7 +189,7 @@ export function setupRoiTool(ws: Workspace) {
     hoverText,
     onKey,
     // The cards render themselves; this only drops a selection that no longer exists (undo, panel switch).
-    renderSidebar: (p) => {
+    reconcile: (p) => {
       if (!p.rois.some((r) => r.id === state.selectedId)) state.selectedId = null;
     },
   } satisfies ToolHooks);

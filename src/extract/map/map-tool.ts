@@ -249,7 +249,7 @@ export function setupMapTool(ws: Workspace) {
     hoverText,
     onKey,
     // The cards render themselves; this only keeps the selection valid before they do.
-    renderSidebar: (panel) => reconcileSelection(state, panel.map.profiles),
+    reconcile: (panel) => reconcileSelection(state, panel.map.profiles),
   } satisfies ToolHooks);
 
   // ---------------------------------------------------------------- overlay

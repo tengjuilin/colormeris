@@ -35,53 +35,29 @@ import { notify } from './store.ts';
 // Shared workspace for the Colormeris tools (extract.html): source loading
 // and PDF pages, the zoomable viewer, panels, the grid and colorbar
 // calibration, undo, keyboard shortcuts and project zips. Tools
-// (heatmap/heatmap-tool.js, roi/roi-tool.js, map/map-tool.js) register with
-// addTool and plug in their results and overlay through the hooks in
-// TOOL_HOOKS. One project holds the panels of every tool (panel.tool); the
-// active tool (setTool) shows and edits its own panels, and a project zip
-// carries the data of all tools.
-//
-// TOOL_HOOKS (all optional unless noted):
-//   kind                      'heatmap' | 'roi' | 'map' (required)
-//   title                     page title while the tool is active
-//   computeResult(panel, img) result object or {error} (required)
-//   resultKey(panel)          JSON-able key of everything computeResult depends on
-//   panelProblem(panel)       what is missing before results, or null (required)
-//   panelFiles(panels, results, bases) → [{path, content}] data files for the zip
-//   hasCalibration(panel)     extra test for unsaved work
-//   sections                  ids of tool sidebar cards shown once a file is loaded
-//   renderSidebar(panel, light)
-//   modeTexts                 {mode: [texts by clicks so far] | (mode) => text}
-//   onModeChange(type)
-//   onClick(mode, p, e)       return true when handled
-//   hitTest(p, tol)           tool handles, checked after the shared ones
-//   onHandleDrag(handle, p, e) / onHandleDrop(handle)
-//   wantsDrag(), onDragStart(p, e), onDragMove(p, e), onDragEnd(p, e)
-//   drawUnderGrid / drawOverGrid (ctx, v, panel, active)
-//   drawOverlay(ctx, v, active, panelsOnPage)
-//   drawModePreview(ctx, v, mode, hover)
-//   hoverText(panel, cell, p) text for the status bar
-//   onHoverCell(cell)
-//   onKey(e)                  return true when handled (hotkeys are added with ws.addHotkey)
-//   gridTexts                 mode texts for placing the grid
-//   plotArea                  true when the grid is one plot area (map/map-tool.js):
-//                             no size detection, inner lines or cell highlight
+// (heatmap/heatmap-tool.ts, roi/roi-tool.ts, map/map-tool.ts) register with
+// addTool and plug in their results and overlay through the ToolHooks type
+// (types/workspace.ts, each hook documented there). One project holds the
+// panels of every tool (panel.tool); the active tool (setTool) shows and edits
+// its own panels, and a project zip carries the data of all tools.
 //
 // This file holds the state, modes, sidebar rendering and tool switching,
 // and builds the public `ws` object used by tools, the agent and settings.
-// The rest lives in workspace/*.js, each set up with the private context
-// `w`, which collects every module's functions. Modules call each other
+// The rest lives in workspace/*.ts, each set up with the private context
+// `w`, which collects every module's members. Modules call each other
 // through `w` at call time (w.changed(), w.goToPage(...)), so the order in
 // which they are set up does not matter for calls.
-//   history.js        undo/redo, commit
-//   overlay.js        drawing grids, colorbars, handles
-//   interact.js       clicks, handle drags, hover
-//   cards/colorbar-card.tsx  the Colorbar card (React; cards/tick-focus.ts holds focusTick)
-//   panels.js         the Panels card; every page has a panel
-//   source.js         opening files and zips, pages, resolution, zoom box
-//   export.js         downloads and the project zip
-//   hotkeys.js        view tools and keyboard shortcuts
-// The script tags in extract.html load these before this file.
+//   history.ts        undo/redo, commit
+//   overlay.ts        drawing grids, colorbars, handles (canvas helpers in draw.ts)
+//   interact.ts       clicks, handle drags, hover
+//   cards/tick-focus.ts  focusTick for the Colorbar card (React, cards/colorbar-card.tsx)
+//   panels.ts         panel creation and removal; every page has a panel
+//   source.ts         opening files and zips, pages, resolution, zoom box
+//   export.ts         downloads and the project zip
+//   hotkeys.ts        view tools and keyboard shortcuts
+//   sections.ts       which sidebar sections are shown
+//   store.ts          the React bridge (notify)
+// Each module is imported above; the cards are mounted by ws.mountCards().
 export function createWorkspace(): Workspace {
   const $ = (id: string) => document.getElementById(id) as unknown as DomEl;
   const tools: Partial<Record<ToolKind, ToolHooks>> = {};
@@ -240,7 +216,7 @@ export function createWorkspace(): Workspace {
     if (!loaded) return;
 
     const panel = activePanel();
-    tool.renderSidebar?.(panel, light);
+    tool.reconcile?.(panel, light);
   }
 
   // Toggle buttons and chips: .active for the look, aria-pressed for screen readers.
@@ -272,7 +248,7 @@ export function createWorkspace(): Workspace {
     viewer.zoomTo(Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad);
   }
 
-  // Matching settings live in the Settings dialog (settings-dialog.js). They
+  // Matching settings live in the Settings dialog (settings-dialog.ts). They
   // are defaults for new panels and, when changed there, apply to every panel
   // of the tool. Panels keep their own copy, so a project zip reproduces its values.
   const panelDefaults = (kind: ToolKind): Partial<PanelSettings> => ({ ...ws.settings.matching[kind] });
@@ -421,7 +397,7 @@ export function createWorkspace(): Workspace {
     snapAxis: w.snapAxis,
     render: () => renderSidebar(),
     mountCards: (settings: SettingsSource) => mountCards({ ws, w }, settings),
-    // Used by the agent API (agent/api.js).
+    // Used by the agent API (agent/api.ts).
     openFile: w.openFile,
     goToPage: w.goToPage,
     undo: w.undo,
@@ -433,7 +409,7 @@ export function createWorkspace(): Workspace {
     removePanel: w.removePanel,
     addHotkey: w.addHotkey,
     applyMatching,
-    // App settings; replaced by settings-dialog.js with the stored ones.
+    // App settings; replaced by settings-dialog.ts with the stored ones.
     settings: defaultSettings(),
     zipExtras: [], // functions returning [{path, content}] added to project zips
     onChange: (fn) => {

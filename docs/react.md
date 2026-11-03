@@ -8,7 +8,7 @@ React 19 renders the cards and the colormaps page. The canvas viewer, overlays, 
 
 The workspace (`src/extract/workspace/workspace.ts`) keeps the project and mutates it in place. React learns about changes through a version counter, `src/extract/workspace/store.ts`:
 
-- `notify({light})` bumps the version and runs the subscribers. It is called at the end of `renderSidebar` (so `changed()`, `commit`, undo/redo, `ws.render()` and the agent API all reach it), in `setMode`, in `setTool` (after switching) and on settings changes.
+- `notify({light})` bumps the version and runs the subscribers. It is called at the end of the workspace's `renderSidebar`, after the tool's `reconcile` hook (so `changed()`, `commit`, undo/redo, `ws.render()` and the agent API all reach it), in `setMode`, in `setTool` (after switching) and on settings changes.
 - **Full changes flush synchronously** (`flushSafely` in `src/ui/flush.ts`: `flushSync`, never nested; deferred to a microtask when a flush is already running). Imperative callers such as the agent API and `focusTick` expect the DOM to be current when `changed()` returns.
 - **Light changes** (`changed({light: true})`: every keystroke in a number field, every pointermove of a handle drag) do not flush; React batches them in a microtask. No imperative caller reads the sidebar DOM after a light change.
 - `fullVersion` is bumped by full changes only, for cards that ignore typing and drags.

@@ -15,7 +15,7 @@ import type {
 type Raw = any;
 
 // App settings (pure): the agent connection, matching defaults per tool,
-// hotkeys and overlay colors. Kept in localStorage by settings-dialog.js and
+// hotkeys and overlay colors. Kept in localStorage by settings-dialog.ts and
 // saved to or read from a settings zip (settings.json inside). Unlike
 // project.json these belong to the user, not to a figure.
 
@@ -62,7 +62,7 @@ export const RESERVED_KEYS = ['Escape', 'Space', 'Enter', 'Backspace', 'Delete',
 
 export const MATCHING_DEFAULTS: Record<ToolKind, MatchingSettings> = {
   heatmap: { distance: 'de2000', maxDeltaE: 10 },
-  // IVIS photos carry JPEG color noise up to about chroma 20 (see project.js).
+  // IVIS photos carry JPEG color noise up to about chroma 20 (see project.ts).
   roi: { distance: 'de2000', maxDeltaE: 20, grayChroma: 20 },
   map: { distance: 'de2000', maxDeltaE: 10 },
 };
@@ -115,7 +115,7 @@ export function hexToRgb(hex: string): Rgb {
 }
 
 // mode: "agent" (the LLM does everything) or "decision" (the LLM asks a
-// decision model, agent/decide.js); `decision` is that model's id.
+// decision model, agent/decide.ts); `decision` is that model's id.
 const AGENT_DEFAULTS: AgentSettings = {
   key: '',
   rememberKey: false,

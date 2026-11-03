@@ -6,7 +6,7 @@ const isMac = isMacPlatform(globalThis.navigator);
 
 // View tools (zoom, crosshair, overlay) and keyboard shortcuts.
 //
-// w is the workspace's private context (workspace.js). Other modules'
+// w is the workspace's private context (workspace.ts). Other modules'
 // functions are called through it at call time (setMode, undo, goToPage, ...).
 export function setupWorkspaceHotkeys(w: WorkspaceContext): HotkeysMembers {
   const { $, app } = w;

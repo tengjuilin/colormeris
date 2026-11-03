@@ -9,7 +9,7 @@ import { ticksWithT } from '../project/project.ts';
 // ticks, dragging handles (grid corners, colorbar ends, the bar, ticks) and
 // the status bar under the pointer. Tool handles go to the tool's hooks.
 //
-// w is the workspace's private context (workspace.js). Other modules'
+// w is the workspace's private context (workspace.ts). Other modules'
 // functions are called through it at call time (setMode, commit, changed, focusTick, ...).
 export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
   const { $, app } = w;

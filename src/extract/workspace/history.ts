@@ -2,7 +2,7 @@ import type { AppState, HistoryMembers, Panel, WorkspaceContext } from '../../ty
 
 // Undo and redo: snapshots of every panel, taken before each change.
 //
-// w is the workspace's private context (workspace.js). Other modules'
+// w is the workspace's private context (workspace.ts). Other modules'
 // functions are called through it at call time (setTool, goToPage, ensurePagePanel, changed).
 export function setupWorkspaceHistory(w: WorkspaceContext): HistoryMembers {
   const { $, app } = w;

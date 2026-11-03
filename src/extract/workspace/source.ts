@@ -18,7 +18,7 @@ import { isTextEntry } from '../typing.ts';
 // (file dialog, examples, drag and drop, paste), PDF pages, render
 // resolution and the zoom box.
 //
-// w is the workspace's private context (workspace.js). Other modules'
+// w is the workspace's private context (workspace.ts). Other modules'
 // functions are called through it at call time (setMode, changed, ensurePagePanel, ...).
 export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
   const { $, app } = w;
