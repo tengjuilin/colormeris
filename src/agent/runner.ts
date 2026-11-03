@@ -9,6 +9,7 @@ import { bilinear, cellSamplePolygon, outerCorners } from '../core/grid.ts';
 import { canvasDataUrl, renderPdfPage } from '../extract/pdf-loader.ts';
 import { ticksWithT } from '../extract/project/project.ts';
 import type {
+  ActionArgs,
   Box,
   ChatMessage,
   ChatRequest,
@@ -66,14 +67,17 @@ const CACHE_CONTROL: ChatRequest['cacheControl'] = { type: 'ephemeral', ttl: '1h
 // the ruler width divided by the zoom.)
 const RULER = { right: 50, bottom: 24 };
 
-/** renderView's options: `region` and `marks` in page pixels; the rest as documented there. */
-// TODO(types): tool arguments are validated against the tools' JSON Schema before use; typing each needs args types generated from the schema.
-// biome-ignore lint/suspicious/noExplicitAny: see above
-type Args = any;
+/** Arguments of the runner's own tools (RUNNER_TOOLS in llm.ts) after validateRunnerTool. */
+interface RunnerArgsMap {
+  view_page: { region?: Box; overlay?: 'none' | 'calibration' | 'reconstruction' };
+  view_pages_overview: { from: number; to: number };
+  finish: { summary: string };
+}
 
 /** What api.run returns, read loosely (result and state exist only on success). */
 type RunResult = { ok: boolean; result?: unknown; error?: string; notes?: string[]; state?: StateSnapshot };
 
+/** renderView's options: `region` and `marks` in page pixels; the rest as documented there. */
 export interface RenderViewOptions {
   region?: Box | null;
   overlay?: string;
@@ -349,10 +353,10 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
         }));
     const progress = () => progressNote({ pages, viewedPages, panels: runPanels(), currentPage: ws.currentPage() });
 
-    async function callTool(name: string, args: Args): Promise<ToolCallResult> {
+    async function callTool(name: string, args: ActionArgs): Promise<ToolCallResult> {
       if (decision?.handles(name)) return decision.call(name, args);
       if (llmActions.includes(name)) {
-        if (name === 'go_to_page' && !pages.includes(args.page))
+        if (name === 'go_to_page' && !pages.includes(args.page as number))
           return { ok: false, error: `Page ${args.page} is not part of this run (pages ${pages.join(', ')}).` };
         const r: RunResult = await api.run(name, args);
         // In decision mode a new page comes with its image (one step less).
@@ -373,11 +377,14 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       const errs = validateRunnerTool(name, args);
       if (errs.length) return { ok: false, error: errs.join('; ') };
       if (name === 'view_page') {
-        const image = await renderView(args);
+        const image = await renderView(args as RunnerArgsMap['view_page']);
         viewedPages.add(ws.currentPage());
         return { ok: true, image };
       }
-      if (name === 'view_pages_overview') return { ok: true, image: await renderOverview(args.from, args.to) };
+      if (name === 'view_pages_overview') {
+        const { from, to } = args as RunnerArgsMap['view_pages_overview'];
+        return { ok: true, image: await renderOverview(from, to) };
+      }
       if (name === 'finish' && !focus) {
         const why = finishCheck({ pages, viewedPages, panels: runPanels(), ...finishState });
         if (why) {
@@ -471,7 +478,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
           result = guard.before(name, panelKey);
           if (!result) {
             try {
-              result = await callTool(name, args);
+              result = await callTool(name, args!); // null args already gave a result above
             } catch (err) {
               if (signal?.aborted) throw err;
               result = { ok: false, error: (err as Error).message };

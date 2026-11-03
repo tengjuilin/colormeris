@@ -11,6 +11,7 @@ import { SCALES } from '../core/colorbar.ts';
 import { effectiveLabels, ticksWithT } from '../extract/project/project.ts';
 import type {
   ActionArgs,
+  ActionArgsMap,
   ActionSpec,
   Decision,
   ErrorResult,
@@ -359,7 +360,8 @@ const ACTIONS: Record<string, ActionSpec> = {
     description: 'Download the project zip (includes agent/decisions.json).',
     args: { type: 'object', properties: {} },
   },
-};
+  // The argument types api.ts's handlers take (types/agent.ts) name exactly these actions.
+} satisfies Record<keyof ActionArgsMap, ActionSpec>;
 
 // Checks for what JSON Schema cannot express simply.
 const EXTRA_CHECKS: Record<string, (a: ActionArgs) => string | null> = {

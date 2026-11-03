@@ -3,8 +3,17 @@
 // and the decision model (agent/decide.ts, agent/decision-tools.ts,
 // agent/openrouter-client.ts). Results the LLM only reads stay loose.
 
-import type { Box, Point } from './image.ts';
-import type { ColorbarScale, ColormapRef, Panel, PanelSettings, ReviewStatus, ToolKind } from './project.ts';
+import type { Box, DistanceName, Point } from './image.ts';
+import type {
+  ColorbarScale,
+  ColormapRef,
+  Panel,
+  PanelSettings,
+  ReviewStatus,
+  ReviewVerdict,
+  RoiShape,
+  ToolKind,
+} from './project.ts';
 
 // ---------------------------------------------------------------- JSON Schema
 
@@ -391,6 +400,59 @@ export interface DecisionTools {
   prefetch: (calls: { name: string; args: ActionArgs | null }[]) => void;
   handles: (name: string) => boolean;
   call: (name: string, args: ActionArgs | null) => Promise<ToolCallResult>;
+}
+
+/**
+ * Arguments of the API actions (ACTIONS in agent/schema.ts) after normalizeArgs and validation. Written by hand to
+ * match the JSON Schemas: change both together. Optional fields with a default in api.ts are optional here.
+ */
+export interface ActionArgsMap {
+  get_state: Record<string, never>;
+  get_results: { panelId?: string };
+  get_questions: { panelId?: string };
+  /** answer is checked against the question's answerSchema, so its type depends on the question. */
+  answer_question: { questionId: string; answer: unknown; confidence?: number; source?: string; model?: string };
+  sample_pixel: { panelId?: string; x: number; y: number; radius?: number };
+  focus: { points: Point[] };
+  open_url: { url: string };
+  set_tool: { tool: 'heatmap' | 'roi' };
+  go_to_page: { page: number };
+  select_panel: { panelId: string };
+  add_panel: { name?: string };
+  rename_panel: { panelId?: string; name: string };
+  remove_panel: { panelId: string };
+  /** corners, or topLeft and bottomRight (EXTRA_CHECKS). */
+  set_grid: { panelId?: string; topLeft?: Point; bottomRight?: Point; corners?: Point[] };
+  detect_grid_size: { panelId?: string };
+  set_grid_size: { panelId?: string; rows: number; cols: number };
+  set_labels: { panelId?: string; rows?: string[]; cols?: string[]; boxes?: string[] };
+  remove_grid: { panelId?: string };
+  set_colorbar: { panelId?: string; start: Point; end: Point; halfWidth?: number; snap?: boolean };
+  /** at or t (EXTRA_CHECKS; with both, normalizeArgs keeps at). */
+  add_tick: { panelId?: string; at?: Point; t?: number; value: number; snap?: boolean };
+  set_tick_value: { panelId?: string; tickId: string; value: number };
+  remove_tick: { panelId?: string; tickId: string };
+  set_colorbar_scale: { panelId?: string; scale: ColorbarScale };
+  set_settings: {
+    panelId?: string;
+    distance?: DistanceName;
+    maxDeltaE?: number;
+    grayChroma?: number;
+    sampleFraction?: number;
+  };
+  add_region: {
+    panelId?: string;
+    shape: RoiShape;
+    geom: { cx?: number; cy?: number; rx?: number; ry?: number; points?: Point[] };
+    name?: string;
+    replicate?: boolean;
+  };
+  remove_region: { panelId?: string; regionId: string };
+  set_scale_bar: { panelId?: string; p1: Point; p2: Point; length: number; unit?: 'cm' | 'mm' };
+  set_review: { panelId?: string; status: ReviewVerdict | null; note?: string; source?: string };
+  undo: Record<string, never>;
+  redo: Record<string, never>;
+  export_project: Record<string, never>;
 }
 
 /** Arguments of the decision-mode tools (DECISION_TOOLS, and set_colorbar_scale with its check), as validated. */

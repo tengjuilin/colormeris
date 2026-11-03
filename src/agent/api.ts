@@ -27,6 +27,7 @@ import { ANCHOR_DEFAULTS, boxLabel, createPanel, createRoi, ticksWithT } from '.
 import { centroid, geomToBox } from '../extract/roi/geometry.ts';
 import type {
   ActionArgs,
+  ActionArgsMap,
   ActionLogEntry,
   ActionResult,
   BatchAction,
@@ -40,6 +41,7 @@ import type {
   Question,
   QuestionType,
   ResultJson,
+  RoiGeom,
   RoiResult,
   RunOptions,
   Workspace,
@@ -62,9 +64,8 @@ import {
   validateAction,
 } from './schema.ts';
 
-// TODO(types): handler arguments are checked against ACTIONS' JSON Schema in run(); typing each one needs args types generated from the schema.
-// biome-ignore lint/suspicious/noExplicitAny: see above
-type Args = any;
+// One handler per action, taking its arguments as run() validated them against ACTIONS' JSON Schema.
+type Handlers = { [K in keyof ActionArgsMap]: (args: ActionArgsMap[K]) => unknown };
 
 export function createAgentApi(ws: Workspace): ColormerisApi {
   const { app } = ws;
@@ -219,8 +220,11 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
   // What an applied answer changes, by question type. classify_flagged(_cells)
   // and confirm_tick_order are recorded decisions only; results report
   // excluded cells from the log.
-  const applyAnswer: Partial<Record<QuestionType, (q: Question, answer: Args, d: Decision) => void>> = {
-    confirm_grid_size: (_q, answer) => ws.commit((p) => applyGridSize(p, answer.rows, answer.cols)),
+  const applyAnswer: Partial<Record<QuestionType, (q: Question, answer: unknown, d: Decision) => void>> = {
+    confirm_grid_size: (_q, answer) => {
+      const { rows, cols } = answer as { rows: number; cols: number };
+      ws.commit((p) => applyGridSize(p, rows, cols));
+    },
     confirm_extraction: (q, answer, d) =>
       ws.commit(
         (p) =>
@@ -235,10 +239,13 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       ),
   };
 
-  const handlers: Record<string, (args: Args) => unknown> = {
+  const handlers: Handlers = {
     get_state: () => state(),
     get_results: async ({ panelId }) => resultsJson(await takePanel(panelId)),
-    get_questions: ({ panelId }) => (needSource(), questions(panelId)),
+    get_questions: ({ panelId }) => {
+      needSource();
+      return questions(panelId);
+    },
 
     answer_question: async ({ questionId, answer, confidence = null, source = 'agent', model = null }) => {
       needSource();
@@ -328,7 +335,10 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       return null;
     },
 
-    select_panel: async ({ panelId }) => (await takePanel(panelId), null),
+    select_panel: async ({ panelId }) => {
+      await takePanel(panelId);
+      return null;
+    },
 
     add_panel: ({ name }) => {
       needSource();
@@ -357,7 +367,8 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
 
     set_grid: async ({ panelId, topLeft, bottomRight, corners }) => {
       await takePanel(panelId);
-      const cs = corners || rectCorners(topLeft, bottomRight);
+      // Without corners, EXTRA_CHECKS made sure of both points.
+      const cs = corners || rectCorners(topLeft!, bottomRight!);
       const w = Math.hypot(cs[1].x - cs[0].x, cs[1].y - cs[0].y);
       const h = Math.hypot(cs[3].x - cs[0].x, cs[3].y - cs[0].y);
       if (w < 2 || h < 2) throw new Error('Grid is too small.');
@@ -432,7 +443,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       const panel = await takePanel(panelId);
       const { start, end } = panel.colorbar;
       if (!start || !end) throw new Error('Place the colorbar first (set_colorbar).');
-      let tt = at ? projectT(start, end, at) : t;
+      let tt = at ? projectT(start, end, at) : t!; // EXTRA_CHECKS: at, or a finite t
       if (tt < -0.1 || tt > 1.1) throw new Error(`That point is off the colorbar (t = ${tt.toFixed(2)}).`);
       const mark = snap ? snapTick(imageOf(panel), start, end, pointAtT(start, end, tt)) : null;
       if (mark) tt = mark.t;
@@ -473,15 +484,12 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     add_region: async ({ panelId, shape, geom, name, replicate = true }) => {
       const panel = await takePanel(panelId);
       if (panel.tool !== 'roi') throw new Error('Regions belong to ROI panels; use set_tool first.');
-      const px =
-        shape === 'polygon'
-          ? { points: geom.points.map((q: Point) => ({ x: q.x, y: q.y })) }
-          : { cx: geom.cx, cy: geom.cy, rx: geom.rx, ry: geom.ry };
+      // TODO(types): the schema does not say which geom fields each shape needs, so a missing one is not caught.
+      const points = shape === 'polygon' ? geom.points!.map((q) => ({ x: q.x, y: q.y })) : null;
+      const px: RoiGeom = points ? { points } : { cx: geom.cx!, cy: geom.cy!, rx: geom.rx!, ry: geom.ry! };
       const grid = panel.grid;
       const cell =
-        replicate && grid.corners
-          ? cellAt(grid, shape === 'polygon' ? centroid(px.points) : { x: px.cx, y: px.cy })
-          : null;
+        replicate && grid.corners ? cellAt(grid, points ? centroid(points) : { x: geom.cx!, y: geom.cy! }) : null;
       const label = name || `ROI ${panel.rois.length + 1}`;
       const roi = cell
         ? createRoi(shape, geomToBox(shape, px, grid, cell.row, cell.col), { name: label })
@@ -529,9 +537,19 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       return { status };
     },
 
-    undo: () => (ws.undo(), null),
-    redo: () => (ws.redo(), null),
-    export_project: async () => (needSource(), await ws.exportZip(), null),
+    undo: () => {
+      ws.undo();
+      return null;
+    },
+    redo: () => {
+      ws.redo();
+      return null;
+    },
+    export_project: async () => {
+      needSource();
+      await ws.exportZip();
+      return null;
+    },
   };
 
   // Run one action. Never throws; mutating actions also return the new state
@@ -544,7 +562,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     const extra = notes.length ? { notes } : {};
     try {
       if (spec.mutates && app.mode) ws.setMode(null);
-      const result = await handlers[name](args);
+      const result = await (handlers[name as keyof Handlers] as (a: ActionArgs) => unknown)(args);
       if (spec.mutates) actionLog.push({ action: name, args, ok: true, time: new Date().toISOString() });
       return spec.mutates && opts.state !== false
         ? { ok: true, result: result ?? null, ...extra, state: state() }
