@@ -1,11 +1,16 @@
+// Runs the extraction agent: an LLM (any OpenRouter chat model with vision
+// and tools) drives the page through the typed agent API and looks at it
+// through rendered page images with pixel rulers. `client` is an OpenRouter
+// SDK client (or anything with chat.send).
+
 import { rgbToHex } from '../core/color.ts';
 import { colorAtT } from '../core/colorbar.ts';
 import { bilinear, cellSamplePolygon, outerCorners } from '../core/grid.ts';
 import { canvasDataUrl, renderPdfPage } from '../extract/pdf-loader.ts';
 import { ticksWithT } from '../extract/project/project.ts';
 import type {
+  ActionArgs,
   Box,
-  ChatContentPart,
   ChatMessage,
   ChatRequest,
   ColormerisApi,
@@ -16,7 +21,6 @@ import type {
   RunEventType,
   RunOutcome,
   RunSettings,
-  RunUsage,
   StateSnapshot,
   ToolCallResult,
   Workspace,
@@ -29,17 +33,24 @@ import {
   finishCheck,
   LLM_ACTIONS,
   llmTools,
+  panelStarted,
   progressNote,
   pruneImages,
   RUNNER_TOOLS,
   toolResultText,
   validateRunnerTool,
 } from './llm.ts';
-
-// Runs the extraction agent: an LLM (any OpenRouter chat model with vision
-// and tools) drives the page through the typed agent API and looks at it
-// through rendered page images with pixel rulers. `client` is an OpenRouter
-// SDK client (or anything with chat.send).
+import {
+  addUsage,
+  focusText,
+  imagesMessage,
+  newUsage,
+  nudgeText,
+  openingText,
+  parseToolCalls,
+  splitImages,
+} from './run-messages.ts';
+import { labelPlace, markBoxes, niceStep, viewNote } from './runner-draw.ts';
 
 const MAX_VIEW = 1024; // longest side of images sent to the LLM
 // Prompt caching (openrouter.ai/docs/guides/best-practices/prompt-caching):
@@ -56,14 +67,17 @@ const CACHE_CONTROL: ChatRequest['cacheControl'] = { type: 'ephemeral', ttl: '1h
 // the ruler width divided by the zoom.)
 const RULER = { right: 50, bottom: 24 };
 
-/** renderView's options: `region` and `marks` in page pixels; the rest as documented there. */
-// TODO(types): tool arguments are validated against the tools' JSON Schema before use; typing each needs args types generated from the schema.
-// biome-ignore lint/suspicious/noExplicitAny: see above
-type Args = any;
+/** Arguments of the runner's own tools (RUNNER_TOOLS in llm.ts) after validateRunnerTool. */
+interface RunnerArgsMap {
+  view_page: { region?: Box; overlay?: 'none' | 'calibration' | 'reconstruction' };
+  view_pages_overview: { from: number; to: number };
+  finish: { summary: string };
+}
 
 /** What api.run returns, read loosely (result and state exist only on success). */
 type RunResult = { ok: boolean; result?: unknown; error?: string; notes?: string[]; state?: StateSnapshot };
 
+/** renderView's options: `region` and `marks` in page pixels; the rest as documented there. */
 export interface RenderViewOptions {
   region?: Box | null;
   overlay?: string;
@@ -83,13 +97,6 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
   const { app } = ws;
 
   // ------------------------------------------------------------ images
-
-  // Round step (1, 2 or 5 × 10^k) so ruler labels are ~`px` screen pixels apart.
-  function niceStep(scale: number, px = 70) {
-    const raw = px / scale;
-    const p = 10 ** Math.floor(Math.log10(raw));
-    return [1, 2, 5, 10].map((m) => m * p).find((s) => s >= raw)!;
-  }
 
   // Page (or region) image with rulers in page pixels and optional overlay.
   // `marks` are numbered boxes ({box, label}) drawn on top. Without rulers
@@ -126,7 +133,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
     ctx.drawImage(src, x0, y0, w, h, 0, 0, W, H);
     const toView: ToView = (p) => ({ x: (p.x - x0) * scale, y: (p.y - y0) * scale });
 
-    if (overlay !== 'none') drawPanels(ctx, toView, scale, overlay);
+    if (overlay !== 'none') drawPanels(ctx, toView, overlay);
     drawMarks(ctx, toView, marks);
     const frame = { x0, y0, scale, width: out.width, height: out.height };
     if (!rulers) return { dataUrl: await canvasDataUrl(out, 'image/png'), frame };
@@ -162,35 +169,25 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
         { x: x0, y: y0 },
         { x: x1, y: y1 },
       ]);
-    const r = (v: number) => Math.round(v * 100) / 100;
     return {
       dataUrl: await canvasDataUrl(out, 'image/jpeg', 0.9),
-      note: `Page ${ws.currentPage()}, region x ${r(x0)}–${r(x1)}, y ${r(y0)}–${r(y1)}, drawn at ${r(scale)}× (${W} × ${H} image pixels plus rulers). Image pixel (0, 0) is page point (${r(x0)}, ${r(y0)}): page x = ${r(x0)} + image x / ${r(scale)}, page y = ${r(y0)} + image y / ${r(scale)}. The rulers on the bottom and right edges show the same page pixels.`,
+      note: viewNote({ page: ws.currentPage(), region: { x0, y0, x1, y1 }, scale, width: W, height: H }),
       region: { x0, y0, scale },
       frame,
     };
   }
 
-  // Numbered boxes (tick-label candidates; `color` optional), numbers outside the box: on
-  // the right unless that covers another box (labels side by side under a
-  // horizontal colorbar, where a number hid the next label's first digit),
-  // then below, above or left.
+  // Numbered boxes (tick-label candidates; `color` optional), numbers
+  // outside the box where they cover no other box (labelPlace).
   function drawMarks(ctx: CanvasRenderingContext2D, toView: ToView, marks: NonNullable<RenderViewOptions['marks']>) {
     ctx.font = 'bold 16px sans-serif';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    const boxes = marks.map((m) => {
-      const p = toView({ x: m.box.x0, y: m.box.y0 });
-      const q = toView({ x: m.box.x1, y: m.box.y1 });
-      return { x0: p.x - 3, y0: p.y - 3, x1: q.x + 3, y1: q.y + 3 };
-    });
+    const boxes = markBoxes(
+      marks.map((m) => m.box),
+      toView,
+    );
     const { width, height } = ctx.canvas;
-    const hits = (r: Box) =>
-      r.x0 < 0 ||
-      r.y0 < 0 ||
-      r.x1 > width ||
-      r.y1 > height ||
-      boxes.some((b) => r.x0 < b.x1 + 2 && r.x1 > b.x0 - 2 && r.y0 < b.y1 + 2 && r.y1 > b.y0 - 2);
     marks.forEach((m, i) => {
       const b = boxes[i];
       const color = m.color || '#1565ff';
@@ -198,15 +195,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       ctx.lineWidth = 2;
       ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
       const tw = ctx.measureText(m.label).width + 8;
-      const cx = (b.x0 + b.x1) / 2 - tw / 2;
-      const cy = (b.y0 + b.y1) / 2 - 10;
-      const places = [
-        { x0: b.x1 + 2, y0: cy },
-        { x0: cx, y0: b.y1 + 2 },
-        { x0: cx, y0: b.y0 - 22 },
-        { x0: b.x0 - tw - 2, y0: cy },
-      ].map((r) => ({ ...r, x1: r.x0 + tw, y1: r.y0 + 20 }));
-      const at = places.find((r) => !hits(r)) || places[0];
+      const at = labelPlace(b, tw, boxes, width, height);
       ctx.fillStyle = color;
       ctx.fillRect(at.x0, at.y0, tw, 20);
       ctx.fillStyle = '#fff';
@@ -214,7 +203,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
     });
   }
 
-  function drawPanels(ctx: CanvasRenderingContext2D, toView: ToView, scale: number, overlay: string) {
+  function drawPanels(ctx: CanvasRenderingContext2D, toView: ToView, overlay: string) {
     const line = (a: Point, b: Point, color: string, width = 1.5) => {
       const p = toView(a);
       const q = toView(b);
@@ -320,8 +309,8 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
   // settings: {client, llmModel, pages: [n], maxSteps, signal,
   // onEvent(type, data), focus, mode, decide, decisionModel}. `focus`
   // ({panelId, note}) asks the agent to fix one rejected panel. mode
-  // "decision" gives the LLM the tools of agent/decide.js, answered with
-  // `decide` (agent/openrouter-client.js) by `decisionModel`.
+  // "decision" gives the LLM the tools of agent/decide.ts, answered with
+  // `decide` (agent/openrouter-client.ts) by `decisionModel`.
   async function run(settings: RunSettings): Promise<RunOutcome> {
     const {
       client,
@@ -340,16 +329,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
     // One id for the whole run keeps the requests on the provider that
     // holds the cache (sticky routing).
     const sessionId = `colormeris-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const usage: RunUsage = {
-      llmCost: 0,
-      promptTokens: 0,
-      cachedTokens: 0,
-      cacheWriteTokens: 0,
-      completionTokens: 0,
-      steps: 0,
-      decisions: 0,
-      decisionCost: 0,
-    };
+    const usage = newUsage();
     const emit = (type: RunEventType, data: object) => onEvent(type, { ...data, usage: { ...usage } } as RunEventData);
     const decision = decisionMode
       ? createDecisionTools(ws, api, { renderView, decide: decide!, model: decisionModel, usage, signal })
@@ -369,14 +349,14 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
           name: p.name,
           page: p.page,
           ready: !ws.resultFor(p).error,
-          started: !!(p.grid.corners || p.colorbar.start || p.grid.rowLabels.length || p.grid.colLabels.length),
+          started: panelStarted(p),
         }));
     const progress = () => progressNote({ pages, viewedPages, panels: runPanels(), currentPage: ws.currentPage() });
 
-    async function callTool(name: string, args: Args): Promise<ToolCallResult> {
+    async function callTool(name: string, args: ActionArgs): Promise<ToolCallResult> {
       if (decision?.handles(name)) return decision.call(name, args);
       if (llmActions.includes(name)) {
-        if (name === 'go_to_page' && !pages.includes(args.page))
+        if (name === 'go_to_page' && !pages.includes(args.page as number))
           return { ok: false, error: `Page ${args.page} is not part of this run (pages ${pages.join(', ')}).` };
         const r: RunResult = await api.run(name, args);
         // In decision mode a new page comes with its image (one step less).
@@ -397,11 +377,14 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       const errs = validateRunnerTool(name, args);
       if (errs.length) return { ok: false, error: errs.join('; ') };
       if (name === 'view_page') {
-        const image = await renderView(args);
+        const image = await renderView(args as RunnerArgsMap['view_page']);
         viewedPages.add(ws.currentPage());
         return { ok: true, image };
       }
-      if (name === 'view_pages_overview') return { ok: true, image: await renderOverview(args.from, args.to) };
+      if (name === 'view_pages_overview') {
+        const { from, to } = args as RunnerArgsMap['view_pages_overview'];
+        return { ok: true, image: await renderOverview(from, to) };
+      }
       if (name === 'finish' && !focus) {
         const why = finishCheck({ pages, viewedPages, panels: runPanels(), ...finishState });
         if (why) {
@@ -418,14 +401,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
     const first: RunResult = await api.run('go_to_page', { page: pages[0] });
     const panelsNow = (((await api.run('get_state')) as RunResult).result as StateSnapshot).panels;
     const target = focus && panelsNow.find((p) => p.id === focus.panelId);
-    const rejected =
-      target &&
-      `\n\nThis is a redo. Panel "${target.name}" (id ${target.id}) was rejected${focus.note ? ` with the note: "${focus.note}"` : ''}.`;
-    const focusText = !target
-      ? ''
-      : decisionMode
-        ? `${rejected} Do not add panels. locate_heatmap with panelId "${target.id}" and a description that singles it out, then set_ticks and set_labels, then finish.`
-        : `${rejected} Its current calibration: ${JSON.stringify({ grid: target.grid, colorbar: target.colorbar })}. Do not add panels. select_panel it, find what is wrong (grid corners, grid size, colorbar ends, ticks or scale), fix it, check with overlays, then finish.`;
+    const focused = focusText(target, focus?.note, decisionMode);
     if (!first.ok) throw new Error(first.error);
     const opening =
       pages.length > 1 && app.pdfDoc
@@ -439,7 +415,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
         content: [
           {
             type: 'text',
-            text: `File: ${s.fileName} (${s.pageCount} page${s.pageCount === 1 ? '' : 's'}). Process page${pages.length === 1 ? '' : 's'} ${pages.join(', ')}. Page images are ${s.width} × ${s.height} px. Existing panels: ${JSON.stringify(panelsNow.map((p) => ({ id: p.id, name: p.name, page: p.page, ready: p.ready, review: p.review?.status })))}.${focusText}\n${opening.note}`,
+            text: openingText({ source: s, pages, panels: panelsNow, focus: focused, note: opening.note }),
           },
           { type: 'image_url', imageUrl: { url: opening.dataUrl } },
         ],
@@ -470,11 +446,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       );
       const msg = res.choices?.[0]?.message;
       if (!msg) throw new Error('The model returned no message.');
-      usage.llmCost += res.usage?.cost || 0;
-      usage.promptTokens += res.usage?.promptTokens || 0;
-      usage.cachedTokens += res.usage?.promptTokensDetails?.cachedTokens || 0;
-      usage.cacheWriteTokens += res.usage?.promptTokensDetails?.cacheWriteTokens || 0;
-      usage.completionTokens += res.usage?.completionTokens || 0;
+      addUsage(usage, res.usage);
       messages.push({
         role: 'assistant',
         content: (msg.content ?? '') as string,
@@ -484,36 +456,20 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
       if (text.trim()) emit('assistant', { text });
       if (!msg.toolCalls?.length) {
         if (++nudges > 2) break;
-        messages.push({
-          role: 'user',
-          content: `Continue with the tools. ${progress()} Call finish only when every heatmap on every page has its own calibrated panel.`,
-        });
+        messages.push({ role: 'user', content: nudgeText(progress()) });
         continue;
       }
       nudges = 0;
       const images: RenderedView[] = [];
+      const calls = parseToolCalls(msg.toolCalls);
       // The decision model's boxes for this turn's locate_heatmap calls
       // are asked all at once; the calls themselves run in order below.
-      decision?.prefetch(
-        msg.toolCalls.map((c) => {
-          try {
-            return { name: c.function.name, args: c.function.arguments ? JSON.parse(c.function.arguments) : {} };
-          } catch {
-            return { name: c.function.name, args: null };
-          }
-        }),
-      );
-      for (const call of msg.toolCalls) {
-        let args: Args;
-        let result: ToolCallResult | null | undefined;
-        try {
-          args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
-        } catch {
-          result = { ok: false, error: 'Arguments are not valid JSON.' };
-        }
-        const name = call.function.name;
+      decision?.prefetch(calls);
+      for (const { id, name, args } of calls) {
+        let result: ToolCallResult | null =
+          args === null ? { ok: false, error: 'Arguments are not valid JSON.' } : null;
         // Retries are counted per tool and panel (the one named, else the active one).
-        const panelKey = args?.panelId || ws.activePanel()?.id;
+        const panelKey = (args?.panelId as string | undefined) || ws.activePanel()?.id;
         if (!result) {
           emit('tool', { name, args });
           // A task boundary before each tool: its pixel work is synchronous,
@@ -522,7 +478,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
           result = guard.before(name, panelKey);
           if (!result) {
             try {
-              result = await callTool(name, args);
+              result = await callTool(name, args!); // null args already gave a result above
             } catch (err) {
               if (signal?.aborted) throw err;
               result = { ok: false, error: (err as Error).message };
@@ -530,37 +486,17 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
           }
         }
         result = guard.after(name, panelKey, result);
-        if (call.function.name === 'finish' && result.ok && result.finished !== false) summary = args.summary;
+        if (name === 'finish' && result.ok && result.finished !== false) summary = args!.summary as string;
         // Decision tools report what the decision model and the app found.
         if (result.ok && decision?.handles(name) && typeof result.result === 'string')
           emit('result', { name, text: result.result });
-        const shown = result.images || (result.image ? [result.image] : []);
-        if (shown.length) {
-          images.push(...shown);
-          // Keep a tool's own text (locate_heatmap) next to the image notes.
-          result = {
-            ok: true,
-            result: [
-              result.result,
-              ...shown.map((im) => im.note),
-              shown.length > 1 ? 'The images follow.' : 'The image follows.',
-            ]
-              .filter(Boolean)
-              .join(' '),
-          };
-        }
-        if (!result.ok) emit('tool-error', { name: call.function.name, error: result.error });
-        messages.push({ role: 'tool', toolCallId: call.id, content: toolResultText(result) });
+        const split = splitImages(result);
+        images.push(...split.images);
+        result = split.result;
+        if (!result.ok) emit('tool-error', { name, error: result.error });
+        messages.push({ role: 'tool', toolCallId: id, content: toolResultText(result) });
       }
-      if (images.length) {
-        messages.push({
-          role: 'user',
-          content: images.flatMap((im): ChatContentPart[] => [
-            { type: 'text', text: im.note ?? '' },
-            { type: 'image_url', imageUrl: { url: im.dataUrl } },
-          ]),
-        });
-      }
+      if (images.length) messages.push(imagesMessage(images));
       if (guard.stop) {
         emit('tool-error', { name: 'run', error: `Stopped: ${guard.stop}` });
         summary = `Stopped because ${guard.stop}.`;

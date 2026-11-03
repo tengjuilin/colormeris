@@ -1,12 +1,12 @@
 // The decision-mode system prompt and the default decision model.
 
-// Pure parts of "agent decision" mode (agent/decision-tools.js runs them).
+// Pure parts of "agent decision" mode (agent/decision-tools.ts runs them).
 // The LLM reads the page and writes short descriptions; a decision model
 // (Jev by default, through OpenRouter's Decisions API) answers typed
 // questions about one heatmap at a time: where its cells are (box), which
 // side its colorbar is on (choice) and where that colorbar is (box). Code
-// snaps the rough boxes to pixels (core/locate.js) and the app counts rows
-// and columns itself (core/grid.js fitCellCounts). Measured on example.pdf
+// snaps the rough boxes to pixels (core/locate.ts) and the app counts rows
+// and columns itself (core/grid.ts fitCellCounts). Measured on example.pdf
 // page 5 (10 heatmaps): box edges come back with two decimals, so a
 // page-wide box is ~20 px off and a second box on a crop ~5 px; after
 // snapping, all 10 cell blocks and colorbars were exact. Jev could not box

@@ -3,7 +3,7 @@
 import type { PanelSnapshot } from '../../types/index.ts';
 
 // A short view of a panel for tool results: the full snapshot (agent/
-// schema.js panelSnapshot) lists every row and column label, 1.2k tokens
+// schema.ts panelSnapshot) lists every row and column label, 1.2k tokens
 // for 60 rows, after every add_tick.
 export function panelBrief(p: PanelSnapshot | null | undefined) {
   if (!p) return null;

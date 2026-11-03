@@ -3,8 +3,17 @@
 // and the decision model (agent/decide.ts, agent/decision-tools.ts,
 // agent/openrouter-client.ts). Results the LLM only reads stay loose.
 
-import type { Point } from './image.ts';
-import type { ColorbarScale, ColormapRef, PanelSettings, ToolKind } from './project.ts';
+import type { Box, DistanceName, Point } from './image.ts';
+import type {
+  ColorbarScale,
+  ColormapRef,
+  Panel,
+  PanelSettings,
+  ReviewStatus,
+  ReviewVerdict,
+  RoiShape,
+  ToolKind,
+} from './project.ts';
 
 // ---------------------------------------------------------------- JSON Schema
 
@@ -172,6 +181,11 @@ export type ActionResult =
   | { ok: true; result: unknown; notes?: string[]; state?: StateSnapshot }
   | { ok: false; error: string };
 
+/** api.run options. `state: false` skips the state snapshot of a mutating action (callers that discard it). */
+export interface RunOptions {
+  state?: boolean;
+}
+
 /** One step of api.batch. */
 export interface BatchAction {
   name: string;
@@ -181,12 +195,14 @@ export interface BatchAction {
 /** The typed agent API (createAgentApi), exposed as window.colormeris. */
 export interface ColormerisApi {
   version: number;
-  run: (name: string, args?: ActionArgs) => Promise<ActionResult>;
+  run: (name: string, args?: ActionArgs, opts?: RunOptions) => Promise<ActionResult>;
   /** Runs in order and stops at the first failure. */
   batch: (actions: BatchAction[]) => Promise<(ActionResult & { name: string })[]>;
   tools: () => ToolDefinition[];
   policy: AgentPolicy;
   log: () => { actions: ActionLogEntry[]; decisions: Decision[] };
+  /** 'accepted' | 'rejected' while the values are unchanged since the review, 'stale' after, null if never reviewed. */
+  reviewStatus: (panel: Panel) => ReviewStatus | null;
 }
 
 // ---------------------------------------------------------------- LLM chat (OpenRouter SDK, camelCase)
@@ -384,4 +400,73 @@ export interface DecisionTools {
   prefetch: (calls: { name: string; args: ActionArgs | null }[]) => void;
   handles: (name: string) => boolean;
   call: (name: string, args: ActionArgs | null) => Promise<ToolCallResult>;
+}
+
+/**
+ * Arguments of the API actions (ACTIONS in agent/schema.ts) after normalizeArgs and validation. Written by hand to
+ * match the JSON Schemas: change both together. Optional fields with a default in api.ts are optional here.
+ */
+export interface ActionArgsMap {
+  get_state: Record<string, never>;
+  get_results: { panelId?: string };
+  get_questions: { panelId?: string };
+  /** answer is checked against the question's answerSchema, so its type depends on the question. */
+  answer_question: { questionId: string; answer: unknown; confidence?: number; source?: string; model?: string };
+  sample_pixel: { panelId?: string; x: number; y: number; radius?: number };
+  focus: { points: Point[] };
+  open_url: { url: string };
+  set_tool: { tool: 'heatmap' | 'roi' };
+  go_to_page: { page: number };
+  select_panel: { panelId: string };
+  add_panel: { name?: string };
+  rename_panel: { panelId?: string; name: string };
+  remove_panel: { panelId: string };
+  /** corners, or topLeft and bottomRight (EXTRA_CHECKS). */
+  set_grid: { panelId?: string; topLeft?: Point; bottomRight?: Point; corners?: Point[] };
+  detect_grid_size: { panelId?: string };
+  set_grid_size: { panelId?: string; rows: number; cols: number };
+  set_labels: { panelId?: string; rows?: string[]; cols?: string[]; boxes?: string[] };
+  remove_grid: { panelId?: string };
+  set_colorbar: { panelId?: string; start: Point; end: Point; halfWidth?: number; snap?: boolean };
+  /** at or t (EXTRA_CHECKS; with both, normalizeArgs keeps at). */
+  add_tick: { panelId?: string; at?: Point; t?: number; value: number; snap?: boolean };
+  set_tick_value: { panelId?: string; tickId: string; value: number };
+  remove_tick: { panelId?: string; tickId: string };
+  set_colorbar_scale: { panelId?: string; scale: ColorbarScale };
+  set_settings: {
+    panelId?: string;
+    distance?: DistanceName;
+    maxDeltaE?: number;
+    grayChroma?: number;
+    sampleFraction?: number;
+  };
+  add_region: {
+    panelId?: string;
+    shape: RoiShape;
+    geom: { cx?: number; cy?: number; rx?: number; ry?: number; points?: Point[] };
+    name?: string;
+    replicate?: boolean;
+  };
+  remove_region: { panelId?: string; regionId: string };
+  set_scale_bar: { panelId?: string; p1: Point; p2: Point; length: number; unit?: 'cm' | 'mm' };
+  set_review: { panelId?: string; status: ReviewVerdict | null; note?: string; source?: string };
+  undo: Record<string, never>;
+  redo: Record<string, never>;
+  export_project: Record<string, never>;
+}
+
+/** Arguments of the decision-mode tools (DECISION_TOOLS, and set_colorbar_scale with its check), as validated. */
+export interface DecisionArgsMap {
+  locate_heatmap: { name: string; description: string; panelId?: string; box?: Box };
+  set_ticks: { panelId?: string; ticks: { mark?: number; t?: number; value: number }[]; scale?: ColorbarScale };
+  use_colorbar: { panelId?: string; candidate?: string; fromPanel?: string; box?: Box };
+  correct_grid_size: { panelId?: string; rows: number; cols: number; reason: string; box?: Box };
+  check_printed: { panelId?: string; cells: { row: number; col: number; value: number }[] };
+  check_panel: { panelId?: string };
+  ask: {
+    region?: Box;
+    overlay?: 'none' | 'calibration' | 'reconstruction';
+    questions: Record<string, DecisionQuestion>;
+  };
+  set_colorbar_scale: { panelId?: string; scale: ColorbarScale };
 }

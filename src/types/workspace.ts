@@ -332,7 +332,7 @@ export type WorkspaceCore = Omit<
 /**
  * The public workspace `ws` used by tools, the agent (agent/api.ts) and the
  * settings dialog. Some fields are replaced after creation: settings by
- * settings-dialog.ts, reviewStatus by agent/api.ts, and zipExtras grows.
+ * settings-dialog.ts, reviewStatus by pages/extract.ts (from the agent API), and zipExtras grows.
  */
 export interface Workspace {
   addTool: (config: ToolHooks) => void;

@@ -1,14 +1,14 @@
-import { notify } from '../../extract/workspace/store.ts';
-import type { Corners, SettingsUi, Workspace } from '../../types/index.ts';
-import { DEFAULT_LABELS_MODEL, LABELS_PROMPT, labelsTool, labelsUserText, parseLabelsAnswer } from '../labels.ts';
-import { loadOpenRouterSdk, makeOpenRouterClient } from '../openrouter-client.ts';
-
 // "Read labels with AI" in the Grid card (heatmap): sends the current view,
 // with the grid outline drawn on it, to a vision LLM and fills in the active
 // panel's row and column labels in one undoable step. Uses the Agent's key
 // and base URL; the model is the Model field next to the button (agent.labels).
 // No DOM here: the Grid card (React) calls readLabels() and reads labelsReaderState()
 // during render; every change of the state notifies the workspace bridge.
+import { notify } from '../../extract/workspace/store.ts';
+import type { Corners, SettingsUi, Workspace } from '../../types/index.ts';
+import { DEFAULT_LABELS_MODEL, LABELS_PROMPT, labelsTool, labelsUserText, parseLabelsAnswer } from '../labels.ts';
+import { loadOpenRouterSdk, makeOpenRouterClient } from '../openrouter-client.ts';
+import { loadModelLists } from './model-lists.ts';
 
 const MAX_SIDE = 1568; // longest side sent; larger images are downscaled by the providers anyway
 
@@ -21,7 +21,6 @@ export interface LabelsReaderState {
 
 let state: LabelsReaderState = { busy: false, hint: '', error: false };
 let deps: { ws: Workspace; settingsUi: SettingsUi } | null = null;
-let onModelFocus: (() => void) | null = null;
 
 export const labelsReaderState = () => state;
 
@@ -37,11 +36,10 @@ export function setupLabelReader(ws: Workspace, settingsUi: SettingsUi) {
   deps = { ws, settingsUi };
 }
 
-/** The Agent card registers what happens when the Model field gets focus (it loads the model lists). */
-export function setLabelsModelFocusHandler(fn: () => void) {
-  onModelFocus = fn;
-}
-export const labelsModelFocused = () => onModelFocus?.();
+/** The Model field got focus: load the model lists its datalist (rendered by the Agent card) shows. */
+export const labelsModelFocused = () => {
+  if (deps) void loadModelLists(deps.settingsUi.get().agent);
+};
 
 /** Save the model typed in the Model field (agent.labels). */
 export function setLabelsModel(value: string) {

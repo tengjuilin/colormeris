@@ -1,7 +1,7 @@
 import type { Box, JsonSchema, LlmTool } from '../types/index.ts';
 
 // Reading a heatmap's row and column labels with a vision LLM (pure: prompt,
-// forced tool and answer parsing). The UI (agent/labels-reader.js) sends one
+// forced tool and answer parsing). The UI (agent/ui/labels-reader.ts) sends one
 // image of the current view with the grid outline drawn on it.
 
 export const DEFAULT_LABELS_MODEL = 'openai/gpt-6.1-sol';

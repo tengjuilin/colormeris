@@ -5,7 +5,7 @@ import type { DecisionQuestion } from '../../types/index.ts';
 // ---------------------------------------------------------------- questions
 
 // Each request is about one heatmap; descriptions come from the LLM.
-export const questions: Record<string, (description?: string) => Record<string, DecisionQuestion>> = {
+export const decisionQuestions: Record<string, (description?: string) => Record<string, DecisionQuestion>> = {
   // On the whole page: roughly where the heatmap is.
   find: (description) => ({
     present: {
@@ -45,5 +45,3 @@ export const questions: Record<string, (description?: string) => Record<string, 
     },
   }),
 };
-
-export const decisionQuestions = questions;

@@ -249,6 +249,12 @@ test('the Model field shows the labels model, saves a trimmed value on commit', 
   const model = $('agent-labels');
   assert.equal(model.getAttribute('list'), 'agent-llm-list');
   assert.ok(model.value.length > 0);
+  // Focus loads the shared model lists (agent/ui/model-lists.ts): a mock SDK, so nothing leaves the test.
+  (globalThis as { OpenRouterSDK?: unknown }).OpenRouterSDK = {
+    OpenRouter: class {
+      models = { list: async () => (async function* () {})() };
+    },
+  };
   fireEvent.focus(model);
   fireEvent.input(model, { target: { value: ' openai/x ' } });
   fireEvent.change(model);

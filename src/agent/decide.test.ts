@@ -10,12 +10,14 @@ import {
   checkSummary,
   chooseColorbar,
   cleanDecisionArgs,
+  cornersBox,
   DECISION_LLM_ACTIONS,
   decisionLlmTools,
   decisionQuestions,
   flankInk,
   gridNeighbours,
   growBox,
+  iou,
   panelBrief,
   planCounts,
   printedCheck,
@@ -25,6 +27,7 @@ import {
   tFromTopLeft,
   tickBoxesText,
   tickMisfit,
+  union,
   validateDecisionTool,
 } from './decide.ts';
 
@@ -668,4 +671,20 @@ test('validateDecisionTool checks check_printed cells', () => {
   assert.deepEqual(validateDecisionTool('check_printed', { cells: [{ row: 1, col: 2, value: 3.5 }] }), []);
   assert.ok(validateDecisionTool('check_printed', { cells: [] }).length);
   assert.ok(validateDecisionTool('check_printed', { cells: [{ row: 0, col: 2, value: 3 }] }).length);
+});
+
+test('box helpers: iou, union and the box of grid corners', () => {
+  const a = { x0: 0, y0: 0, x1: 10, y1: 10 };
+  const b = { x0: 5, y0: 0, x1: 15, y1: 10 };
+  assert.equal(iou(a, a), 1);
+  assert.equal(iou(a, b), 50 / 150);
+  assert.equal(iou(a, { x0: 20, y0: 20, x1: 30, y1: 30 }), 0);
+  assert.deepEqual(union([a, b, { x0: -2, y0: 3, x1: 1, y1: 12 }]), { x0: -2, y0: 0, x1: 15, y1: 12 });
+  const skewed = [
+    { x: 1, y: 2 },
+    { x: 9, y: 1 },
+    { x: 10, y: 8 },
+    { x: 0, y: 9 },
+  ];
+  assert.deepEqual(cornersBox(skewed), { x0: 0, y0: 1, x1: 10, y1: 9 });
 });
