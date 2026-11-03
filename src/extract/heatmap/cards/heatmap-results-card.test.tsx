@@ -71,6 +71,8 @@ function setup(opts: { error?: string; kind?: string } = {}) {
     csvName: (_p: Panel, s = '') => `panel${s}.csv`,
     toast: (m: string) => toasts.push(m),
   } as unknown as Workspace;
+  // Cards read and write through w (docs/react.md); like the real one, it carries the public ws too.
+  Object.assign(w, { ...ws, ...w, ws });
   render(
     <StrictMode>
       <WsContext.Provider value={{ ws, w }}>

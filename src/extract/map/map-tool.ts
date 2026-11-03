@@ -4,6 +4,7 @@ import type {
   ErrorResult,
   Handle,
   MapField,
+  MapModeType,
   MapResult,
   Mode,
   Panel,
@@ -44,17 +45,6 @@ import {
 } from './field.ts';
 import { reconcileSelection } from './selection.ts';
 
-/** A handle from hitTest: a profile end, a whole profile (with the drag's start) or an axis tick. */
-type MapHandle = Handle & {
-  key: AxisKey;
-  id: string;
-  end: 'a' | 'b';
-  start: Point;
-  a: Point;
-  b: Point;
-  started?: boolean;
-};
-
 /** The edited profile moving across the plot (cards/sweep.ts). */
 export interface MapSweep {
   frame: number;
@@ -74,6 +64,9 @@ export interface MapSweep {
   /** The line as the sweep last set it; anything else moving it ends the sweep. */
   set: { a: Point; b: Point };
 }
+
+/** The context without the plot and the sweep, which are built from it (createProfilePlot, createSweep). */
+export type MapToolCore = Omit<MapToolContext, 'plot' | 'sweep'>;
 
 /** Offscreen layers of a field, one pixel per bin. */
 export interface FieldLayers {
@@ -103,10 +96,7 @@ export interface MapToolState {
   layers: WeakMap<Float64Array, FieldLayers>;
 }
 
-/**
- * What map-tool.ts shares with the Map cards (cards/*.tsx, which reach it through cards/map-context.ts).
- * deleteSelected and toggleMode are added after the setup and looked up at call time.
- */
+/** What map-tool.ts shares with the Map cards (cards/*.tsx, which reach it through cards/map-context.ts). */
 export interface MapToolContext {
   ws: Workspace;
   state: MapToolState;
@@ -117,7 +107,7 @@ export interface MapToolContext {
   profileColor: (panel: Panel, profile: Profile) => string;
   AXIS_COLORS: { readonly x: string; readonly y: string };
   deleteSelected: () => void;
-  toggleMode: (type: string) => void;
+  toggleMode: (type: MapModeType) => void;
   /** The imperative profile plot (the card hands it its canvas) and the sweep animation. */
   plot: ProfilePlot;
   sweep: Sweep;
@@ -190,7 +180,9 @@ export function setupMapTool(ws: Workspace) {
     ws.changed();
   }
 
-  const mctx = {
+  // The plot needs the rest of the context, and the sweep the plot too. deleteSelected and toggleMode are
+  // function declarations below (hoisted).
+  const core: MapToolCore = {
     ws,
     state,
     selectedProfile,
@@ -199,10 +191,13 @@ export function setupMapTool(ws: Workspace) {
     selectProfile,
     profileColor,
     AXIS_COLORS,
+    deleteSelected,
+    toggleMode,
     ui: { sweepAt: null, viewSignature: null },
-  } as MapToolContext;
-  mctx.plot = createProfilePlot(mctx);
-  mctx.sweep = createSweep(mctx);
+  };
+  const plot = createProfilePlot(core);
+  const sweep = createSweep({ ...core, plot });
+  const mctx: MapToolContext = { ...core, plot, sweep };
   setMapToolContext(mctx);
   const { setTrace } = mctx.plot;
   const { stopSweep, toggleSweep } = mctx.sweep;
@@ -519,8 +514,8 @@ export function setupMapTool(ws: Workspace) {
     return l ? { kind: 'profileMove', id: l.id, start: p, a: l.a, b: l.b } : null;
   }
 
-  function onHandleDrag(h: Handle, p: Point, e: PointerEvent) {
-    const handle = h as MapHandle;
+  function onHandleDrag(handle: Handle, p: Point, e: PointerEvent) {
+    if (handle.kind !== 'axisTick' && handle.kind !== 'profileEnd' && handle.kind !== 'profileMove') return;
     // The drag takes the line; a sweep would pull it back each frame.
     stopSweep();
     const panel = ws.activePanel();
@@ -569,7 +564,6 @@ export function setupMapTool(ws: Workspace) {
     ws.commit((p) => (p.map.profiles = p.map.profiles.filter((x) => !ids.has(x.id))));
     selectProfile(null);
   }
-  mctx.deleteSelected = deleteSelected;
 
   function onKey(e: KeyboardEvent) {
     if (isTextEntry(e.target) || e.metaKey || e.ctrlKey || !app.sourceCanvas) return false;
@@ -584,7 +578,7 @@ export function setupMapTool(ws: Workspace) {
   $('viewer').addEventListener('pointerleave', () => ws.tool().kind === 'map' && setTrace(null));
 
   // Axis ticks need the plot area: their position is measured along it.
-  function toggleMode(type: string) {
+  function toggleMode(type: MapModeType) {
     if (app.mode?.type === type) return ws.setMode(null);
     if ((type === 'xtick' || type === 'ytick') && !ws.activePanel().grid.corners) {
       ws.toast('Place the plot area first.', true);
@@ -597,8 +591,8 @@ export function setupMapTool(ws: Workspace) {
       ws.updateModebar();
     }
   }
-  mctx.toggleMode = toggleMode;
-  for (const type of ['xtick', 'ytick', 'profile']) ws.addHotkey(type, () => toggleMode(type), { tool: 'map' });
+  for (const type of ['xtick', 'ytick', 'profile'] as const)
+    ws.addHotkey(type, () => toggleMode(type), { tool: 'map' });
 
   // Copy and paste profiles, also between panels and pages. The clipboard is
   // this tab's, not the system's: profiles mean nothing outside a figure.

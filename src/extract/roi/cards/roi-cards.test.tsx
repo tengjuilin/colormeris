@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, test, vi } from 'vitest';
-import type { Panel, Workspace, WorkspaceContext } from '../../../types/index.ts';
+import type { Panel, RoiModeType, Workspace, WorkspaceContext } from '../../../types/index.ts';
 import { SettingsProvider } from '../../../ui/index.ts';
 import { createProject, createRoi } from '../../project/project.ts';
 import { WsContext } from '../../react/use-workspace.ts';
@@ -69,6 +69,8 @@ function setup() {
     resultFor: () => (panel.tool === 'map' ? { rows: 3, cols: 4 } : { error: 'No colorbar yet.' }),
     toast() {},
   } as unknown as Workspace;
+  // Cards read and write through w (docs/react.md); like the real one, it carries the public ws too.
+  Object.assign(w, { ...ws, ...w, ws });
   const rctx = {
     ws,
     state,
@@ -76,7 +78,7 @@ function setup() {
     roiColor: () => '#f00',
     regionAt: () => null,
     deleteSelected: () => w.commit((p) => (p.rois = p.rois.filter((r) => r.id !== state.selectedId))),
-    toggleTool: (t: string) => w.setMode(app.mode?.type === t ? null : t),
+    toggleTool: (t: RoiModeType) => w.setMode(app.mode?.type === t ? null : t),
   } as unknown as RoiToolContext;
   setRoiContext(rctx);
   const settings = defaultSettings();

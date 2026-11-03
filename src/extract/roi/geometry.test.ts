@@ -9,6 +9,7 @@ import {
   clampPoint,
   clampShift,
   createInstanceCache,
+  dragRegion,
   equalBoxGeom,
   fitGeom,
   forEachPixelInPolygon,
@@ -219,4 +220,28 @@ test('fitGeom moves and shrinks a shape into the limit', () => {
   );
   const b = boundsOf((poly as PolygonGeom).points);
   assert.ok(b.x0 >= 0 && b.x1 <= 1 && b.y0 >= 0 && b.y1 <= 1);
+});
+
+test('dragRegion: a nudge moves one copy inside its box; a move takes every copy and resets the nudge', () => {
+  const roi = createRoi('rect', { cx: 0.5, cy: 0.5, rx: 0.2, ry: 0.2 });
+  roi.offsets['0,1'] = { dx: 0.2, dy: 0 };
+  const geom0 = structuredClone(roi.geom);
+  const lim = { x0: 0, y0: 0, x1: 600, y1: 200 };
+  // Nudging copy (0, 0) right by 0.5 stops at the box's edge (0.3 of room).
+  const nudged = dragRegion(roi, grid, 0, 0, geom0, { dx: 0, dy: 0 }, 0.5, 0, { nudge: true, limit: lim });
+  assert.equal(nudged.geom, null);
+  close(nudged.offset!.dx, 0.3, 1e-12);
+  // Moving the whole region: copy (0, 1) is already 0.2 to the right, so only 0.1 is left.
+  const moved = dragRegion(roi, grid, 0, 0, geom0, { dx: 0, dy: 0 }, 0.5, -0.1, { nudge: false, limit: lim });
+  close((moved.geom as ShapeGeom).cx, 0.6, 1e-12);
+  close((moved.geom as ShapeGeom).cy, 0.4, 1e-12);
+  assert.deepEqual(moved.offset, { dx: 0, dy: 0 });
+});
+
+test('dragRegion: a single region stays inside the limit', () => {
+  const roi = createRoi('ellipse', { cx: 100, cy: 100, rx: 20, ry: 10 }, { replicate: false });
+  const lim = { x0: 0, y0: 0, x1: 150, y1: 300 };
+  const r = dragRegion(roi, grid, null, null, roi.geom, { dx: 0, dy: 0 }, 100, -200, { nudge: true, limit: lim });
+  assert.equal(r.offset, null);
+  assert.deepEqual(r.geom, { cx: 130, cy: 10, rx: 20, ry: 10 });
 });

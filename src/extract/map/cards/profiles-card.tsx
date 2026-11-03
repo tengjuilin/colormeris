@@ -80,7 +80,7 @@ function downloadProfileCsv(mctx: MapToolContext) {
 }
 
 export function ProfilesCard() {
-  const { ws, w } = useWorkspace({ section: 'sec-profiles' });
+  const { w } = useWorkspace({ section: 'sec-profiles' });
   const mctx = useMapTool();
   const { state } = mctx;
   const panel = w.activePanel();
@@ -121,25 +121,25 @@ export function ProfilesCard() {
   });
 
   function overlayAll() {
-    const all = ws.activePanel().map.profiles;
+    const all = w.activePanel().map.profiles;
     state.selectedId ??= all[0]?.id ?? null;
     for (const l of all) if (l.id !== state.selectedId) state.overlay.add(l.id);
-    ws.changed();
+    w.changed();
   }
 
   function changeNorm(norm: string) {
     state.profileNorm = norm;
     // The fixed value axis was measured in the old scale.
     if (state.sweep) {
-      const p = ws.activePanel();
+      const p = w.activePanel();
       const l = mctx.selectedProfile();
-      const image = ws.app.pages.get(p.page)?.imageData;
+      const image = w.app.pages.get(p.page)?.imageData;
       state.sweep.yRange =
         l && image
           ? mctx.sweep.sweepValueRange(image, p, { ...l, a: state.sweep.a0, b: state.sweep.b0 }, state.sweep)
           : null;
     }
-    ws.changed({ light: true });
+    w.changed({ light: true });
   }
 
   const deleteLabel =
@@ -261,7 +261,7 @@ export function ProfilesCard() {
               hasAxis={shown.some((l) => profileAxisKey(panel, l))}
               value={len ? (len.kind === 'x' || len.kind === 'y' ? 'axis' : len.kind) : panel.map.units}
               onChange={(units) =>
-                ws.commit((p) => {
+                w.commit((p) => {
                   p.map.units = units;
                 })
               }

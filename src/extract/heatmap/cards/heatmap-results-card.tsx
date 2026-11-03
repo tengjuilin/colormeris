@@ -23,18 +23,18 @@ export function toTsv(panel: Panel, res: HeatmapResult): string {
     .join('\n');
 }
 
-function copy(ws: Workspace) {
-  const panel = ws.activePanel();
-  const res = ws.resultFor(panel) as HeatmapResult;
-  if (!res.error) void copyTable(ws, toTsv(panel, res));
+function copy(w: WorkspaceContext) {
+  const panel = w.activePanel();
+  const res = w.resultFor(panel) as HeatmapResult;
+  if (!res.error) void copyTable(w, toTsv(panel, res));
 }
 
-function download(ws: Workspace, long: boolean) {
-  const p = ws.activePanel();
-  const r = ws.resultFor(p) as HeatmapResult;
+function download(w: WorkspaceContext, long: boolean) {
+  const p = w.activePanel();
+  const r = w.resultFor(p) as HeatmapResult;
   if (r.error) return;
-  if (long) downloadCsv(ws, p, toLongCsv([{ panel: p, result: r }]), '_long');
-  else downloadCsv(ws, p, toWideCsv(p, r));
+  if (long) downloadCsv(w, p, toLongCsv([{ panel: p, result: r }]), '_long');
+  else downloadCsv(w, p, toWideCsv(p, r));
 }
 
 /**
@@ -65,11 +65,11 @@ function ResultTable({ w, panel, res }: { w: WorkspaceContext; panel: Panel; res
 }
 
 export function HeatmapResultsCard() {
-  const { ws, w } = useWorkspace({ section: 'sec-hm-results' });
+  const { w } = useWorkspace({ section: 'sec-hm-results' });
   const panel = w.activePanel();
   // Only heatmap panels have cells. Gate on the panel, not w.tool(): right after a tool switch the active panel
   // may already belong to the new tool.
-  const res: Result = panel.tool === 'heatmap' ? (ws.resultFor(panel) as Result) : { error: '' };
+  const res: Result = panel.tool === 'heatmap' ? (w.resultFor(panel) as Result) : { error: '' };
   const error = 'error' in res && res.error ? res.error : '';
   // O(cells): recomputed only when the result or the flag threshold changes, not on every render.
   const maxDeltaE = panel.settings.maxDeltaE;
@@ -100,7 +100,7 @@ export function HeatmapResultsCard() {
         icon="download"
         title="The table as shown: one row per grid row"
         disabled={!!error}
-        onClick={() => download(ws, false)}
+        onClick={() => download(w, false)}
       >
         Download CSV
       </MainStep>
@@ -110,7 +110,7 @@ export function HeatmapResultsCard() {
           icon="download"
           title="One line per cell with its color, ΔE and flag"
           disabled={!!error}
-          onClick={() => download(ws, true)}
+          onClick={() => download(w, true)}
         >
           Long CSV
         </Btn>
@@ -119,7 +119,7 @@ export function HeatmapResultsCard() {
           icon="copy"
           title="Copy the table to paste into a spreadsheet"
           disabled={!!error}
-          onClick={() => copy(ws)}
+          onClick={() => copy(w)}
         >
           Copy table
         </Btn>

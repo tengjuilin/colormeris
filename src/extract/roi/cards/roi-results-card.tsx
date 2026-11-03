@@ -117,10 +117,10 @@ export function fillRoiTable(table: HTMLTableElement, panel: Panel, res: Result,
   table.replaceChildren(thead, tbody);
 }
 
-function copy(ws: Workspace, metric: keyof RoiStats) {
-  const panel = ws.activePanel();
-  const res = ws.resultFor(panel) as Result;
-  if (hasRows(res)) void copyTable(ws, roiTsv(panel, res, metricFor(metric, !!panel.scale)));
+function copy(w: WorkspaceContext, metric: keyof RoiStats) {
+  const panel = w.activePanel();
+  const res = w.resultFor(panel) as Result;
+  if (hasRows(res)) void copyTable(w, roiTsv(panel, res, metricFor(metric, !!panel.scale)));
 }
 
 function ResultTable({
@@ -153,11 +153,11 @@ function ResultTable({
 }
 
 export function RoiResultsCard() {
-  const { ws, w } = useWorkspace({ section: 'sec-roi-results' });
+  const { w } = useWorkspace({ section: 'sec-roi-results' });
   const { state } = useRoiContext();
   const panel = w.activePanel();
   // Only the ROI tool shows this card; another tool's result has no regions.
-  const res: Result = panel.tool === 'roi' ? (ws.resultFor(panel) as Result) : { error: '' };
+  const res: Result = panel.tool === 'roi' ? (w.resultFor(panel) as Result) : { error: '' };
   const error = 'error' in res && res.error ? res.error : '';
   const metric = metricFor(state.metric, !!panel.scale);
   const summary = error || !hasRows(res) ? '' : roiSummary(panel, res);
@@ -187,7 +187,7 @@ export function RoiResultsCard() {
           value={metric}
           onChange={(v) => {
             state.metric = v as keyof RoiStats;
-            ws.changed();
+            w.changed();
           }}
         >
           {options.map((o) => (
@@ -210,9 +210,9 @@ export function RoiResultsCard() {
           icon="download"
           disabled={!!error}
           onClick={() => {
-            const p = ws.activePanel();
-            const r = ws.resultFor(p) as Result;
-            if (hasRows(r)) downloadCsv(ws, p, roiCsv([{ panel: p, result: r }]), '_rois');
+            const p = w.activePanel();
+            const r = w.resultFor(p) as Result;
+            if (hasRows(r)) downloadCsv(w, p, roiCsv([{ panel: p, result: r }]), '_rois');
           }}
         >
           Download CSV
@@ -222,7 +222,7 @@ export function RoiResultsCard() {
           icon="copy"
           title="Copy the table to paste into a spreadsheet"
           disabled={!!error}
-          onClick={() => copy(ws, state.metric)}
+          onClick={() => copy(w, state.metric)}
         >
           Copy table
         </Btn>

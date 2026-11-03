@@ -11,6 +11,7 @@ import type {
   PolygonGeom,
   Roi,
   RoiGeom,
+  RoiModeType,
   RoiOffset,
   RoiShape,
   RoiStats,
@@ -32,6 +33,7 @@ import {
   clampPoint,
   clampShift,
   createInstanceCache,
+  dragRegion,
   equalBoxGeom,
   fitGeom,
   fromBox,
@@ -77,16 +79,6 @@ export interface RoiToolState {
   metric: keyof RoiStats;
 }
 
-/** A handle on a region copy: its box (row and col are null for an unreplicated region), the control point index, and the drag's start state. */
-type RoiHandle = Handle & {
-  row: number;
-  col: number;
-  i: number;
-  start: Point;
-  geom: RoiGeom;
-  offset: RoiOffset;
-};
-
 /** What roi-tool.ts shares with roi-overlay.ts and the cards (cards/roi-context.ts). */
 export interface RoiToolContext {
   ws: Workspace;
@@ -97,7 +89,7 @@ export interface RoiToolContext {
   /** Every copy of a region with its outline (roiInstances), cached while the region and the grid are unchanged. */
   instances: (roi: Roi, grid: Grid) => RoiInstance[];
   deleteSelected: () => void;
-  toggleTool: (type: string) => void;
+  toggleTool: (type: RoiModeType) => void;
 }
 
 // ROI tool: quantify luminescence overlays inside drawn regions (ellipses,
@@ -231,8 +223,6 @@ export function setupRoiTool(ws: Workspace) {
     );
   }
 
-  const geomBounds = (shape: RoiShape, geom: RoiGeom) => boundsOf(roiControlPoints({ shape, geom }));
-
   // Limit for one copy's own coordinates (box coordinates minus its offset).
   function localLimit(roi: Roi, grid: Grid, row: number, col: number) {
     if (!roi.replicate) return gridLimit(grid);
@@ -362,47 +352,42 @@ export function setupRoiTool(ws: Workspace) {
   }
 
   function onHandleDrag(h: Handle, p: Point, e: PointerEvent) {
-    const handle = h as RoiHandle;
+    if (h.kind !== 'roiMove' && h.kind !== 'roiCorner' && h.kind !== 'roiVertex') return;
+    const handle = h;
     const panel = ws.activePanel();
     const roi = panel.rois.find((r) => r.id === handle.roiId);
     if (!roi) return;
     state.selectedId = roi.id;
     const grid = panel.grid;
+    // A single region's handle has null row and col; the helpers read them only for a replicated region.
+    const row = handle.row!;
+    const col = handle.col!;
     if (handle.kind === 'roiMove') {
       // Remember where the drag started, in the region's box coordinates.
       if (!handle.start) {
-        handle.start = roi.replicate ? toBox(grid, p, handle.row, handle.col) : p;
+        handle.start = roi.replicate ? toBox(grid, p, row, col) : p;
         handle.geom = structuredClone(roi.geom);
-        handle.offset = { ...boxOffset(roi, handle.row, handle.col) };
+        handle.offset = { ...boxOffset(roi, row, col) };
       }
-      const now = roi.replicate ? toBox(grid, p, handle.row, handle.col) : p;
-      let dx = now.x - handle.start.x;
-      let dy = now.y - handle.start.y;
-      const b = geomBounds(roi.shape, handle.geom);
-      if (roi.replicate && !e.altKey) {
-        // Nudge this box's copy only.
-        const o = handle.offset;
-        ({ dx, dy } = clampShift({ x0: b.x0 + o.dx, y0: b.y0 + o.dy, x1: b.x1 + o.dx, y1: b.y1 + o.dy }, dx, dy, UNIT));
-        roi.offsets[offsetKey(handle.row, handle.col)] = { dx: o.dx + dx, dy: o.dy + dy };
-      } else {
-        if (roi.replicate) {
-          // Every copy moves, so the copy with the largest offset sets the limit.
-          const corners = [];
-          for (let row = 0; row < grid.rows; row++) {
-            for (let col = 0; col < grid.cols; col++) {
-              const o = row === handle.row && col === handle.col ? handle.offset : boxOffset(roi, row, col);
-              corners.push({ x: b.x0 + o.dx, y: b.y0 + o.dy }, { x: b.x1 + o.dx, y: b.y1 + o.dy });
-            }
-          }
-          ({ dx, dy } = clampShift(boundsOf(corners), dx, dy, UNIT));
-        } else ({ dx, dy } = clampShift(b, dx, dy, gridLimit(grid)));
-        roi.geom = translateGeom(roi.shape, handle.geom, dx, dy);
-        if (roi.replicate) roi.offsets[offsetKey(handle.row, handle.col)] = handle.offset;
-      }
+      const now = roi.replicate ? toBox(grid, p, row, col) : p;
+      // Alt moves every copy of a replicated region; without it only this box's copy is nudged.
+      const moved = dragRegion(
+        roi,
+        grid,
+        handle.row,
+        handle.col,
+        handle.geom!,
+        handle.offset!,
+        now.x - handle.start.x,
+        now.y - handle.start.y,
+        { nudge: !e.altKey, limit: gridLimit(grid) },
+      );
+      if (moved.geom) roi.geom = moved.geom;
+      if (moved.offset) roi.offsets[offsetKey(row, col)] = moved.offset;
     } else if (handle.kind === 'roiCorner') {
-      const lim = localLimit(roi, grid, handle.row, handle.col);
-      const q = clampPoint(roiToLocal(roi, grid, handle.row, handle.col, p), lim);
-      const opposite = roiControlPoints(roi)[(handle.i + 2) % 4];
+      const lim = localLimit(roi, grid, row, col);
+      const q = clampPoint(roiToLocal(roi, grid, row, col, p), lim);
+      const opposite = roiControlPoints(roi)[(handle.i! + 2) % 4];
       roi.geom = e.shiftKey
         ? equalBoxGeom(opposite, q, roi.replicate ? gridBoxSize(grid) : { w: 1, h: 1 })
         : boxGeom(opposite, q, false);
@@ -414,10 +399,10 @@ export function setupRoiTool(ws: Workspace) {
           Math.hypot(c.x - q.x, c.y - q.y) < Math.hypot(pts[best].x - q.x, pts[best].y - q.y) ? i : best,
         0,
       );
-    } else if (handle.kind === 'roiVertex') {
-      (roi.geom as PolygonGeom).points[handle.i] = clampPoint(
-        roiToLocal(roi, grid, handle.row, handle.col, p),
-        localLimit(roi, grid, handle.row, handle.col),
+    } else {
+      (roi.geom as PolygonGeom).points[handle.i!] = clampPoint(
+        roiToLocal(roi, grid, row, col, p),
+        localLimit(roi, grid, row, col),
       );
     }
     ws.changed({ light: true });
@@ -454,10 +439,11 @@ export function setupRoiTool(ws: Workspace) {
     }
     return false;
   }
-  for (const shape of ['ellipse', 'rect', 'polygon']) ws.addHotkey(shape, () => toggleTool(shape), { tool: 'roi' });
+  for (const shape of ['ellipse', 'rect', 'polygon'] as const)
+    ws.addHotkey(shape, () => toggleTool(shape), { tool: 'roi' });
 
   // Also called by the Regions card's buttons.
-  function toggleTool(type: string) {
+  function toggleTool(type: RoiModeType) {
     ws.setMode(app.mode?.type === type ? null : type);
   }
 }

@@ -50,6 +50,8 @@ function setup(opts: { pageCount?: number } = {}) {
   } as unknown as WorkspaceContext;
   Object.assign(w, setupWorkspacePanels(w));
   const ws = { activePanel: w.activePanel, pushHistory: w.pushHistory, changed: w.changed } as unknown as Workspace;
+  // Cards read and write through w (docs/react.md); like the real one, it carries the public ws too.
+  Object.assign(w, { ...ws, ...w, ws });
   (ws as { reviewStatus: unknown }).reviewStatus = (p: Panel) => reviews.get(p) ?? null;
   render(
     <StrictMode>

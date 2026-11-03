@@ -29,12 +29,12 @@ function summaryText(res: Field_, panel: Panel): string {
 }
 
 export function MapResultsCard() {
-  const { ws, w } = useWorkspace({ section: 'sec-map-results' });
+  const { w } = useWorkspace({ section: 'sec-map-results' });
   const { state } = useMapTool();
   const panel = w.activePanel();
   // A render queued before a tool switch can see another tool's panel; its result is not a map field.
   const isMap = panel.tool === 'map';
-  const res = (isMap ? ws.resultFor(panel) : { error: '' }) as Field_;
+  const res = (isMap ? w.resultFor(panel) : { error: '' }) as Field_;
   const axisFns = (['x', 'y'] as const).map((k) => !!(panel.grid.corners && axisFn(panel, k).fn));
   const hasAxis = axisFns.some(Boolean);
   const bin = useBoundNumber((p, v) => {
@@ -42,20 +42,20 @@ export function MapResultsCard() {
   });
   // One setting for the profile plot and the matrix, edited from either card.
   const setUnits = (units: Panel['map']['units']) =>
-    ws.commit((p) => {
+    w.commit((p) => {
       p.map.units = units;
     });
   const download = (long: boolean) => {
-    const p = ws.activePanel();
-    const r = ws.resultFor(p) as MapResult;
+    const p = w.activePanel();
+    const r = w.resultFor(p) as MapResult;
     if (r.error) return;
-    if (long) downloadCsv(ws, p, mapLongCsv([{ panel: p, result: r }]), '_map_long');
-    else downloadCsv(ws, p, mapMatrixCsv(p, r as MapField), '_map');
+    if (long) downloadCsv(w, p, mapLongCsv([{ panel: p, result: r }]), '_map_long');
+    else downloadCsv(w, p, mapMatrixCsv(p, r as MapField), '_map');
   };
   const toggle = (key: 'showRecon' | 'showFlags', on: boolean) => {
     // Only the drawing changes: redraw, and re-render the toggle (no project change, no listeners).
     state[key] = on;
-    ws.viewer.requestDraw();
+    w.viewer.requestDraw();
     notify({ light: true });
   };
   return (

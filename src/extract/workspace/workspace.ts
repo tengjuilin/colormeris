@@ -3,6 +3,7 @@ import type {
   ColorValue,
   DomEl,
   ModeTexts,
+  ModeType,
   OverlayColors,
   Panel,
   PanelResult,
@@ -158,7 +159,7 @@ export function createWorkspace(): Workspace {
 
   // ---------------------------------------------------------------- modes
 
-  const MODE_TEXT: Record<string, string[]> = {
+  const MODE_TEXT: Partial<Record<ModeType, string[]>> = {
     grid: ['Click the outer top-left corner of the grid.', 'Click the outer bottom-right corner.'],
     colorbar: [
       'Click one end of the colorbar (middle of the bar).',
@@ -167,7 +168,7 @@ export function createWorkspace(): Workspace {
     tick: ['Click a labelled tick on the colorbar, then type its value. Press Done when finished.'],
   };
   const CENTER_TEXTS = ['Click the center of the top-left dot.', 'Click the center of the bottom-right dot.'];
-  const modeTexts = (type: string): ModeTexts | undefined =>
+  const modeTexts = (type: ModeType): ModeTexts | undefined =>
     tool.modeTexts?.[type] ||
     (type === 'grid' && activePanel().grid.anchor === 'centers' && CENTER_TEXTS) ||
     (type === 'grid' && tool.gridTexts) ||
@@ -175,7 +176,7 @@ export function createWorkspace(): Workspace {
 
   // `notify: false` is for setTool only: a render queued before the tool switches would run against the new
   // tool's panel (a card of the old tool computing its result for a panel of another tool).
-  function setMode(type: string | null, { notify: notifyCards = true }: { notify?: boolean } = {}) {
+  function setMode(type: ModeType | null, { notify: notifyCards = true }: { notify?: boolean } = {}) {
     if (type && !app.sourceCanvas) return;
     if (type === 'tick') {
       const cb = activePanel().colorbar;

@@ -304,3 +304,47 @@ export function fitGeom(shape: RoiShape, geom: RoiGeom, lim: Box): RoiGeom {
   const { dx, dy } = clampShift(sb, 0, 0, lim);
   return translateGeom(shape, g, dx, dy);
 }
+
+// ---------------------------------------------------------------- dragging a region
+
+const UNIT_BOX: Box = { x0: 0, y0: 0, x1: 1, y1: 1 };
+
+/**
+ * A region dragged by (dx, dy) from where the drag started (`geom0`, and `offset0` of the copy in box row, col):
+ * in box coordinates for a replicated region, in image pixels for a single one. With `nudge` only that copy
+ * moves (its offset); otherwise the whole region moves and the copy's offset is back at its start. Every copy
+ * stays inside its box and a single region inside `limit`. Returns the new geometry, or null when it is
+ * unchanged, and the copy's new offset, or null for a single region.
+ */
+export function dragRegion(
+  roi: Pick<Roi, 'shape' | 'replicate' | 'offsets'>,
+  grid: Grid,
+  row: number | null,
+  col: number | null,
+  geom0: RoiGeom,
+  offset0: RoiOffset,
+  dx: number,
+  dy: number,
+  { nudge, limit }: { nudge: boolean; limit: Box },
+): { geom: RoiGeom | null; offset: RoiOffset | null } {
+  const b = boundsOf(roiControlPoints({ shape: roi.shape, geom: geom0 }));
+  if (roi.replicate && nudge) {
+    const o = offset0;
+    const d = clampShift({ x0: b.x0 + o.dx, y0: b.y0 + o.dy, x1: b.x1 + o.dx, y1: b.y1 + o.dy }, dx, dy, UNIT_BOX);
+    return { geom: null, offset: { dx: o.dx + d.dx, dy: o.dy + d.dy } };
+  }
+  if (!roi.replicate) {
+    const d = clampShift(b, dx, dy, limit);
+    return { geom: translateGeom(roi.shape, geom0, d.dx, d.dy), offset: null };
+  }
+  // Every copy moves, so the copy with the largest offset sets the limit.
+  const corners: Point[] = [];
+  for (let r = 0; r < grid.rows; r++) {
+    for (let c = 0; c < grid.cols; c++) {
+      const o = r === row && c === col ? offset0 : boxOffset(roi, r, c);
+      corners.push({ x: b.x0 + o.dx, y: b.y0 + o.dy }, { x: b.x1 + o.dx, y: b.y1 + o.dy });
+    }
+  }
+  const d = clampShift(boundsOf(corners), dx, dy, UNIT_BOX);
+  return { geom: translateGeom(roi.shape, geom0, d.dx, d.dy), offset: offset0 };
+}

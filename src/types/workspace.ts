@@ -6,7 +6,7 @@
 
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { Box, PixelImage, Point } from './image.ts';
-import type { Panel, PanelSettings, Project, ReviewStatus, ToolKind } from './project.ts';
+import type { Panel, PanelSettings, Project, ReviewStatus, RoiGeom, RoiOffset, ToolKind } from './project.ts';
 import type { PanelResult } from './results.ts';
 import type { ColorValue, Settings, SettingsSource } from './settings.ts';
 
@@ -17,38 +17,59 @@ import type { ColorValue, Settings, SettingsSource } from './settings.ts';
  */
 export type DomEl = HTMLInputElement & HTMLSelectElement;
 
-/** A placing or drawing mode: shared 'grid' | 'colorbar' | 'tick', tool modes such as 'scale', 'ellipse', 'xtick', 'profile'. */
+/** Placing the shared grid, colorbar ends and colorbar ticks. */
+export type SharedModeType = 'grid' | 'colorbar' | 'tick';
+/** ROI tool: drawing regions. */
+export type RoiModeType = 'ellipse' | 'rect' | 'polygon';
+/** Map tool: axis ticks and profiles. */
+export type MapModeType = 'xtick' | 'ytick' | 'profile';
+/** Every placing or drawing mode; 'scale' (measuring a scale bar) belongs to the ROI and Map tools. */
+export type ModeType = SharedModeType | RoiModeType | MapModeType | 'scale';
+
+/** A placing or drawing mode. */
 export interface Mode {
-  type: string;
+  type: ModeType;
   /** Points clicked so far. */
   points: Point[];
   /** The mode bar shows Done instead of Cancel (map-tool.ts). */
   done?: boolean;
   /** Drawing limit of an ROI polygon (roi-tool.ts drawLimit). */
   lim?: Box;
-  [key: string]: unknown;
 }
 
 /**
- * A draggable handle from hitTest. Shared kinds: 'corner' (i), 'barStart',
- * 'barEnd', 'bar' (last), 'tick' (id); tools add their own ('roiVertex',
- * 'profileEnd', …). Drags cache state on the handle (dir, ts, len, from).
+ * The workspace's own handles (interact.ts): grid corners, the colorbar's ends, its line and its ticks. Drags
+ * cache what they need on the handle at their first move (dir, ts, len, from).
  */
-export interface Handle {
-  kind: string;
+export type SharedHandle =
+  | { kind: 'corner'; i: number }
+  | { kind: 'barStart' | 'barEnd'; dir?: Point; ts?: number[]; len?: number }
+  | { kind: 'bar'; last: Point; from?: Point[] }
+  | { kind: 'tick'; id: string | undefined };
+
+/**
+ * A region copy's handle (roi-tool.ts): moving it, a rectangle or ellipse corner (i), a polygon vertex (i).
+ * row and col are null for an unreplicated region; a move keeps its start state (start, geom, offset).
+ */
+export type RoiHandle = {
+  kind: 'roiMove' | 'roiCorner' | 'roiVertex';
+  roiId: string;
+  row: number | null;
+  col: number | null;
   i?: number;
-  id?: string;
-  last?: Point;
-  dir?: Point;
-  ts?: number[];
-  len?: number;
-  from?: Point[];
-  roiId?: string;
-  row?: number | null;
-  col?: number | null;
-  end?: 'a' | 'b';
-  [key: string]: unknown;
-}
+  start?: Point;
+  geom?: RoiGeom;
+  offset?: RoiOffset;
+};
+
+/** The Map tool's handles (map-tool.ts): a profile end, a whole profile (with the drag's start) or an axis tick. */
+export type MapHandle =
+  | { kind: 'profileEnd'; id: string; end: 'a' | 'b' }
+  | { kind: 'profileMove'; id: string; start: Point; a: Point; b: Point; started?: boolean }
+  | { kind: 'axisTick'; key: 'x' | 'y'; id: string };
+
+/** A draggable handle from hitTest, told apart by `kind`. */
+export type Handle = SharedHandle | RoiHandle | MapHandle;
 
 /** What colorbar ticks do while an end of the bar is dragged (AppState.barTickMode). */
 export type BarTickMode = 'follow' | 'fixed';
@@ -170,8 +191,8 @@ export interface ToolHooks {
   /** Ids of the tool's sidebar cards, shown once a file is loaded. */
   sections?: string[];
   renderSidebar?: (panel: Panel, light: boolean) => void;
-  modeTexts?: Record<string, ModeTexts>;
-  onModeChange?: (type: string | null) => void;
+  modeTexts?: Partial<Record<ModeType, ModeTexts>>;
+  onModeChange?: (type: ModeType | null) => void;
   /** Return true when handled. */
   onClick?: (mode: Mode | null, p: Point, e: PointerEvent) => boolean | undefined;
   /** Tool handles, checked after the shared ones. */
@@ -239,7 +260,7 @@ export interface WorkspaceContext {
   activeKey: (page?: number) => string;
   activePanel: () => Panel;
   resultFor: (panel: Panel) => PanelResult;
-  setMode: (type: string | null) => void;
+  setMode: (type: ModeType | null) => void;
   updateModebar: () => void;
   changed: (opts?: { light?: boolean }) => void;
   setValue: (el: DomEl, value: string | number) => void;
@@ -335,47 +356,50 @@ export type WorkspaceCore = Omit<
  * settings dialog. Some fields are replaced after creation: settings by
  * settings-dialog.ts, reviewStatus by pages/extract.ts (from the agent API), and zipExtras grows.
  */
-export interface Workspace {
+/** The members `ws` shares with the private context `w`, with the same types. */
+type SharedMembers =
+  | 'setTool'
+  | 'tool'
+  | 'app'
+  | '$'
+  | 'COLORS'
+  | 'color'
+  | 'viewer'
+  | 'activePanel'
+  | 'pagePanels'
+  | 'currentPage'
+  | 'commit'
+  | 'pushHistory'
+  | 'changed'
+  | 'setMode'
+  | 'updateModebar'
+  | 'resultFor'
+  | 'toast'
+  | 'status'
+  | 'download'
+  | 'csvName'
+  | 'zoomToPoints'
+  | 'setValue'
+  | 'setPressed'
+  | 'snapAxis'
+  // Used by the agent API.
+  | 'openFile'
+  | 'goToPage'
+  | 'undo'
+  | 'redo'
+  | 'exportZip'
+  | 'newTickId'
+  | 'removePanel'
+  | 'addHotkey';
+
+export interface Workspace extends Pick<WorkspaceContext, SharedMembers> {
   addTool: (config: ToolHooks) => void;
-  setTool: WorkspaceContext['setTool'];
-  tool: () => ToolHooks;
-  app: AppState;
-  $: WorkspaceContext['$'];
-  COLORS: OverlayColors;
-  color: WorkspaceContext['color'];
-  viewer: ViewerApi;
-  activePanel: () => Panel;
-  pagePanels: () => Panel[];
-  currentPage: () => number;
-  commit: WorkspaceContext['commit'];
-  pushHistory: () => void;
-  changed: WorkspaceContext['changed'];
-  setMode: WorkspaceContext['setMode'];
-  updateModebar: () => void;
-  resultFor: WorkspaceContext['resultFor'];
-  toast: WorkspaceContext['toast'];
-  status: WorkspaceContext['status'];
-  download: WorkspaceContext['download'];
-  csvName: WorkspaceContext['csvName'];
-  zoomToPoints: WorkspaceContext['zoomToPoints'];
-  setValue: WorkspaceContext['setValue'];
-  setPressed: WorkspaceContext['setPressed'];
-  snapAxis: WorkspaceContext['snapAxis'];
   /** Full sidebar render. */
   render: () => void;
   /** Mounts the React cards into their section shells (extract/react/mount-cards.tsx); call once after the tools are set up. */
   mountCards: (settings: SettingsSource) => void;
-  // Used by the agent API.
-  openFile: WorkspaceContext['openFile'];
-  goToPage: WorkspaceContext['goToPage'];
-  undo: () => void;
-  redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
-  exportZip: () => Promise<void>;
-  newTickId: () => string;
-  removePanel: WorkspaceContext['removePanel'];
-  addHotkey: WorkspaceContext['addHotkey'];
   /** Apply matching settings from the Settings dialog to every panel of a tool. */
   applyMatching: (kind: ToolKind, settings: Partial<PanelSettings>) => void;
   /** App settings; replaced by settings-dialog.ts with the stored ones. */

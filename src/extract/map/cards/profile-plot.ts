@@ -4,7 +4,7 @@
 
 import type { Panel, Profile, ProfileSample } from '../../../types/index.ts';
 import { lengthPerPixel, profileXKind } from '../field.ts';
-import type { MapToolContext } from '../map-tool.ts';
+import type { MapToolCore } from '../map-tool.ts';
 
 /** A profile to plot: its samples, the divisor of the normalization and its color. */
 export interface Series {
@@ -29,7 +29,7 @@ interface PlotState {
   sy: (y: number) => number;
 }
 
-export function createProfilePlot(mctx: MapToolContext) {
+export function createProfilePlot(mctx: MapToolCore) {
   const { ws, state } = mctx;
   const { viewer } = ws;
   let canvas: HTMLCanvasElement | null = null;

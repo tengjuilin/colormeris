@@ -5,7 +5,7 @@ import { invertBilinear } from '../../../core/grid.ts';
 import type { ErrorResult, MapResult, Panel, Profile, ProfileSample } from '../../../types/index.ts';
 import { formatNumber } from '../../project/project-files.ts';
 import { mapCoord, profileDivisor } from '../field.ts';
-import type { MapToolContext } from '../map-tool.ts';
+import type { MapToolCore } from '../map-tool.ts';
 import type { Series } from './profile-plot.ts';
 
 export interface ProfileView {
@@ -15,7 +15,7 @@ export interface ProfileView {
   signature: string;
 }
 
-export function profileView(mctx: MapToolContext, panel: Panel, shown: Profile[]): ProfileView {
+export function profileView(mctx: MapToolCore, panel: Panel, shown: Profile[]): ProfileView {
   const { ws, state } = mctx;
   const results = (ws.resultFor(panel) as MapResult).profiles || {};
   const series: Series[] = [];
