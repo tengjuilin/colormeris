@@ -1,4 +1,4 @@
-import { rgbToLab } from '../../core/color.ts';
+import { onWhite, rgbToLab } from '../../core/color.ts';
 import { colorbarSamples, labToT, makeValueFn } from '../../core/colorbar.ts';
 import { cellAt, readPixel } from '../../core/grid.ts';
 import type {
@@ -104,8 +104,7 @@ export function makeClassifier(img: PixelImage, panel: Panel): Classifier {
     if (a === 255) n = indexOf(d[q], d[q + 1], d[q + 2]);
     else {
       const f = a / 255;
-      const bg = 255 * (1 - f);
-      n = indexOf(Math.round(d[q] * f + bg), Math.round(d[q + 1] * f + bg), Math.round(d[q + 2] * f + bg));
+      n = indexOf(Math.round(onWhite(d[q], f)), Math.round(onWhite(d[q + 1], f)), Math.round(onWhite(d[q + 2], f)));
     }
     byPixel[i] = n;
     return hits[n - 1];

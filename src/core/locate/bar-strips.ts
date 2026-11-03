@@ -1,6 +1,7 @@
 // Colorbar strips: pixel tests for bars and following a strip to its ends.
 
 import type { Box, PixelImage, Rgb } from '../../types/index.ts';
+import { onWhite } from '../color.ts';
 import { readPixel } from '../grid.ts';
 import { background, clamp, differs, FILL, mean, NEUTRAL, noiseTol, PALE, STRONG, stroke } from './helpers.ts';
 import type { Bar } from './types.ts';
@@ -43,9 +44,9 @@ export function barTools(img: PixelImage, region: Box) {
     let b = d[i + 2];
     const a = d[i + 3] / 255;
     if (a < 1) {
-      r = r * a + 255 * (1 - a);
-      g = g * a + 255 * (1 - a);
-      b = b * a + 255 * (1 - a);
+      r = onWhite(r, a);
+      g = onWhite(g, a);
+      b = onWhite(b, a);
     }
     if (Math.abs(r - br) <= tol && Math.abs(g - bgg) <= tol && Math.abs(b - bb) <= tol) return false;
     const c = Math.max(r, g, b) - Math.min(r, g, b);

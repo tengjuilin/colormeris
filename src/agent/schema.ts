@@ -1,7 +1,17 @@
+// Typed interface for software agents (LLMs, other models,
+// scripts). This file is pure: the action catalogue with JSON Schemas for
+// their arguments, a small validator, the state snapshot and the typed
+// questions an agent answers. agent/api.ts binds it to a live workspace as
+// window.colormeris.
+//
+// Coordinates are image pixels of the panel's page image, as in project.json.
+// `t` is the position along the colorbar: 0 at `start`, 1 at `end`.
+
 import { SCALES } from '../core/colorbar.ts';
 import { effectiveLabels, ticksWithT } from '../extract/project/project.ts';
 import type {
   ActionArgs,
+  ActionArgsMap,
   ActionSpec,
   Decision,
   ErrorResult,
@@ -22,15 +32,7 @@ import type {
   ToolDefinition,
   ToolKind,
 } from '../types/index.ts';
-
-// Typed interface for software agents (LLMs, other models,
-// scripts). This file is pure: the action catalogue with JSON Schemas for
-// their arguments, a small validator, the state snapshot and the typed
-// questions an agent answers. agent/api.js binds it to a live workspace as
-// window.colormeris.
-//
-// Coordinates are image pixels of the panel's page image, as in project.json.
-// `t` is the position along the colorbar: 0 at `start`, 1 at `end`.
+import { round } from './round.ts';
 
 export const AGENT_SCHEMA = 'colormeris-agent';
 export const AGENT_VERSION = 1;
@@ -358,7 +360,8 @@ const ACTIONS: Record<string, ActionSpec> = {
     description: 'Download the project zip (includes agent/decisions.json).',
     args: { type: 'object', properties: {} },
   },
-};
+  // The argument types api.ts's handlers take (types/agent.ts) name exactly these actions.
+} satisfies Record<keyof ActionArgsMap, ActionSpec>;
 
 // Checks for what JSON Schema cannot express simply.
 const EXTRA_CHECKS: Record<string, (a: ActionArgs) => string | null> = {
@@ -424,6 +427,12 @@ export function validate(schema: JsonSchema | undefined, value: unknown, path = 
   return errs;
 }
 
+// The arguments without those sent as null, except where `keepNull(key)`
+// says null is a meaningful value.
+export function dropNulls(args: ActionArgs, keepNull: (key: string) => boolean = () => false): ActionArgs {
+  return Object.fromEntries(Object.entries(args).filter(([k, v]) => v !== null || keepNull(k)));
+}
+
 // Forgive common LLM habits before validating: optional arguments sent as
 // null are dropped (unless null is a meaningful value), and add_tick with
 // both at and t uses at. Returns {args, notes}.
@@ -431,12 +440,7 @@ export function normalizeArgs(name: string, args: ActionArgs): NormalizedArgs {
   const spec = ACTIONS[name];
   if (!spec || !args || typeof args !== 'object' || Array.isArray(args)) return { args, notes: [] };
   const notes: string[] = [];
-  const out: ActionArgs = {};
-  for (const [k, v] of Object.entries(args)) {
-    const sub = spec.args.properties?.[k];
-    if (v === null && !(sub?.enum || []).includes(null)) continue;
-    out[k] = v;
-  }
+  const out = dropNulls(args, (k) => (spec.args.properties?.[k]?.enum || []).includes(null));
   if (name === 'add_tick' && out.at && out.t !== undefined) {
     delete out.t;
     notes.push('Both at and t were given; used at and ignored t. Next time give only one.');
@@ -463,8 +467,7 @@ export function toolDefinitions(): ToolDefinition[] {
 
 // ---------------------------------------------------------------- state
 
-const r2 = (v: number) => (Number.isFinite(v) ? Math.round(v * 100) / 100 : v);
-const pt = (p: Point | null | undefined) => (p ? { x: r2(p.x), y: r2(p.y) } : null);
+const pt = (p: Point | null | undefined) => (p ? { x: round(p.x, 2), y: round(p.y, 2) } : null);
 
 // Plain JSON view of the workspace. `results` maps panel id → result (or
 // {error}); `problems` maps panel id → what is missing, or null.
@@ -546,7 +549,7 @@ function panelSnapshot(p: Panel, problem: string | null | undefined, reviewStatu
       colormap: cb.colormap ? { ...cb.colormap } : null,
       ticks: ticksWithT(cb).map((k) => ({
         id: k.id,
-        t: Number.isFinite(k.t) ? Math.round(k.t * 1e4) / 1e4 : null,
+        t: Number.isFinite(k.t) ? round(k.t, 4) : null,
         value: Number.isFinite(k.value) ? k.value : null,
       })),
     },
@@ -594,7 +597,7 @@ export function heatmapResultJson(panel: Panel, res: HeatmapResult | ErrorResult
   result.cells.forEach((row, r) => {
     row.forEach((c, k) => {
       if (c.status === 'off-map') offMap.push({ row: r, col: k, reason: c.reason, rgb: [...(c.rgb as Rgb)] });
-      else if (c.flagged) flagged.push({ row: r, col: k, deltaE: r2(c.deltaE), rgb: [...(c.rgb as Rgb)] });
+      else if (c.flagged) flagged.push({ row: r, col: k, deltaE: round(c.deltaE, 2), rgb: [...(c.rgb as Rgb)] });
     });
   });
   // Values that are bounds (past a bar end, or in an open end bin): ≤ or ≥.
@@ -610,10 +613,10 @@ export function heatmapResultJson(panel: Panel, res: HeatmapResult | ErrorResult
     // on the colormap: gray ND cells, a black diagonal) are null.
     values: result.cells.map((row) => row.map((c) => (Number.isFinite(c.value) ? c.value : null))),
     ...(bounds.some((row) => row.some(Boolean)) ? { bounds } : {}),
-    deltaE: result.cells.map((row) => row.map((c) => r2(c.deltaE))),
+    deltaE: result.cells.map((row) => row.map((c) => round(c.deltaE, 2))),
     maxDeltaE: panel.settings.maxDeltaE,
     scale: result.scale ?? panel.colorbar.scale,
-    ...(result.counts ? { counts: { ...result.counts }, clampedShare: r2(result.clampedShare) } : {}),
+    ...(result.counts ? { counts: { ...result.counts }, clampedShare: round(result.clampedShare, 2) } : {}),
     // A binned colorbar: each cell takes its bin's middle value.
     ...(result.bins
       ? { bins: result.bins.map((b) => ({ value: b.value, open: b.open, rgb: b.rgb.map((x) => Math.round(x)) })) }
@@ -715,67 +718,91 @@ interface GridDetection {
 export function openQuestions({
   panels,
   results,
+  hashes = {},
   detections,
   decisions,
 }: {
   panels: Panel[];
   results: Record<string, ResultJson>;
+  /** resultKeyHash of each result, when the caller has it already. */
+  hashes?: Record<string, string>;
   detections: Record<string, GridDetection | undefined>;
   decisions: Decision[];
 }): Question[] {
-  const qs: Question[] = [];
   const answered = new Set(decisions.filter((d) => d.applied).map((d) => d.questionId));
-  const push = (q: Question) => !answered.has(q.id) && qs.push(q);
+  const qs: Question[] = [];
   for (const p of panels) {
-    const d = detections[p.id];
-    if (p.grid.corners && p.grid.autoSize && d) {
-      const conf = Math.min(d.rowConfidence, d.colConfidence);
-      push({
-        id: `grid:${p.id}:${d.rows}x${d.cols}:${cornerKey(p.grid.corners)}`,
-        type: 'confirm_grid_size',
-        panelId: p.id,
-        prompt: 'How many rows and columns of cells does this heatmap grid have?',
-        evidence: {
-          detected: { rows: d.rows, cols: d.cols },
-          rowConfidence: r2(d.rowConfidence),
-          colConfidence: r2(d.colConfidence),
-          uncertain: conf < 1.3 || d.rows === 1 || d.cols === 1,
-          // Labels typed so far (e.g. read off the figure); 0 when none.
-          labelCounts: { rows: nonEmpty(p.grid.rowLabels), cols: nonEmpty(p.grid.colLabels) },
-        },
-        answerSchema: {
-          type: 'object',
-          properties: {
-            rows: { type: 'integer', minimum: 1, maximum: 1000 },
-            cols: { type: 'integer', minimum: 1, maximum: 1000 },
-          },
-          required: ['rows', 'cols'],
-        },
-        suggested: { rows: d.rows, cols: d.cols },
-      });
-    }
-    const ticks = ticksWithT(p.colorbar)
-      .filter((k) => Number.isFinite(k.t) && Number.isFinite(k.value))
-      .sort((a, b) => a.t - b.t);
-    const dirs = new Set(ticks.slice(1).map((k, i) => Math.sign(k.value - ticks[i].value)));
-    if (ticks.length >= 3 && dirs.size > 1) {
-      push({
-        id: `ticks:${p.id}:${ticks.map((k) => `${k.t.toFixed(3)}=${k.value}`).join(',')}`,
-        type: 'confirm_tick_order',
-        panelId: p.id,
-        prompt: 'Tick values do not change monotonically along the colorbar. Is that how the figure is labelled?',
-        evidence: { ticks: ticks.map((k) => ({ id: k.id, t: r2(k.t), value: k.value })) },
-        answerSchema: { enum: ['as_placed', 'fix_needed'] },
-      });
-    }
     const res = results[p.id] as unknown as ResultView | undefined;
-    if (!res || res.error) continue;
-    const hash = resultKeyHash(res);
-    if (p.tool === 'heatmap' && res.flagged.length > MAX_CELL_QUESTIONS) {
-      // Many flagged cells usually mean one cause (often the colorbar), so
-      // they get one question instead of one per cell.
-      const des = res.flagged.map((f) => f.deltaE).sort((a, b) => a - b);
-      push({
+    const ok = res && !res.error ? res : null;
+    const hash = ok ? (hashes[p.id] ?? resultKeyHash(ok)) : '';
+    qs.push(
+      ...gridSizeQuestion(p, detections[p.id]),
+      ...tickOrderQuestion(p),
+      ...(ok ? [...flaggedQuestions(p, ok, hash), ...extractionQuestion(p, ok, hash)] : []),
+    );
+  }
+  return qs.filter((q) => !answered.has(q.id));
+}
+
+// One builder per question type; each returns the panel's questions of
+// that type (none or more).
+
+function gridSizeQuestion(p: Panel, d: GridDetection | undefined): Question[] {
+  if (!p.grid.corners || !p.grid.autoSize || !d) return [];
+  const conf = Math.min(d.rowConfidence, d.colConfidence);
+  return [
+    {
+      id: `grid:${p.id}:${d.rows}x${d.cols}:${cornerKey(p.grid.corners)}`,
+      type: 'confirm_grid_size',
+      panelId: p.id,
+      prompt: 'How many rows and columns of cells does this heatmap grid have?',
+      evidence: {
+        detected: { rows: d.rows, cols: d.cols },
+        rowConfidence: round(d.rowConfidence, 2),
+        colConfidence: round(d.colConfidence, 2),
+        uncertain: conf < 1.3 || d.rows === 1 || d.cols === 1,
+        // Labels typed so far (e.g. read off the figure); 0 when none.
+        labelCounts: { rows: nonEmpty(p.grid.rowLabels), cols: nonEmpty(p.grid.colLabels) },
+      },
+      answerSchema: {
+        type: 'object',
+        properties: {
+          rows: { type: 'integer', minimum: 1, maximum: 1000 },
+          cols: { type: 'integer', minimum: 1, maximum: 1000 },
+        },
+        required: ['rows', 'cols'],
+      },
+      suggested: { rows: d.rows, cols: d.cols },
+    },
+  ];
+}
+
+function tickOrderQuestion(p: Panel): Question[] {
+  const ticks = ticksWithT(p.colorbar)
+    .filter((k) => Number.isFinite(k.t) && Number.isFinite(k.value))
+    .sort((a, b) => a.t - b.t);
+  const dirs = new Set(ticks.slice(1).map((k, i) => Math.sign(k.value - ticks[i].value)));
+  if (ticks.length < 3 || dirs.size <= 1) return [];
+  return [
+    {
+      id: `ticks:${p.id}:${ticks.map((k) => `${k.t.toFixed(3)}=${k.value}`).join(',')}`,
+      type: 'confirm_tick_order',
+      panelId: p.id,
+      prompt: 'Tick values do not change monotonically along the colorbar. Is that how the figure is labelled?',
+      evidence: { ticks: ticks.map((k) => ({ id: k.id, t: round(k.t, 2), value: k.value })) },
+      answerSchema: { enum: ['as_placed', 'fix_needed'] },
+    },
+  ];
+}
+
+// Flagged heatmap cells: one question per cell, or one for all of them
+// when there are many (usually one cause, often the colorbar).
+function flaggedQuestions(p: Panel, res: ResultView, hash: string): Question[] {
+  if (p.tool !== 'heatmap') return [];
+  if (res.flagged.length > MAX_CELL_QUESTIONS) {
+    const des = res.flagged.map((f) => f.deltaE).sort((a, b) => a - b);
+    return [
+      {
         id: `flags:${p.id}:${hash}`,
         type: 'classify_flagged_cells',
         panelId: p.id,
@@ -790,31 +817,32 @@ export function openQuestions({
           cells: res.flagged.map((f) => ({ row: f.row, col: f.col })),
         },
         answerSchema: { enum: ['keep_all', 'exclude_all', 'recheck_colorbar'] },
-      });
-    } else if (p.tool === 'heatmap') {
-      for (const f of res.flagged) {
-        push({
-          id: `flag:${p.id}:${f.row},${f.col}:${f.deltaE}`,
-          type: 'classify_flagged',
-          panelId: p.id,
-          prompt:
-            "This cell's color is far from every colorbar color. Keep its value, exclude it, or recheck the colorbar?",
-          evidence: {
-            row: f.row,
-            col: f.col,
-            rowLabel: res.rowLabels[f.row],
-            colLabel: res.colLabels[f.col],
-            value: res.values[f.row][f.col],
-            deltaE: f.deltaE,
-            maxDeltaE: res.maxDeltaE,
-            rgb: f.rgb,
-          },
-          answerSchema: { enum: ['keep', 'exclude', 'recheck_colorbar'] },
-        });
-      }
-    }
-    if (p.review?.resultHash === hash) continue; // already accepted or rejected as it is
-    push({
+      },
+    ];
+  }
+  return res.flagged.map((f) => ({
+    id: `flag:${p.id}:${f.row},${f.col}:${f.deltaE}`,
+    type: 'classify_flagged',
+    panelId: p.id,
+    prompt: "This cell's color is far from every colorbar color. Keep its value, exclude it, or recheck the colorbar?",
+    evidence: {
+      row: f.row,
+      col: f.col,
+      rowLabel: res.rowLabels[f.row],
+      colLabel: res.colLabels[f.col],
+      value: res.values[f.row][f.col],
+      deltaE: f.deltaE,
+      maxDeltaE: res.maxDeltaE,
+      rgb: f.rgb,
+    },
+    answerSchema: { enum: ['keep', 'exclude', 'recheck_colorbar'] },
+  }));
+}
+
+function extractionQuestion(p: Panel, res: ResultView, hash: string): Question[] {
+  if (p.review?.resultHash === hash) return []; // already accepted or rejected as it is
+  return [
+    {
       id: `accept:${p.id}:${hash}`,
       type: 'confirm_extraction',
       panelId: p.id,
@@ -825,18 +853,19 @@ export function openQuestions({
           ? { rows: res.values.length, cols: res.values[0].length, flaggedCount: res.flagged.length }
           : { regions: res.regions.length, flaggedPx: res.regions.reduce((s, x) => s + x.flaggedPx, 0) },
       answerSchema: { enum: ['accept', 'reject'] },
-    });
-  }
-  return qs;
+    },
+  ];
 }
 
 const MAX_CELL_QUESTIONS = 3;
 const nonEmpty = (labels: unknown[]) => labels.filter((l) => String(l).trim() !== '').length;
 const cornerKey = (cs: Point[]) => cs.map((c) => `${Math.round(c.x)},${Math.round(c.y)}`).join(';');
 
-// Short, stable hash of a result's numbers (FNV-1a over its JSON).
+// Short, stable hash of a result's numbers (FNV-1a over its JSON). A map's
+// JSON is a summary with neither values nor regions, so the summary is hashed
+// (JSON.stringify(undefined) is undefined, which threw on get_results).
 export function resultKeyHash(res: { values?: unknown; regions?: unknown }) {
-  const s = JSON.stringify(res.values ?? res.regions);
+  const s = JSON.stringify(res.values ?? res.regions ?? res);
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
   return h.toString(16);

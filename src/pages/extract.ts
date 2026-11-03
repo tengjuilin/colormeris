@@ -89,6 +89,8 @@ try {
 
   // Typed API for software agents (agent/api.ts).
   window.colormeris = createAgentApi(ws);
+  // The Panels card and the Agent card show review verdicts through ws.
+  ws.reviewStatus = window.colormeris.reviewStatus;
   // LLM agent for heatmaps (agent/ui/agent-card.ts, agent/runner.ts).
   setupAgentPanel(ws, window.colormeris, settings);
   // Grid card: read row and column labels with a vision LLM (agent/ui/labels-reader.ts).

@@ -1,48 +1,17 @@
 import { pointAtT, projectT } from '../../core/colorbar.ts';
 import { bilinear, outerCorners, rectCorners } from '../../core/grid.ts';
 import type { OverlayMembers, Panel, Point, ViewerApi, WorkspaceContext } from '../../types/index.ts';
+import { drawHandle, outlinedText, polyPath, segmentPath, strokeDual } from './draw.ts';
 
 // What the workspace draws over the image: grids, colorbars with their
 // ticks, handles and rubber bands while placing. Tools draw their own parts
 // through the drawUnderGrid / drawOverGrid / drawOverlay / drawModePreview hooks.
 //
-// w is the workspace's private context (workspace.js). Other modules'
+// w is the workspace's private context (workspace.ts). Other modules'
 // functions are called through it at call time (activePanel, pagePanels, snapAxis).
+// The canvas helpers (outlined strokes, handles, labels) are in draw.ts.
 export function setupWorkspaceOverlay(w: WorkspaceContext): OverlayMembers {
   const { app } = w;
-
-  function strokeDual(ctx: CanvasRenderingContext2D, color: string, width: number, dash?: number[]) {
-    ctx.setLineDash(dash || []);
-    ctx.lineWidth = width + 2;
-    ctx.strokeStyle = w.COLORS.outline;
-    ctx.stroke();
-    ctx.lineWidth = width;
-    ctx.strokeStyle = color;
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-
-  function polyPath(ctx: CanvasRenderingContext2D, v: ViewerApi, pts: Point[]) {
-    ctx.beginPath();
-    pts.forEach((q, i) => {
-      const s = v.toScreen(q);
-      if (i === 0) ctx.moveTo(s.x, s.y);
-      else ctx.lineTo(s.x, s.y);
-    });
-    ctx.closePath();
-  }
-
-  function drawHandle(ctx: CanvasRenderingContext2D, v: ViewerApi, p: Point, color: string, shape = 'square') {
-    const s = v.toScreen(p);
-    ctx.beginPath();
-    if (shape === 'circle') ctx.arc(s.x, s.y, 5, 0, Math.PI * 2);
-    else ctx.rect(s.x - 5, s.y - 5, 10, 10);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#fff';
-    ctx.stroke();
-  }
 
   function drawGrid(ctx: CanvasRenderingContext2D, v: ViewerApi, panel: Panel, active: boolean) {
     const g = panel.grid;
@@ -117,9 +86,7 @@ export function setupWorkspaceOverlay(w: WorkspaceContext): OverlayMembers {
       ctx.stroke();
     }
 
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
+    segmentPath(ctx, v, cb.start, cb.end);
     strokeDual(ctx, w.COLORS.bar, 2);
 
     if (!active) return;
@@ -137,11 +104,7 @@ export function setupWorkspaceOverlay(w: WorkspaceContext): OverlayMembers {
       const label = Number.isFinite(k.value) ? tickLabel(k.value) : '?';
       const lx = s.x + nx * 18 + (nx >= 0 ? 0 : -ctx.measureText(label).width);
       const ly = s.y + ny * 18;
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-      ctx.strokeText(label, lx, ly);
-      ctx.fillStyle = '#fff';
-      ctx.fillText(label, lx, ly);
+      outlinedText(ctx, label, lx, ly, '#fff', 'rgba(0,0,0,0.75)');
     }
     drawHandle(ctx, v, cb.start, w.COLORS.bar);
     drawHandle(ctx, v, cb.end, w.COLORS.bar);
@@ -177,12 +140,7 @@ export function setupWorkspaceOverlay(w: WorkspaceContext): OverlayMembers {
         polyPath(ctx, v, rectCorners(a, hover));
         strokeDual(ctx, w.COLORS.grid, 1.5, [6, 4]);
       } else if (m.type === 'colorbar') {
-        const b = w.snapAxis(a, hover);
-        const sa = v.toScreen(a);
-        const sb = v.toScreen(b);
-        ctx.beginPath();
-        ctx.moveTo(sa.x, sa.y);
-        ctx.lineTo(sb.x, sb.y);
+        segmentPath(ctx, v, a, w.snapAxis(a, hover));
         strokeDual(ctx, w.COLORS.bar, 1.5, [6, 4]);
       }
     }
@@ -196,5 +154,5 @@ export function setupWorkspaceOverlay(w: WorkspaceContext): OverlayMembers {
     }
   }
 
-  return { strokeDual, polyPath, drawHandle, drawOverlay };
+  return { drawOverlay };
 }

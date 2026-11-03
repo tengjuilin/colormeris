@@ -1,3 +1,15 @@
+// Agent API: binds the typed actions of agent/schema.ts to a live workspace
+// and exposes them as window.colormeris, so an LLM or a script can
+// drive the page without clicking pixels:
+//
+//   await colormeris.run('set_grid', {topLeft: {x: 40, y: 60}, bottomRight: {x: 520, y: 400}})
+//   → {ok: true, result, state}   or   {ok: false, error}
+//
+// Answers to typed questions carry a confidence. Below `policy.minConfidence`
+// an answer is logged but not applied, and the question stays open for a
+// human. Every mutating call and every decision is logged; both logs go into
+// the project zip (agent/actions.json, agent/decisions.json).
+
 import { rgbToLab } from '../core/color.ts';
 import {
   labToT,
@@ -9,12 +21,13 @@ import {
   snapTick,
   tickProblem,
 } from '../core/colorbar.ts';
-import { cellAt, detectGridSize, readPixel, rectCorners } from '../core/grid.ts';
+import { cellAt, detectGridSize, rectCorners } from '../core/grid.ts';
 import { fileKind } from '../extract/pdf-loader.ts';
 import { ANCHOR_DEFAULTS, boxLabel, createPanel, createRoi, ticksWithT } from '../extract/project/project.ts';
 import { centroid, geomToBox } from '../extract/roi/geometry.ts';
 import type {
   ActionArgs,
+  ActionArgsMap,
   ActionLogEntry,
   ActionResult,
   BatchAction,
@@ -23,12 +36,18 @@ import type {
   HeatmapResult,
   MapResult,
   Panel,
+  PanelResult,
   Point,
   Question,
+  QuestionType,
   ResultJson,
+  RoiGeom,
   RoiResult,
+  RunOptions,
   Workspace,
 } from '../types/index.ts';
+import { averagePixel, colorbarNote, tickNote } from './action-notes.ts';
+import { round } from './round.ts';
 import {
   AGENT_ACTIONS,
   AGENT_SCHEMA,
@@ -45,21 +64,8 @@ import {
   validateAction,
 } from './schema.ts';
 
-// Agent API: binds the typed actions of agent/schema.js to a live workspace
-// and exposes them as window.colormeris, so an LLM or a script can
-// drive the page without clicking pixels:
-//
-//   await colormeris.run('set_grid', {topLeft: {x: 40, y: 60}, bottomRight: {x: 520, y: 400}})
-//   → {ok: true, result, state}   or   {ok: false, error}
-//
-// Answers to typed questions carry a confidence. Below `policy.minConfidence`
-// an answer is logged but not applied, and the question stays open for a
-// human. Every mutating call and every decision is logged; both logs go into
-// the project zip (agent/actions.json, agent/decisions.json).
-
-// TODO(types): handler arguments are checked against ACTIONS' JSON Schema in run(); typing each one needs args types generated from the schema.
-// biome-ignore lint/suspicious/noExplicitAny: see above
-type Args = any;
+// One handler per action, taking its arguments as run() validated them against ACTIONS' JSON Schema.
+type Handlers = { [K in keyof ActionArgsMap]: (args: ActionArgsMap[K]) => unknown };
 
 export function createAgentApi(ws: Workspace): ColormerisApi {
   const { app } = ws;
@@ -89,18 +95,39 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
 
   const problems = () => Object.fromEntries(app.project.panels.map((p) => [p.id, ws.resultFor(p).error || null]));
 
-  function rawResultsJson(panel: Panel): ResultJson {
+  // A panel's result as agent JSON and the hash of its values, built once
+  // per result: ws.resultFor returns the same object while the panel's
+  // result key is unchanged, and state() asks for both after every action
+  // (review status, questions). `sig` covers what the JSON reads of the
+  // panel beyond its result (labels, maxDeltaE, scale, profile names),
+  // which the result key leaves out. The cached JSON is never mutated.
+  const resultMemo = new WeakMap<PanelResult, { sig: string; json: ResultJson; hash: string | null }>();
+  function resultEntry(panel: Panel) {
     const res = ws.resultFor(panel);
+    const sig = JSON.stringify([
+      panel.id,
+      panel.tool,
+      panel.grid,
+      panel.settings.maxDeltaE,
+      panel.colorbar.scale,
+      panel.tool === 'map' ? panel.map.profiles.map((l) => [l.id, l.name]) : null,
+    ]);
+    const hit = resultMemo.get(res);
+    if (hit && hit.sig === sig) return hit;
+    const json = toResultJson(panel, res);
+    const entry = { sig, json, hash: json.error ? null : resultKeyHash(json as { values?: unknown }) };
+    resultMemo.set(res, entry);
+    return entry;
+  }
+
+  function toResultJson(panel: Panel, res: PanelResult): ResultJson {
     if (panel.tool === 'heatmap') return heatmapResultJson(panel, res as HeatmapResult) as ResultJson;
     if (panel.tool === 'map') return mapResultJson(panel, res as MapResult) as ResultJson;
     return roiResultJson(panel, res as RoiResult, (r, c) => boxLabel(panel.grid, r, c)) as ResultJson;
   }
 
   // Hash of the panel's current values, or null while it has no result.
-  function currentHash(panel: Panel) {
-    const out = rawResultsJson(panel);
-    return out.error ? null : resultKeyHash(out as { values?: unknown });
-  }
+  const currentHash = (panel: Panel) => resultEntry(panel).hash;
 
   // 'accepted' | 'rejected' while the values are unchanged since the
   // review, 'stale' after they changed, null when never reviewed.
@@ -108,13 +135,12 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     if (!panel.review) return null;
     return currentHash(panel) === panel.review.resultHash ? panel.review.status : 'stale';
   }
-  ws.reviewStatus = reviewStatus;
 
-  function resultsJson(panel: Panel) {
-    const out = rawResultsJson(panel);
+  function resultsJson(panel: Panel): ResultJson {
+    const { json, hash } = resultEntry(panel);
+    const out: ResultJson = { ...json };
     if (out.error) return out;
     if (panel.tool === 'heatmap') {
-      const hash = resultKeyHash(out as { values?: unknown });
       const mine = decisions.filter((d) => d.applied && d.panelId === panel.id);
       out.excluded = [
         ...mine
@@ -144,13 +170,17 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     // The typed questions cover heatmaps and ROI; maps have none yet.
     const panels = app.project.panels.filter((p) => p.tool !== 'map' && (!panelId || p.id === panelId));
     const results: Record<string, ResultJson> = {};
+    const hashes: Record<string, string> = {};
     const detections: Record<string, ReturnType<typeof detectGridSize>> = {};
     for (const p of panels) {
       const img = imageOf(p);
       if (p.grid.corners && p.grid.autoSize && img) detections[p.id] = detectGridSize(img, p.grid.corners);
-      if (!ws.resultFor(p).error) results[p.id] = resultsJson(p);
+      const { hash } = resultEntry(p);
+      if (hash === null) continue;
+      results[p.id] = resultsJson(p);
+      hashes[p.id] = hash;
     }
-    return openQuestions({ panels, results, detections, decisions }).map((q) => {
+    return openQuestions({ panels, results, hashes, detections, decisions }).map((q) => {
       const last = [...decisions].reverse().find((d) => d.questionId === q.id);
       return last ? { ...q, escalated: { answer: last.answer, confidence: last.confidence, source: last.source } } : q;
     });
@@ -187,10 +217,15 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     return d;
   }
 
-  function applyAnswer(q: Question, answer: Args, d: Decision) {
-    if (q.type === 'confirm_grid_size') {
-      ws.commit((p) => applyGridSize(p, answer.rows, answer.cols));
-    } else if (q.type === 'confirm_extraction') {
+  // What an applied answer changes, by question type. classify_flagged(_cells)
+  // and confirm_tick_order are recorded decisions only; results report
+  // excluded cells from the log.
+  const applyAnswer: Partial<Record<QuestionType, (q: Question, answer: unknown, d: Decision) => void>> = {
+    confirm_grid_size: (_q, answer) => {
+      const { rows, cols } = answer as { rows: number; cols: number };
+      ws.commit((p) => applyGridSize(p, rows, cols));
+    },
+    confirm_extraction: (q, answer, d) =>
       ws.commit(
         (p) =>
           (p.review = {
@@ -201,16 +236,16 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
             resultHash: q.resultHash!,
             time: d.time,
           }),
-      );
-    }
-    // classify_flagged(_cells) and confirm_tick_order are recorded
-    // decisions; results report excluded cells from the log.
-  }
+      ),
+  };
 
-  const handlers: Record<string, (args: Args) => unknown> = {
+  const handlers: Handlers = {
     get_state: () => state(),
     get_results: async ({ panelId }) => resultsJson(await takePanel(panelId)),
-    get_questions: ({ panelId }) => (needSource(), questions(panelId)),
+    get_questions: ({ panelId }) => {
+      needSource();
+      return questions(panelId);
+    },
 
     answer_question: async ({ questionId, answer, confidence = null, source = 'agent', model = null }) => {
       needSource();
@@ -238,7 +273,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       decisions.push(d);
       if (applied) {
         await takePanel(q.panelId);
-        applyAnswer(q, answer, d);
+        applyAnswer[q.type]?.(q, answer, d);
       } else
         ws.toast(
           `Needs review: ${q.prompt} (${source} ${confidence === null ? 'gave no confidence' : `was ${Math.round(confidence * 100)}% sure`})`,
@@ -249,18 +284,9 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     sample_pixel: async ({ panelId, x, y, radius = 0 }) => {
       const panel = await takePanel(panelId);
       const img = imageOf(panel);
-      const acc = [0, 0, 0];
-      let n = 0;
-      for (let dy = -radius; dy <= radius; dy++) {
-        for (let dx = -radius; dx <= radius; dx++) {
-          const px = readPixel(img, x + dx, y + dy);
-          for (let i = 0; i < 3; i++) acc[i] += px[i];
-          n++;
-        }
-      }
-      const rgb = acc.map((v) => Math.round(v / n));
+      const rgb = averagePixel(img, x, y, radius);
       const lab = rgbToLab(rgb);
-      const out = { rgb, lab: lab.map((v) => Math.round(v * 100) / 100) };
+      const out = { rgb, lab: lab.map((v) => round(v, 2)) };
       const cb = panel.colorbar;
       if (cb.start && cb.end) {
         const samples = sampleColorbar(img, cb.start, cb.end, cb.halfWidth, cb.nSamples);
@@ -309,7 +335,10 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       return null;
     },
 
-    select_panel: async ({ panelId }) => (await takePanel(panelId), null),
+    select_panel: async ({ panelId }) => {
+      await takePanel(panelId);
+      return null;
+    },
 
     add_panel: ({ name }) => {
       needSource();
@@ -338,7 +367,8 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
 
     set_grid: async ({ panelId, topLeft, bottomRight, corners }) => {
       await takePanel(panelId);
-      const cs = corners || rectCorners(topLeft, bottomRight);
+      // Without corners, EXTRA_CHECKS made sure of both points.
+      const cs = corners || rectCorners(topLeft!, bottomRight!);
       const w = Math.hypot(cs[1].x - cs[0].x, cs[1].y - cs[0].y);
       const h = Math.hypot(cs[3].x - cs[0].x, cs[3].y - cs[0].y);
       if (w < 2 || h < 2) throw new Error('Grid is too small.');
@@ -405,19 +435,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
         for (const k of cb.ticks)
           Object.assign(k, pointAtT(cb.start!, cb.end!, projectT(cb.start!, cb.end!, k as Point)));
       });
-      const r1 = (v: number) => Math.round(v * 10) / 10;
-      const pt = (q: Point) => `(${r1(q.x)}, ${r1(q.y)})`;
-      let note: string;
-      if (!snap) note = 'Placed as given (no snapping).';
-      else if (!fit)
-        note =
-          'No colored strip was found under the line, so it was placed as given. Check that the line runs along the bar.';
-      else {
-        note = `Snapped to the strip (${Math.round(fit.stripHalf * 2 + 1)} px wide): start ${pt(start)} → ${pt(s)}, end ${pt(end)} → ${pt(e)}, halfWidth ${hw}.`;
-        const missed = ['start', 'end'].filter((k) => !fit.found[k as 'start' | 'end']);
-        if (missed.length)
-          note += ` No clear edge was found near the ${missed.join(' and ')}; ${missed.length > 1 ? 'they were' : 'it was'} only moved sideways. Check ${missed.length > 1 ? 'them' : 'it'} on a zoomed view.`;
-      }
+      const note = colorbarNote({ snap, fit, given: { start, end }, placed: { start: s, end: e }, halfWidth: hw });
       return { start: s, end: e, halfWidth: panel.colorbar.halfWidth, note };
     },
 
@@ -425,18 +443,13 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       const panel = await takePanel(panelId);
       const { start, end } = panel.colorbar;
       if (!start || !end) throw new Error('Place the colorbar first (set_colorbar).');
-      let tt = at ? projectT(start, end, at) : t;
+      let tt = at ? projectT(start, end, at) : t!; // EXTRA_CHECKS: at, or a finite t
       if (tt < -0.1 || tt > 1.1) throw new Error(`That point is off the colorbar (t = ${tt.toFixed(2)}).`);
       const mark = snap ? snapTick(imageOf(panel), start, end, pointAtT(start, end, tt)) : null;
       if (mark) tt = mark.t;
       const id = ws.newTickId();
       ws.commit((p) => p.colorbar.ticks.push({ id, ...pointAtT(start, end, tt), value }));
-      const note = !snap
-        ? 'Placed as given.'
-        : mark
-          ? `Snapped ${Math.abs(mark.moved)} px along the bar onto the tick mark.`
-          : 'No tick mark found nearby; placed as given.';
-      return { tickId: id, t: Math.round(tt * 10000) / 10000, note };
+      return { tickId: id, t: round(tt, 4), note: tickNote(snap, mark) };
     },
 
     set_tick_value: async ({ panelId, tickId, value }) => {
@@ -471,15 +484,12 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     add_region: async ({ panelId, shape, geom, name, replicate = true }) => {
       const panel = await takePanel(panelId);
       if (panel.tool !== 'roi') throw new Error('Regions belong to ROI panels; use set_tool first.');
-      const px =
-        shape === 'polygon'
-          ? { points: geom.points.map((q: Point) => ({ x: q.x, y: q.y })) }
-          : { cx: geom.cx, cy: geom.cy, rx: geom.rx, ry: geom.ry };
+      // TODO(types): the schema does not say which geom fields each shape needs, so a missing one is not caught.
+      const points = shape === 'polygon' ? geom.points!.map((q) => ({ x: q.x, y: q.y })) : null;
+      const px: RoiGeom = points ? { points } : { cx: geom.cx!, cy: geom.cy!, rx: geom.rx!, ry: geom.ry! };
       const grid = panel.grid;
       const cell =
-        replicate && grid.corners
-          ? cellAt(grid, shape === 'polygon' ? centroid(px.points) : { x: px.cx, y: px.cy })
-          : null;
+        replicate && grid.corners ? cellAt(grid, points ? centroid(points) : { x: geom.cx!, y: geom.cy! }) : null;
       const label = name || `ROI ${panel.rois.length + 1}`;
       const roi = cell
         ? createRoi(shape, geomToBox(shape, px, grid, cell.row, cell.col), { name: label })
@@ -527,13 +537,24 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       return { status };
     },
 
-    undo: () => (ws.undo(), null),
-    redo: () => (ws.redo(), null),
-    export_project: async () => (needSource(), await ws.exportZip(), null),
+    undo: () => {
+      ws.undo();
+      return null;
+    },
+    redo: () => {
+      ws.redo();
+      return null;
+    },
+    export_project: async () => {
+      needSource();
+      await ws.exportZip();
+      return null;
+    },
   };
 
-  // Run one action. Never throws; mutating actions also return the new state.
-  async function run(name: string, rawArgs: ActionArgs = {}): Promise<ActionResult> {
+  // Run one action. Never throws; mutating actions also return the new state
+  // (unless `state: false`: callers that only want the effect skip building it).
+  async function run(name: string, rawArgs: ActionArgs = {}, opts: RunOptions = {}): Promise<ActionResult> {
     const { args, notes } = normalizeArgs(name, rawArgs);
     const errs = validateAction(name, args);
     if (errs.length) return { ok: false, error: errs.join('; ') };
@@ -541,9 +562,9 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     const extra = notes.length ? { notes } : {};
     try {
       if (spec.mutates && app.mode) ws.setMode(null);
-      const result = await handlers[name](args);
+      const result = await (handlers[name as keyof Handlers] as (a: ActionArgs) => unknown)(args);
       if (spec.mutates) actionLog.push({ action: name, args, ok: true, time: new Date().toISOString() });
-      return spec.mutates
+      return spec.mutates && opts.state !== false
         ? { ok: true, result: result ?? null, ...extra, state: state() }
         : { ok: true, result: result ?? null, ...extra };
     } catch (err) {
@@ -588,5 +609,6 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     tools: toolDefinitions,
     policy,
     log: () => ({ actions: [...actionLog], decisions: [...decisions] }),
+    reviewStatus,
   };
 }

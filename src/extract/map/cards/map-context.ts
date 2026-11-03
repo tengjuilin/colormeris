@@ -1,20 +1,9 @@
-// How the Map cards reach the tool's shared context (`mctx`, made in map-tool.ts). Cards are mounted with no
-// props, so setupMapTool registers its context here; tests register a fake one.
-import { useSyncExternalStore } from 'react';
+// How the Map cards reach the tool's shared context (`mctx`, made in map-tool.ts). setupMapTool registers it
+// before the cards mount; tests register a fake one.
+import { createToolContext } from '../../react/tool-context.ts';
 import type { MapToolContext } from '../map-tool.ts';
 
-let current: MapToolContext | null = null;
+const mapContext = createToolContext<MapToolContext>('setupMapTool');
 
-export function setMapToolContext(mctx: MapToolContext | null) {
-  current = mctx;
-}
-
-export function useMapTool(): MapToolContext {
-  // The context never changes once set; the hook only reads it.
-  const mctx = useSyncExternalStore(
-    () => () => {},
-    () => current,
-  );
-  if (!mctx) throw new Error('useMapTool: setupMapTool has not run');
-  return mctx;
-}
+export const setMapToolContext = mapContext.set;
+export const useMapTool = mapContext.get;

@@ -7,7 +7,7 @@ export interface Point {
   y: number;
 }
 
-/** An axis-aligned box in page pixels (locate.js, agent/decide.js). */
+/** An axis-aligned box in page pixels (locate.ts, agent/decide.ts). */
 export interface Box {
   x0: number;
   y0: number;
@@ -43,5 +43,5 @@ export interface PixelImage {
   data: Uint8ClampedArray;
 }
 
-/** Color distance used to match colors to a colorbar (core/color.js colorDistance). */
+/** Color distance used to match colors to a colorbar (core/color.ts colorDistance). */
 export type DistanceName = 'de2000' | 'de76';

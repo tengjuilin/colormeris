@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { cmapData } from '../../../core/colormap-library.ts';
+import { mapByName } from '../../../core/colormap-library.ts';
 import { pct } from '../../common.ts';
 import type { FigureLine } from '../../figure-input.ts';
 import { COMPARE_MAX } from '../../route.ts';
@@ -23,8 +23,6 @@ export interface Description {
   best: Scored;
   level: MatchLevel;
 }
-
-const kindOf = new Map(cmapData.maps.map((m) => [m.name, m.kind]));
 
 function Verdict({
   outcome,
@@ -97,7 +95,10 @@ const Item = memo(function Item({
   return (
     <li className="cmap-id-item">
       <span className="cmap-mini">
-        <Strip colors={miniColors(lead.name, !!lead.reversed)} qualitative={kindOf.get(lead.name) === 'qualitative'} />
+        <Strip
+          colors={miniColors(lead.name, !!lead.reversed)}
+          qualitative={mapByName(lead.name)?.kind === 'qualitative'}
+        />
       </span>
       <span className="cmap-id-name">
         <code>{lead.name}</code>

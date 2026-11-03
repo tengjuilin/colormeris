@@ -3,6 +3,7 @@
 // w.tool(), w.app.mode); never memoize on project objects, they are mutated in place.
 import { createContext, useContext, useRef, useSyncExternalStore } from 'react';
 import type { Workspace, WorkspaceContext } from '../../types/index.ts';
+import { sectionVisible as sectionShown } from '../workspace/sections.ts';
 import { store } from '../workspace/store.ts';
 
 export interface WsContextValue {
@@ -12,15 +13,9 @@ export interface WsContextValue {
 
 export const WsContext = createContext<WsContextValue | null>(null);
 
-/** Sections shown for every tool once a file is loaded. */
-const FIXED_SECTIONS = ['sec-panels', 'sec-grid', 'sec-colorbar'];
-
-/** The rule renderSidebarDom applies to a section's `hidden`, without reading the DOM. */
+/** Whether a section is shown now: the rule renderSidebarDom applies to its `hidden` (workspace/sections.ts). */
 export function sectionVisible({ w }: WsContextValue, sectionId: string): boolean {
-  if (!w.app.sourceCanvas) return false;
-  // The Agent card sits in its tool's slot instead of the tool's `sections` list (renderSidebarDom: data-tool).
-  if (sectionId === 'sec-agent') return w.tool().kind === 'heatmap';
-  return FIXED_SECTIONS.includes(sectionId) || !!w.tool().sections?.includes(sectionId);
+  return sectionShown(!!w.app.sourceCanvas, w.tool(), sectionId);
 }
 
 export interface UseWorkspaceOptions {

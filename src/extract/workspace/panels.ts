@@ -4,7 +4,7 @@ import { createPanel } from '../project/project.ts';
 // Panels: adding and removing panels, and the rule that every page shown has
 // a panel. The Panels card itself is cards/panels-card.tsx.
 //
-// w is the workspace's private context (workspace.js). Other modules'
+// w is the workspace's private context (workspace.ts). Other modules'
 // functions are called through it at call time (setMode, changed, goToPage, ...).
 export function setupWorkspacePanels(w: WorkspaceContext): PanelsMembers {
   const { app } = w;

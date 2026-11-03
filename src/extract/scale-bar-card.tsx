@@ -11,7 +11,7 @@ import { scaleDefaults, scaleFocus } from './scale-bar.ts';
 const UNITS: ScaleUnit[] = ['cm', 'mm', 'µm', 'nm'];
 
 export function ScaleCard() {
-  const { ws, w } = useWorkspace({ section: 'sec-scale' });
+  const { w } = useWorkspace({ section: 'sec-scale' });
   const panel = w.activePanel();
   const sc = panel.scale;
   const length = sc?.length ?? scaleDefaults.length;
@@ -55,7 +55,7 @@ export function ScaleCard() {
             icon="trash"
             label="Remove the scale bar"
             disabled={!sc}
-            onClick={() => ws.commit((p) => (p.scale = null))}
+            onClick={() => w.commit((p) => (p.scale = null))}
           />
         }
       />
@@ -89,8 +89,8 @@ export function ScaleCard() {
               options={UNITS.map((u) => ({ value: u, label: u }))}
               onChange={(v) => {
                 scaleDefaults.unit = v as ScaleUnit;
-                if (w.activePanel().scale) ws.commit((p) => (p.scale!.unit = v as ScaleUnit));
-                else ws.changed();
+                if (w.activePanel().scale) w.commit((p) => (p.scale!.unit = v as ScaleUnit));
+                else w.changed();
               }}
             />
           </InputPair>

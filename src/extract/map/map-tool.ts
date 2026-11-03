@@ -4,6 +4,7 @@ import type {
   ErrorResult,
   Handle,
   MapField,
+  MapModeType,
   MapResult,
   Mode,
   Panel,
@@ -14,10 +15,13 @@ import type {
   ViewerApi,
   Workspace,
 } from '../../types/index.ts';
+import { distanceToSegment, lockAxis, nextName, segmentProjection } from '../edit-math.ts';
 import { createAxisTick, createProfile } from '../project/project.ts';
 import { formatNumber, mapPanelFiles } from '../project/project-files.ts';
-import { drawScaleBar, drawScalePreview, scaleBarClick } from '../scale-bar.ts';
+import { drawScaleBar, drawScalePreview, SCALE_MODE_TEXTS, scaleBarClick } from '../scale-bar.ts';
 import { hexToRgb } from '../settings/settings.ts';
+import { isTextEntry } from '../typing.ts';
+import { drawHandle, outlinedText, segmentPath, strokeDual } from '../workspace/draw.ts';
 import { focusAxisTick } from './cards/axis-tick-focus.ts';
 import { setMapToolContext } from './cards/map-context.ts';
 import { createProfilePlot, type ProfilePlot } from './cards/profile-plot.ts';
@@ -25,7 +29,8 @@ import { createSweep, type Sweep } from './cards/sweep.ts';
 import {
   type AxisKey,
   axisT,
-  extractField,
+  extractFieldValues,
+  type FieldValues,
   FLAG_DELTA_E,
   FLAG_HIGH,
   FLAG_LOW,
@@ -36,19 +41,9 @@ import {
   pastedProfiles,
   reconPixels,
   sampleProfiles,
+  withCoords,
 } from './field.ts';
-import { reconcileSelection } from './selection.ts';
-
-/** A handle from hitTest: a profile end, a whole profile (with the drag's start) or an axis tick. */
-type MapHandle = Handle & {
-  key: AxisKey;
-  id: string;
-  end: 'a' | 'b';
-  start: Point;
-  a: Point;
-  b: Point;
-  started?: boolean;
-};
+import { reconcileSelection, selectInSet } from './selection.ts';
 
 /** The edited profile moving across the plot (cards/sweep.ts). */
 export interface MapSweep {
@@ -69,6 +64,9 @@ export interface MapSweep {
   /** The line as the sweep last set it; anything else moving it ends the sweep. */
   set: { a: Point; b: Point };
 }
+
+/** The context without the plot and the sweep, which are built from it (createProfilePlot, createSweep). */
+export type MapToolCore = Omit<MapToolContext, 'plot' | 'sweep'>;
 
 /** Offscreen layers of a field, one pixel per bin. */
 export interface FieldLayers {
@@ -92,16 +90,13 @@ export interface MapToolState {
   sweepRunOff: boolean;
   showRecon: boolean;
   showFlags: boolean;
-  /** Panel id → cached field. */
-  field: Map<string, { key: string; image: ImageData | PixelImage; result: MapField | ErrorResult }>;
+  /** Panel id → cached field values (without coordinates: those are cheap and follow the axes). */
+  field: Map<string, { key: string; image: ImageData | PixelImage; values: FieldValues | ErrorResult }>;
   /** Field values array → {recon, flags} canvases. */
   layers: WeakMap<Float64Array, FieldLayers>;
 }
 
-/**
- * What map-tool.ts shares with the Map cards (cards/*.tsx, which reach it through cards/map-context.ts).
- * deleteSelected and toggleMode are added after the setup and looked up at call time.
- */
+/** What map-tool.ts shares with the Map cards (cards/*.tsx, which reach it through cards/map-context.ts). */
 export interface MapToolContext {
   ws: Workspace;
   state: MapToolState;
@@ -112,7 +107,7 @@ export interface MapToolContext {
   profileColor: (panel: Panel, profile: Profile) => string;
   AXIS_COLORS: { readonly x: string; readonly y: string };
   deleteSelected: () => void;
-  toggleMode: (type: string) => void;
+  toggleMode: (type: MapModeType) => void;
   /** The imperative profile plot (the card hands it its canvas) and the sweep animation. */
   plot: ProfilePlot;
   sweep: Sweep;
@@ -123,12 +118,12 @@ export interface MapToolContext {
 // Map tool: read near-continuous fields (spectroscopy maps, fluorescence
 // images) as a dense value matrix with axis coordinates, plus line profiles.
 // The grid is the plot area (TOOL_HOOKS plotArea), sampled in bins of
-// map.bin pixels (see map/field.js).
+// map.bin pixels (see map/field.ts).
 //
 // This file sets up the tool, draws over the image and handles clicks and
 // drags; the cards in cards/ render the sidebar. They share `mctx`.
 
-// setupMapTool(ws) registers the tool with a workspace (workspace/workspace.js).
+// setupMapTool(ws) registers the tool with a workspace (workspace/workspace.ts).
 export function setupMapTool(ws: Workspace) {
   const { $, app, viewer } = ws;
   const state: MapToolState = {
@@ -169,23 +164,13 @@ export function setupMapTool(ws: Workspace) {
   // Select profile id (null: none). With add, toggle it in the selection
   // instead; a profile added becomes the one edited.
   function selectProfile(id: string | null, { add = false }: { add?: boolean } = {}) {
-    if (!add || !id) {
-      state.selectedId = id;
-      state.overlay.clear();
-    } else if (isSelected(id)) {
-      state.overlay.delete(id);
-      if (state.selectedId === id) {
-        state.selectedId = [...state.overlay].pop() ?? null;
-        state.overlay.delete(state.selectedId!);
-      }
-    } else {
-      if (state.selectedId) state.overlay.add(state.selectedId!);
-      state.selectedId = id;
-    }
+    selectInSet(state, id, add);
     ws.changed();
   }
 
-  const mctx = {
+  // The plot needs the rest of the context, and the sweep the plot too. deleteSelected and toggleMode are
+  // function declarations below (hoisted).
+  const core: MapToolCore = {
     ws,
     state,
     selectedProfile,
@@ -194,34 +179,31 @@ export function setupMapTool(ws: Workspace) {
     selectProfile,
     profileColor,
     AXIS_COLORS,
+    deleteSelected,
+    toggleMode,
     ui: { sweepAt: null, viewSignature: null },
-  } as MapToolContext;
-  mctx.plot = createProfilePlot(mctx);
-  mctx.sweep = createSweep(mctx);
+  };
+  const plot = createProfilePlot(core);
+  const sweep = createSweep({ ...core, plot });
+  const mctx: MapToolContext = { ...core, plot, sweep };
   setMapToolContext(mctx);
   const { setTrace } = mctx.plot;
   const { stopSweep, toggleSweep } = mctx.sweep;
 
-  // The field is the slow part (every pixel goes through the colorbar), so it
-  // is cached apart from the profiles: drawing or dragging a profile must not
-  // read the whole map again.
+  // The field is the slow part (every pixel goes through the colorbar), so its values are cached apart from
+  // their coordinates and the profiles: editing the axes, the units or the scale bar, or drawing or dragging a
+  // profile, must not read the whole map again. While a handle is dragged (a plot-area corner, the colorbar)
+  // the last values stay, as the heatmap's results table waits for the drop; resultKey has the drag in it, so
+  // the drop reads the field once more.
   function computeResult(panel: Panel, image: ImageData | PixelImage) {
-    const key = JSON.stringify([
-      panel.grid.corners,
-      panel.colorbar,
-      panel.settings,
-      panel.map.bin,
-      panel.map.x,
-      panel.map.y,
-      panel.map.units,
-      panel.scale,
-    ]);
+    const key = JSON.stringify([panel.grid.corners, panel.colorbar, panel.settings, panel.map.bin]);
     let hit = state.field.get(panel.id);
-    if (!hit || hit.key !== key || hit.image !== image) {
-      hit = { key, image, result: extractField(image, panel) };
+    if (!hit || hit.image !== image || (hit.key !== key && !app.drag)) {
+      hit = { key, image, values: extractFieldValues(image, panel) };
       state.field.set(panel.id, hit);
     }
-    return { ...hit.result, profiles: sampleProfiles(image, panel) };
+    const v = hit.values;
+    return { ...(v.error ? v : withCoords(v as FieldValues, panel)), profiles: sampleProfiles(image, panel) };
   }
 
   ws.addTool({
@@ -230,7 +212,7 @@ export function setupMapTool(ws: Workspace) {
     title: 'Colormeris · Map',
     plotArea: true,
     computeResult,
-    resultKey: (panel) => [panel.grid.corners, panel.colorbar, panel.settings, panel.map, panel.scale],
+    resultKey: (panel) => [panel.grid.corners, panel.colorbar, panel.settings, panel.map, panel.scale, !!app.drag],
     panelProblem: mapProblem,
     panelFiles: (panels, results, bases) =>
       panels.flatMap((p, i) => mapPanelFiles(p, results[i] as MapResult, bases[i])),
@@ -242,7 +224,7 @@ export function setupMapTool(ws: Workspace) {
       xtick: ['Click a labelled tick on the x axis, then type its value. Press Done when finished.'],
       ytick: ['Click a labelled tick on the y axis, then type its value. Press Done when finished.'],
       profile: ['Click the start of the profile line.', 'Click its end. Hold Alt to disable axis snapping.'],
-      scale: ['Click one end of the scale bar.', 'Click the other end. Hold Alt to disable axis snapping.'],
+      scale: SCALE_MODE_TEXTS,
     },
     onModeChange,
     onClick,
@@ -255,7 +237,7 @@ export function setupMapTool(ws: Workspace) {
     hoverText,
     onKey,
     // The cards render themselves; this only keeps the selection valid before they do.
-    renderSidebar: (panel) => reconcileSelection(state, panel.map.profiles),
+    reconcile: (panel) => reconcileSelection(state, panel.map.profiles),
   } satisfies ToolHooks);
 
   // ---------------------------------------------------------------- overlay
@@ -338,22 +320,18 @@ export function setupMapTool(ws: Workspace) {
     for (const key of ['x', 'y'] as const) {
       for (const k of panel.map[key].ticks) {
         const q = onAxisEdge(panel, key, k);
-        ws.drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
+        drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
         if (Number.isFinite(k.value))
           label(ctx, v.toScreen(q), formatNumber(k.value), AXIS_COLORS[key], key === 'x' ? 'below' : 'left');
       }
     }
     for (const l of panel.map.profiles) {
-      const a = v.toScreen(l.a);
-      const b = v.toScreen(l.b);
       const color = profileColor(panel, l);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ws.strokeDual(ctx, color, isSelected(l.id) ? 2.5 : 1.5);
-      ws.drawHandle(ctx, v, l.a, color, 'square');
-      ws.drawHandle(ctx, v, l.b, color, 'circle');
-      label(ctx, a, l.name, color, 'above');
+      segmentPath(ctx, v, l.a, l.b);
+      strokeDual(ctx, color, isSelected(l.id) ? 2.5 : 1.5);
+      drawHandle(ctx, v, l.a, color, 'square');
+      drawHandle(ctx, v, l.b, color, 'circle');
+      label(ctx, v.toScreen(l.a), l.name, color, 'above');
     }
     if (panel.scale) drawScaleBar(ws, ctx, v, panel.scale);
     drawTrace(ctx, v, panel);
@@ -370,7 +348,7 @@ export function setupMapTool(ws: Workspace) {
     const q = v.toScreen({ x: s.px, y: s.py });
     ctx.beginPath();
     ctx.arc(q.x, q.y, 6, 0, 2 * Math.PI);
-    ws.strokeDual(ctx, ws.color('trace') as string, 2);
+    strokeDual(ctx, ws.color('trace') as string, 2);
     // Four significant digits, as in the profile plot's readout.
     label(
       ctx,
@@ -389,11 +367,7 @@ export function setupMapTool(ws: Workspace) {
     for (const l of selectedProfiles()) {
       const samples = (ws.resultFor(panel) as MapResult).profiles?.[l.id];
       if (!Array.isArray(samples) || samples.length < 2) continue;
-      const dx = l.b.x - l.a.x;
-      const dy = l.b.y - l.a.y;
-      const len2 = dx * dx + dy * dy;
-      const t = ((p.x - l.a.x) * dx + (p.y - l.a.y) * dy) / len2;
-      const dist = Math.abs((p.x - l.a.x) * dy - (p.y - l.a.y) * dx) / Math.sqrt(len2);
+      const { t, across: dist } = segmentProjection(p, l.a, l.b);
       if (t < 0 || t > 1 || dist > Math.max(l.halfWidth, 0) + 8 / viewer.scale) continue;
       const i = Math.round(t * (samples.length - 1));
       if (samples[i].outside) continue;
@@ -412,11 +386,7 @@ export function setupMapTool(ws: Workspace) {
     const w = ctx.measureText(text).width;
     const x = where === 'left' ? s.x - w - 8 : s.x - (where === 'above' ? 0 : w / 2);
     const y = where === 'below' ? s.y + 18 : where === 'left' ? s.y + 5 : s.y - 6;
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-    ctx.strokeText(text, x, y);
-    ctx.fillStyle = color;
-    ctx.fillText(text, x, y);
+    outlinedText(ctx, text, x, y, color);
   }
 
   function drawModePreview(ctx: CanvasRenderingContext2D, v: ViewerApi, m: Mode, hover: Point | undefined) {
@@ -431,7 +401,7 @@ export function setupMapTool(ws: Workspace) {
       const c = panel.grid.corners;
       const [a, b] = key === 'x' ? [bilinear(c, t, 0), q] : [q, bilinear(c, 1, t)];
       line(ctx, v, a, b, AXIS_COLORS[key]);
-      ws.drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
+      drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
     } else if (m.type === 'profile' && m.points.length === 1) {
       // In the color the new profile will get.
       line(ctx, v, m.points[0], ws.snapAxis(m.points[0], hover), profileColorAt(panel.map.profiles.length));
@@ -441,12 +411,8 @@ export function setupMapTool(ws: Workspace) {
   }
 
   function line(ctx: CanvasRenderingContext2D, v: ViewerApi, p: Point, q: Point, color: string) {
-    const a = v.toScreen(p);
-    const b = v.toScreen(q);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ws.strokeDual(ctx, color, 1.5, [6, 4]);
+    segmentPath(ctx, v, p, q);
+    strokeDual(ctx, color, 1.5, [6, 4]);
   }
 
   function hoverText(panel: Panel, _cell: Cell | null, p: Point) {
@@ -474,13 +440,6 @@ export function setupMapTool(ws: Workspace) {
     if (type) stopSweep();
   }
 
-  function nextProfileName(panel: Panel) {
-    let n = 1;
-    const used = new Set(panel.map.profiles.map((l) => l.name));
-    while (used.has(`Profile ${n}`)) n++;
-    return `Profile ${n}`;
-  }
-
   function onClick(mode: Mode | null, p: Point, e: PointerEvent) {
     if (mode?.type === 'xtick' || mode?.type === 'ytick') {
       const key = mode.type[0] as AxisKey;
@@ -504,7 +463,12 @@ export function setupMapTool(ws: Workspace) {
         return true;
       }
       ws.setMode(null);
-      const profile = createProfile(a, b, { name: nextProfileName(ws.activePanel()) });
+      const profile = createProfile(a, b, {
+        name: nextName(
+          'Profile',
+          ws.activePanel().map.profiles.map((l) => l.name),
+        ),
+      });
       ws.commit((pn) => pn.map.profiles.push(profile));
       selectProfile(profile.id);
       return true;
@@ -520,14 +484,7 @@ export function setupMapTool(ws: Workspace) {
   }
 
   function profileAt(p: Point, tol: number) {
-    for (const l of ws.activePanel().map.profiles) {
-      const dx = l.b.x - l.a.x;
-      const dy = l.b.y - l.a.y;
-      const len2 = dx * dx + dy * dy || 1;
-      const t = Math.min(1, Math.max(0, ((p.x - l.a.x) * dx + (p.y - l.a.y) * dy) / len2));
-      if (Math.hypot(l.a.x + t * dx - p.x, l.a.y + t * dy - p.y) <= tol) return l;
-    }
-    return null;
+    return ws.activePanel().map.profiles.find((l) => distanceToSegment(p, l.a, l.b) <= tol) ?? null;
   }
 
   function hitTest(p: Point, tol: number): Handle | null {
@@ -545,8 +502,8 @@ export function setupMapTool(ws: Workspace) {
     return l ? { kind: 'profileMove', id: l.id, start: p, a: l.a, b: l.b } : null;
   }
 
-  function onHandleDrag(h: Handle, p: Point, e: PointerEvent) {
-    const handle = h as MapHandle;
+  function onHandleDrag(handle: Handle, p: Point, e: PointerEvent) {
+    if (handle.kind !== 'axisTick' && handle.kind !== 'profileEnd' && handle.kind !== 'profileMove') return;
     // The drag takes the line; a sweep would pull it back each frame.
     stopSweep();
     const panel = ws.activePanel();
@@ -580,12 +537,7 @@ export function setupMapTool(ws: Workspace) {
       } else {
         // Moved by the offset from where the drag started; with Shift only
         // along its larger component, so the line moves straight across or down.
-        let dx = p.x - handle.start.x;
-        let dy = p.y - handle.start.y;
-        if (e.shiftKey) {
-          if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
-          else dx = 0;
-        }
+        const { dx, dy } = lockAxis(p.x - handle.start.x, p.y - handle.start.y, e.shiftKey);
         l.a = { x: handle.a.x + dx, y: handle.a.y + dy };
         l.b = { x: handle.b.x + dx, y: handle.b.y + dy };
       }
@@ -600,16 +552,9 @@ export function setupMapTool(ws: Workspace) {
     ws.commit((p) => (p.map.profiles = p.map.profiles.filter((x) => !ids.has(x.id))));
     selectProfile(null);
   }
-  mctx.deleteSelected = deleteSelected;
 
   function onKey(e: KeyboardEvent) {
-    const t = e.target;
-    const typing =
-      t instanceof HTMLElement &&
-      /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) &&
-      (t as HTMLInputElement).type !== 'checkbox' &&
-      (t as HTMLInputElement).type !== 'range';
-    if (typing || e.metaKey || e.ctrlKey || !app.sourceCanvas) return false;
+    if (isTextEntry(e.target) || e.metaKey || e.ctrlKey || !app.sourceCanvas) return false;
     if (!app.mode && (e.key === 'Delete' || e.key === 'Backspace') && selectedProfile()) {
       e.preventDefault();
       deleteSelected();
@@ -621,7 +566,7 @@ export function setupMapTool(ws: Workspace) {
   $('viewer').addEventListener('pointerleave', () => ws.tool().kind === 'map' && setTrace(null));
 
   // Axis ticks need the plot area: their position is measured along it.
-  function toggleMode(type: string) {
+  function toggleMode(type: MapModeType) {
     if (app.mode?.type === type) return ws.setMode(null);
     if ((type === 'xtick' || type === 'ytick') && !ws.activePanel().grid.corners) {
       ws.toast('Place the plot area first.', true);
@@ -634,8 +579,8 @@ export function setupMapTool(ws: Workspace) {
       ws.updateModebar();
     }
   }
-  mctx.toggleMode = toggleMode;
-  for (const type of ['xtick', 'ytick', 'profile']) ws.addHotkey(type, () => toggleMode(type), { tool: 'map' });
+  for (const type of ['xtick', 'ytick', 'profile'] as const)
+    ws.addHotkey(type, () => toggleMode(type), { tool: 'map' });
 
   // Copy and paste profiles, also between panels and pages. The clipboard is
   // this tab's, not the system's: profiles mean nothing outside a figure.

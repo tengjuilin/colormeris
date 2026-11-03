@@ -1,7 +1,8 @@
 // Reading pixels and the color of a cell, and the dot radius in centers mode.
 
 import type { Grid, PixelImage, Rgb } from '../../types/index.ts';
-import { deltaE76, rgbToLab } from '../color.ts';
+import { deltaE76, onWhite, rgbToLab } from '../color.ts';
+import { medianInPlace } from '../stats.ts';
 import { bilinear, cellSampleBounds, gridPixelSize, outerCorners } from './geometry.ts';
 
 // Read one pixel as [r, g, b], compositing transparency onto white.
@@ -12,14 +13,7 @@ export function readPixel(img: PixelImage, x: number, y: number): Rgb {
   const d = img.data;
   const a = d[i + 3] / 255;
   if (a >= 1) return [d[i], d[i + 1], d[i + 2]];
-  return [d[i] * a + 255 * (1 - a), d[i + 1] * a + 255 * (1 - a), d[i + 2] * a + 255 * (1 - a)];
-}
-
-// Median of a typed array (sorted in place; typed-array sort is numeric).
-export function median(values: Float32Array | Float64Array) {
-  values.sort();
-  const m = values.length >> 1;
-  return values.length % 2 ? values[m] : (values[m - 1] + values[m]) / 2;
+  return [onWhite(d[i], a), onWhite(d[i + 1], a), onWhite(d[i + 2], a)];
 }
 
 // Per-channel median color over the central part of a cell (a circle keeps
@@ -61,14 +55,14 @@ export function sampleCell(img: PixelImage, grid: Grid, row: number, col: number
         gs[k] = d[q + 1];
         bs[k] = d[q + 2];
       } else {
-        rs[k] = d[q] * a + 255 * (1 - a);
-        gs[k] = d[q + 1] * a + 255 * (1 - a);
-        bs[k] = d[q + 2] * a + 255 * (1 - a);
+        rs[k] = onWhite(d[q], a);
+        gs[k] = onWhite(d[q + 1], a);
+        bs[k] = onWhite(d[q + 2], a);
       }
       k++;
     }
   }
-  return [median(rs.subarray(0, k)), median(gs.subarray(0, k)), median(bs.subarray(0, k))];
+  return [medianInPlace(rs.subarray(0, k)), medianInPlace(gs.subarray(0, k)), medianInPlace(bs.subarray(0, k))];
 }
 
 // ---- Dot radius (centers mode) ---------------------------------------------
@@ -79,7 +73,7 @@ const DOT_MIN_CONTRAST = 10;
 const DOT_MIN_RADIUS = 1.5;
 
 function medianColor(colors: Rgb[]) {
-  return [0, 1, 2].map((ch) => median(Float64Array.from(colors, (c) => c[ch])));
+  return [0, 1, 2].map((ch) => medianInPlace(Float64Array.from(colors, (c) => c[ch])));
 }
 
 // Radius in image pixels of the dot centered in a cell, or null when the cell
@@ -118,6 +112,6 @@ export function dotRadius(img: PixelImage, grid: Grid, row: number, col: number)
       s += 0.5;
     lengths[i] = Math.min(s, maxR);
   }
-  const r = median(lengths);
+  const r = medianInPlace(lengths);
   return r >= DOT_MIN_RADIUS ? r : null;
 }

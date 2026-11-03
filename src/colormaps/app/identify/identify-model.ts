@@ -1,8 +1,7 @@
-import { cmapData } from '../../../core/colormap-library.ts';
+import { libraryMaps, mapByName, mapColors } from '../../../core/colormap-library.ts';
 import { matchLevel } from '../../../core/colormap-match.ts';
 import { readPixel } from '../../../core/grid.ts';
 import type { PixelImage, Rgb } from '../../../types/index.ts';
-import { base } from '../../library-cache.ts';
 
 // The pure part of the Identify tab: the maps to match against, the grouping
 // of equal matches, the verdict, and the pixels of a whole-image run.
@@ -29,12 +28,10 @@ export interface IdentifyMap {
   rgbs: Rgb[];
 }
 
-// Built on the first match and kept: the matcher caches each map's Lab by its
-// color list, so the next figure reuses them.
-let idMaps: IdentifyMap[] | null = null;
+// The library's shared list: the matcher caches each map's Lab by its color
+// list, so the next figure (and the Recolor tab) reuses them.
 export function identifyMaps(): IdentifyMap[] {
-  idMaps ??= cmapData.maps.map((m) => ({ name: m.name, kind: m.kind, rgbs: base(m) }));
-  return idMaps;
+  return libraryMaps();
 }
 
 /**
@@ -74,10 +71,10 @@ export function wholeImagePixels(img: PixelImage): Rgb[] {
 const reversedOf = new Map<string, Rgb[]>();
 /** The map's colors, or in reverse order (cached, so the strips' memo holds). */
 export function miniColors(name: string, reversed: boolean): Rgb[] {
-  const map = cmapData.maps.find((m) => m.name === name);
+  const map = mapByName(name);
   if (!map) return [];
-  if (!reversed) return base(map);
+  if (!reversed) return mapColors(map);
   let r = reversedOf.get(name);
-  if (!r) reversedOf.set(name, (r = base(map).slice().reverse()));
+  if (!r) reversedOf.set(name, (r = mapColors(map).slice().reverse()));
   return r;
 }

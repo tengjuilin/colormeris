@@ -2,7 +2,7 @@
 
 import { findColorbars, findTickLabels } from '../../core/locate.ts';
 import type { Box, PixelImage } from '../../types/index.ts';
-import { overlaps } from './cells.ts';
+import { overlaps } from './geometry.ts';
 import { flankInk } from './strip-side.ts';
 import type { StripInfo } from './types.ts';
 

@@ -29,10 +29,18 @@ function setup() {
   const log: string[] = [];
   const project = createProject('heatmap');
   project.activePanelId = project.panels[0].id;
-  const app = { project, sourceCanvas: {}, mode: null as { type: string } | null, imageData: null, pages: new Map() };
+  const app = {
+    project,
+    sourceCanvas: {},
+    mode: null as { type: string } | null,
+    imageData: null,
+    pages: new Map(),
+    barTickMode: 'follow',
+  };
   let seq = 0;
   const w = {
     app,
+    tool: () => ({ kind: 'heatmap' }),
     activePanel: () => project.panels[0],
     resultFor: () => ({ error: 'none' }),
     newTickId: () => `t${seq++}`,
@@ -377,4 +385,17 @@ test('the reference match line: levels, direction flip from the ticks, and Use i
   assert.equal(screen.queryByText('Use its colors'), null);
   rerender(<BarMatch match={null} lowAtStart={null} onUse={() => {}} />);
   assert.equal(document.getElementById('bar-match')!.hidden, true);
+});
+
+test('the tick mode select is app state: interact.ts reads app.barTickMode, not the DOM', () => {
+  const { app, log } = setup();
+  const select = el<HTMLSelectElement>('bar-tick-mode');
+  assert.equal(select.value, 'follow');
+  act(() => {
+    fireEvent.change(select, { target: { value: 'fixed' } });
+  });
+  assert.equal(app.barTickMode, 'fixed');
+  assert.equal(el<HTMLSelectElement>('bar-tick-mode').value, 'fixed');
+  // A setting of the drag, not of the project: no history.
+  assert.deepEqual(log, []);
 });

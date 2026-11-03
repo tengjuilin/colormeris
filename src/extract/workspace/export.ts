@@ -5,7 +5,7 @@ import { buildProjectZip, panelFileBases, safeFileName } from '../project/projec
 
 // Downloads: CSV names and the project zip with every tool's data files.
 //
-// w is the workspace's private context (workspace.js). Other modules'
+// w is the workspace's private context (workspace.ts). Other modules'
 // functions are called through it at call time (ensurePage, resultFor, ...).
 export function setupWorkspaceExport(w: WorkspaceContext): ExportMembers {
   const { $, app } = w;

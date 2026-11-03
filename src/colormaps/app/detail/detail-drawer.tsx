@@ -1,6 +1,5 @@
 import { type Dispatch, forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from 'react';
-import { cmapData } from '../../../core/colormap-library.ts';
-import type { ColormapEntry } from '../../../types/index.ts';
+import { mapByName } from '../../../core/colormap-library.ts';
 import type { ViewerAction } from '../viewer-state.ts';
 import { DetailBody } from './detail-body.tsx';
 
@@ -12,8 +11,6 @@ import { DetailBody } from './detail-body.tsx';
 // back on the row's button (onClose), then dispatches OPEN null. Escape is
 // left alone when something else took it (defaultPrevented, a popover, a text
 // field or a select).
-
-const BY_NAME = new Map<string, ColormapEntry>(cmapData.maps.map((m) => [m.name, m]));
 
 export interface DetailDrawerProps {
   /** Name of the open map. */
@@ -42,7 +39,7 @@ export const DetailDrawer = forwardRef<HTMLElement, DetailDrawerProps>(function 
 ) {
   const aside = useRef<HTMLElement>(null);
   useImperativeHandle(ref, () => aside.current as HTMLElement);
-  const map = open ? BY_NAME.get(open) : undefined;
+  const map = open ? mapByName(open) : undefined;
   const shown = !!map && wide && tab === 'browse';
 
   const close = useRef<() => void>(() => {});

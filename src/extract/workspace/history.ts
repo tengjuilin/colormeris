@@ -2,7 +2,7 @@ import type { AppState, HistoryMembers, Panel, WorkspaceContext } from '../../ty
 
 // Undo and redo: snapshots of every panel, taken before each change.
 //
-// w is the workspace's private context (workspace.js). Other modules'
+// w is the workspace's private context (workspace.ts). Other modules'
 // functions are called through it at call time (setTool, goToPage, ensurePagePanel, changed).
 export function setupWorkspaceHistory(w: WorkspaceContext): HistoryMembers {
   const { $, app } = w;
@@ -18,6 +18,7 @@ export function setupWorkspaceHistory(w: WorkspaceContext): HistoryMembers {
   }
 
   function restore(snap: AppState['history'][number]) {
+    app.drag = null; // a drag's handle refers to the panels being replaced
     app.project.panels = snap.panels;
     app.project.activePanelId = snap.activePanelId;
     // Undoing a change made on another page takes you back to that page.
@@ -52,6 +53,7 @@ export function setupWorkspaceHistory(w: WorkspaceContext): HistoryMembers {
 
   // Opening a file or re-rendering at another resolution starts a new history.
   function clearHistory() {
+    app.drag = null;
     app.history = [];
     app.future = [];
   }

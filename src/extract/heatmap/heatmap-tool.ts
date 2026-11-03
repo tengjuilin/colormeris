@@ -1,16 +1,17 @@
 import { rgbToHex } from '../../core/color.ts';
 import { colorAtT } from '../../core/colorbar.ts';
 import { bilinear, cellSamplePolygon, outerCorners } from '../../core/grid.ts';
-import type { Cell, HeatmapResult, Panel, Point, ToolHooks, ViewerApi, Workspace } from '../../types/index.ts';
+import type { Cell, HeatmapResult, Panel, ToolHooks, ViewerApi, Workspace } from '../../types/index.ts';
 import { effectiveLabels, gridGeometry } from '../project/project.ts';
 import { formatNumber, heatmapPanelFiles } from '../project/project-files.ts';
+import { addPolygon } from '../workspace/draw.ts';
 import { boundPrefix, highlightTableCell, luminance, OFF_MAP } from './results-table.ts';
 import { extractPanel, panelProblem } from './sampling.ts';
 
 // Heatmap tool: extract one value per grid cell by matching the cell's color
 // against the calibrated colorbar. setupHeatmapTool(ws) registers it with a
-// workspace (workspace.js). Its sidebar is React: the Grid card (shared), the Results card
-// (workspace/cards/heatmap-results-card.tsx, table in results-table.ts).
+// workspace (workspace.ts). Its sidebar is React: the Grid card (shared), the Results card
+// (cards/heatmap-results-card.tsx, table in results-table.ts).
 
 export function setupHeatmapTool(ws: Workspace) {
   const { app, viewer } = ws;
@@ -35,16 +36,6 @@ export function setupHeatmapTool(ws: Workspace) {
   } satisfies ToolHooks);
 
   // ---------------------------------------------------------------- overlay
-
-  // Adds a closed polygon to the current path (ws.polyPath starts a new one).
-  function addPolygon(ctx: CanvasRenderingContext2D | Path2D, v: ViewerApi, pts: Point[]) {
-    pts.forEach((q, i) => {
-      const s = v.toScreen(q);
-      if (i === 0) ctx.moveTo(s.x, s.y);
-      else ctx.lineTo(s.x, s.y);
-    });
-    ctx.closePath();
-  }
 
   // result.cells → cells grouped by the hex color of their repainted value,
   // kept per result: the colors only change with the values, but the overlay

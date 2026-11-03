@@ -2,13 +2,15 @@ import { rgbToHex } from '../../core/color.ts';
 import { pointAtT, projectT } from '../../core/colorbar.ts';
 import { cellAt, detectGridSize, readPixel, rectCorners } from '../../core/grid.ts';
 import type { Cell, Handle, InteractMembers, Panel, Point, WorkspaceContext } from '../../types/index.ts';
+import { distanceToSegment, lockAxis } from '../edit-math.ts';
 import { ticksWithT } from '../project/project.ts';
+import { barTicksAfterDrag, dragRectCorner } from './drag-math.ts';
 
 // Pointer input on the viewer: clicks while placing the grid, colorbar and
 // ticks, dragging handles (grid corners, colorbar ends, the bar, ticks) and
 // the status bar under the pointer. Tool handles go to the tool's hooks.
 //
-// w is the workspace's private context (workspace.js). Other modules'
+// w is the workspace's private context (workspace.ts). Other modules'
 // functions are called through it at call time (setMode, commit, changed, focusTick, ...).
 export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
   const { $, app } = w;
@@ -112,9 +114,7 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
     // where a click on the line places one).
     const { start, end } = panel.colorbar;
     if (start && end && app.mode?.type !== 'tick') {
-      const t = Math.min(1, Math.max(0, projectT(start, end, p)));
-      const q = pointAtT(start, end, t);
-      if (Math.hypot(q.x - p.x, q.y - p.y) <= tol) return { kind: 'bar', last: p };
+      if (distanceToSegment(p, start, end) <= tol) return { kind: 'bar', last: p };
     }
     return null;
   }
@@ -142,10 +142,8 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
     } else if (handle.kind === 'corner') {
       const c = panel.grid.corners!;
       if (app.keepRect) {
-        const opposite = c[(handle.i! + 2) % 4];
-        panel.grid.corners = rectCorners(p, opposite);
         // Keep dragging the corner that is now under the pointer.
-        handle.i = panel.grid.corners.findIndex((q) => q.x === p.x && q.y === p.y);
+        ({ corners: panel.grid.corners, i: handle.i } = dragRectCorner(c, handle.i!, p));
       } else {
         c[handle.i!] = p;
       }
@@ -162,33 +160,27 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
       // with it. Distances are taken once, at the start of the drag:
       // re-projecting the moved ticks on every event shrank them towards the
       // fixed end whenever the line turned.
-      const fixed = $('bar-tick-mode').value === 'fixed';
       const len = () => Math.hypot(cb.end!.x - cb.start!.x, cb.end!.y - cb.start!.y);
       handle.ts ??= ticksWithT(cb).map((k) => k.t);
       handle.len ??= len();
       if (handle.kind === 'barStart') cb.start = q;
       else cb.end = q;
-      const L = len() || 1e-9;
-      const tAt = (t0: number) =>
-        handle.kind === 'barEnd' ? (t0 * handle.len!) / L : 1 - ((1 - t0) * handle.len!) / L;
-      // Ticks typed along a known colormap have no page point to move.
-      cb.ticks.forEach(
-        (k, i) =>
-          Number.isFinite(k.x) &&
-          Object.assign(k, pointAtT(cb.start!, cb.end!, fixed ? tAt(handle.ts![i]) : handle.ts![i])),
+      const ts = barTicksAfterDrag(
+        handle.ts,
+        handle.len,
+        len(),
+        handle.kind === 'barEnd' ? 'end' : 'start',
+        app.barTickMode,
       );
+      // Ticks typed along a known colormap have no page point to move.
+      cb.ticks.forEach((k, i) => Number.isFinite(k.x) && Object.assign(k, pointAtT(cb.start!, cb.end!, ts[i])));
     } else if (handle.kind === 'bar') {
       // Move the line and its ticks together, from where the drag started.
       // Shift: only along the axis the pointer has moved furthest on.
       const cb = panel.colorbar;
       const pts = [cb.start!, cb.end!, ...(cb.ticks.filter((k) => Number.isFinite(k.x)) as Point[])];
       handle.from ??= pts.map((q) => ({ x: q.x, y: q.y }));
-      let dx = p.x - handle.last!.x;
-      let dy = p.y - handle.last!.y;
-      if (e.shiftKey) {
-        if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
-        else dx = 0;
-      }
+      const { dx, dy } = lockAxis(p.x - handle.last!.x, p.y - handle.last!.y, e.shiftKey);
       pts.forEach((q, i) => {
         q.x = handle.from![i].x + dx;
         q.y = handle.from![i].y + dy;

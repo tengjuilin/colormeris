@@ -10,11 +10,11 @@ function srgbToLinearExact(c: number) {
   return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
 }
 // Colors are nearly always whole bytes; a table spares a pow per channel,
-// most of the colormap ratings' Lab conversions.
-const LIN8 = Float64Array.from({ length: 256 }, (_, i) => srgbToLinearExact(i));
+// most of the colormap ratings' Lab conversions (and the CVD tab's pixels).
+export const SRGB_TO_LINEAR = Float64Array.from({ length: 256 }, (_, i) => srgbToLinearExact(i));
 
 export function srgbToLinear(c: number) {
-  const hit = LIN8[c];
+  const hit = SRGB_TO_LINEAR[c];
   return hit !== undefined ? hit : srgbToLinearExact(c);
 }
 
@@ -57,6 +57,28 @@ export function labToRgb([L, a, b]: Lab): Rgb {
   const B = 0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z;
   return [linearToSrgb(R), linearToSrgb(G), linearToSrgb(B)];
 }
+
+// CIELCh pieces of a Lab color: chroma C* = √(a² + b²) and the hue angle
+// in degrees, in [0, 360).
+export const chroma = (lab: Lab) => Math.hypot(lab[1], lab[2]);
+
+export function hueAngle(lab: Lab) {
+  const h = (Math.atan2(lab[2], lab[1]) * 180) / Math.PI;
+  return h < 0 ? h + 360 : h;
+}
+
+/** [L*, C*, h°] of a Lab color. */
+export function labToLch(lab: Lab): [number, number, number] {
+  return [lab[0], chroma(lab), hueAngle(lab)];
+}
+
+// A channel value (0–255) at opacity a (0–1) over a white page: transparent
+// pixels count as white everywhere (readPixel, the indexers, the samplers).
+export const onWhite = (v: number, a: number) => v * a + 255 * (1 - a);
+
+// The color a share f (0–1) of the way from a to b, per channel in sRGB (as
+// colormaps interpolate between their listed colors). Not rounded.
+export const lerpRgb = (a: Rgb, b: Rgb, f: number): Rgb => [0, 1, 2].map((k) => a[k] + f * (b[k] - a[k]));
 
 export function deltaE76(lab1: Lab, lab2: Lab) {
   const dL = lab1[0] - lab2[0];
@@ -147,4 +169,13 @@ export function colorDistance(name: DistanceName | string) {
 
 export function rgbToHex([r, g, b]: Rgb) {
   return '#' + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+}
+
+// 'rrggbbrrggbb…' (the library's `colors`, core/colormap-library.ts) → [[r, g, b], …].
+export function parseHexColors(s: string) {
+  const out: Rgb[] = [];
+  for (let i = 0; i + 6 <= s.length; i += 6) {
+    out.push([0, 2, 4].map((k) => parseInt(s.slice(i + k, i + k + 2), 16)));
+  }
+  return out;
 }

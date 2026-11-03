@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, test } from 'vitest';
-import type { Panel, Workspace, WorkspaceContext } from '../../../types/index.ts';
+import type { MapModeType, Panel, Workspace, WorkspaceContext } from '../../../types/index.ts';
 import { SettingsProvider } from '../../../ui/index.ts';
 import { createAxisTick, createProfile, createProject } from '../../project/project.ts';
 import { WsContext } from '../../react/use-workspace.ts';
@@ -116,6 +116,8 @@ function setup(
     download: (_b: Blob, n: string) => downloads.push(n),
     csvName: (_p: Panel, s = '') => `panel${s}.csv`,
   } as unknown as Workspace;
+  // Cards read and write through w (docs/react.md); like the real one, it carries the public ws too.
+  Object.assign(w, { ...ws, ...w, ws });
   const selection: string[] = [];
   const plotted: number[] = [];
   const mctx = {
@@ -134,7 +136,7 @@ function setup(
       w.changed();
     },
     profileColor: () => '#f00',
-    toggleMode: (t: string) => w.setMode(t),
+    toggleMode: (t: MapModeType) => w.setMode(t),
     deleteSelected: () => log.push('delete'),
     plot: {
       attach: () => () => {},

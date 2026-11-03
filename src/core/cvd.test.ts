@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { test } from 'vitest';
 import { CMAP_REFS, citeFor } from '../colormaps/references.ts';
 import { cmapData } from './colormap-library.ts';
@@ -6,6 +7,7 @@ import {
   ACHROMAT,
   CVD_MODELS,
   CVD_TYPES,
+  cvdLinearFn,
   grayscale,
   lightness,
   lightnessStats,
@@ -401,4 +403,40 @@ test('colormap data: sequential maps run dark to light once flips are applied', 
     assert.equal(rising !== !!m.flip, true, m.name);
   }
   assert.ok(!cmapData.maps.some((m) => m.flip && m.group !== 'sequential'));
+});
+
+// Guards the model tables: every type, model and severity on a spread of
+// linear colors, compared as a hash of the outputs rounded to 1e-12.
+test('cvdLinearFn: outputs of every type, model and severity are unchanged', () => {
+  const lin = [0, 0.05, 0.2, 0.5, 0.8, 1];
+  const parts: string[] = [];
+  for (const type of [...CVD_TYPES, ACHROMAT]) {
+    for (const model of [...CVD_MODELS, 'recommended']) {
+      for (const severity of [0, 0.05, 0.3, 0.55, 0.9, 1]) {
+        const f = cvdLinearFn(type, { model, severity });
+        const out = [0, 0, 0];
+        for (const r of lin)
+          for (const g of lin)
+            for (const b of lin) {
+              f(r, g, b, out, 0);
+              parts.push(out.map((v) => Math.round(v * 1e12)).join(','));
+            }
+      }
+    }
+  }
+  const hash = createHash('sha256').update(parts.join(';')).digest('hex').slice(0, 16);
+  assert.equal(hash, 'b94aeeae6f4d6b6d');
+  // Machado at full severity is the matrix simulateCvd uses.
+  const f = cvdLinearFn('tritanopia', { model: 'machado', severity: 1 });
+  const out = [0, 0, 0];
+  f(0.2, 0.5, 0.8, out, 0);
+  closeRgb(
+    out,
+    [
+      1.255528 * 0.2 - 0.076749 * 0.5 - 0.178779 * 0.8,
+      -0.078411 * 0.2 + 0.930809 * 0.5 + 0.147602 * 0.8,
+      0.004733 * 0.2 + 0.691367 * 0.5 + 0.3039 * 0.8,
+    ],
+    1e-12,
+  );
 });

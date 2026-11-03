@@ -1,9 +1,16 @@
 import type { Mode, Point, ScaleBar, ScaleUnit, ViewerApi, Workspace } from '../types/index.ts';
+import { drawHandle, outlinedText, segmentPath, strokeDual } from './workspace/draw.ts';
 
 // Scale bar, DOM: measuring a scale bar on the image ('scale' mode, two
 // clicks), drawing it and its preview. Shared by the ROI tool (areas in real
 // units) and the Map tool (profile distances in real units). The Scale card
 // (scale-bar-card.tsx, React) acts on the active panel, whatever the tool.
+
+/** Mode bar texts while measuring ('scale' mode), the same in every tool. */
+export const SCALE_MODE_TEXTS = [
+  'Click one end of the scale bar.',
+  'Click the other end. Hold Alt to disable axis snapping.',
+];
 
 /** Set before the commit that adds a scale bar; the Scale card focuses its length field in the layout effect after that render. */
 export const scaleFocus = { pending: false };
@@ -42,11 +49,9 @@ export function drawScaleBar(ws: Workspace, ctx: CanvasRenderingContext2D, v: Vi
   const color = ws.color('scale') as string;
   const a = v.toScreen(scale.p1);
   const b = v.toScreen(scale.p2);
-  ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.lineTo(b.x, b.y);
-  ws.strokeDual(ctx, color, 2);
-  for (const q of [scale.p1, scale.p2]) ws.drawHandle(ctx, v, q, color, 'circle');
+  segmentPath(ctx, v, scale.p1, scale.p2);
+  strokeDual(ctx, color, 2);
+  for (const q of [scale.p1, scale.p2]) drawHandle(ctx, v, q, color, 'circle');
   const label = `${scale.length} ${scale.unit}`;
   ctx.save();
   ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
@@ -54,11 +59,7 @@ export function drawScaleBar(ws: Workspace, ctx: CanvasRenderingContext2D, v: Vi
   const w = ctx.measureText(label).width;
   const mx = (a.x + b.x) / 2 - w / 2;
   const my = Math.min(a.y, b.y) - 6;
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-  ctx.strokeText(label, mx, my);
-  ctx.fillStyle = color;
-  ctx.fillText(label, mx, my);
+  outlinedText(ctx, label, mx, my, color);
   ctx.restore();
 }
 
@@ -71,10 +72,6 @@ export function drawScalePreview(
   hover: Point | undefined,
 ) {
   if (m.type !== 'scale' || m.points.length !== 1 || !hover) return;
-  const a = v.toScreen(m.points[0]);
-  const b = v.toScreen(ws.snapAxis(m.points[0], hover));
-  ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.lineTo(b.x, b.y);
-  ws.strokeDual(ctx, ws.color('scale') as string, 1.5, [6, 4]);
+  segmentPath(ctx, v, m.points[0], ws.snapAxis(m.points[0], hover));
+  strokeDual(ctx, ws.color('scale') as string, 1.5, [6, 4]);
 }

@@ -7,7 +7,7 @@ import { profileDivisor, sampleProfile, sweepRange } from '../field.ts';
 import type { MapSweep, MapToolContext } from '../map-tool.ts';
 import { profileView, sweepAtText } from './profile-view.ts';
 
-export function createSweep(mctx: MapToolContext) {
+export function createSweep(mctx: Omit<MapToolContext, 'sweep'>) {
   const { ws, state } = mctx;
   const { app } = ws;
 

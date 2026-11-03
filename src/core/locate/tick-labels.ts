@@ -2,7 +2,8 @@
 
 import type { Box, PixelImage } from '../../types/index.ts';
 import { readPixel } from '../grid.ts';
-import { background, clamp, components, differsAt, mean, median, STRONG, TEXT } from './helpers.ts';
+import { upperMedian } from '../stats.ts';
+import { background, clamp, components, differsAt, mean, STRONG, TEXT } from './helpers.ts';
 import { tickMarks } from './tick-marks.ts';
 import type { Component, FrameComp, TickBest, TickLabel, TickLabelsResult } from './types.ts';
 
@@ -94,12 +95,12 @@ export function findTickLabels(
     // Tick marks touch the strip and are thin along it.
     const marks = all.filter((c) => c.d0 <= 2 && c.size <= 3);
     const ticks = marks.map((c) => (c.u0 + c.u1) / 2).concat(innerTicks(side));
-    const tickLen = marks.length ? median(marks.map((c) => c.d1)) : 0;
+    const tickLen = marks.length ? upperMedian(marks.map((c) => c.d1)) : 0;
     // Outlines and axis lines run along most of the strip.
     const chars = all.filter((c) => !(c.d0 <= 2 && c.size <= 3) && c.size < len * 0.5 && c.n >= 3 && gray(c));
     if (!chars.length) continue;
     // Glyph height: along a vertical bar, across a horizontal one.
-    const charH = median(chars.map((c) => (vertical ? c.size : c.across)));
+    const charH = upperMedian(chars.map((c) => (vertical ? c.size : c.across)));
     // Lines along the strip (pieces of its frame, an axis line) are long
     // and thin: not text. t4's frame left two such boxes among the labels.
     for (let i = chars.length - 1; i >= 0; i--)

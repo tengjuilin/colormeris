@@ -47,7 +47,7 @@ export function panelProblem(panel: Panel): string | null {
 // Matches a cell color to the bar once (heatmaps repeat colors a lot).
 // Returns {t, value, deltaE, status, end?, open?, reason?, bin?}; value is
 // NaN for an off-map color. On a binned bar the cell takes its nearest
-// bin's middle value (bins from labelBins in core/colorbar.js).
+// bin's middle value (bins from labelBins in core/colorbar.ts).
 function matchColor(lab: Lab, ctx: MatchContext) {
   const { samples, bins, valueAt, settings } = ctx;
   let match: { t: number; deltaE: number; lab?: Lab };

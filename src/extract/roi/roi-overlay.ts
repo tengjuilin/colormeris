@@ -3,15 +3,16 @@ import type { Cell, Mode, Panel, Point, Roi, RoiResult, RoiRow, ViewerApi } from
 import { boxLabel, colorbarProblem } from '../project/project.ts';
 import { drawScaleBar, drawScalePreview } from '../scale-bar.ts';
 import { hexToRgb } from '../settings/settings.ts';
-import { boxGeom, roiControlPoints, roiFromLocal, roiInstances, shapeOutline } from './geometry.ts';
+import { addPolygon, drawHandle, outlinedText, polyPath, strokeDual } from '../workspace/draw.ts';
+import { boxGeom, roiControlPoints, roiFromLocal, shapeOutline } from './geometry.ts';
 import { metricFor, metricValue, panelClassifier, shortNumber } from './quantify.ts';
 import type { RoiToolContext } from './roi-tool.ts';
 
 // ROI tool, DOM: what the tool draws over the image (regions with their
 // labels, edit handles, the scale bar, the signal mask, previews while
-// drawing) and the status-bar hover text. Set up by roi-tool.js.
+// drawing) and the status-bar hover text. Set up by roi-tool.ts.
 //
-// rctx: { ws, state, selectedRoi, roiColor, regionAt } (see roi-tool.ts).
+// rctx: { ws, state, selectedRoi, roiColor, regionAt, instances } (see roi-tool.ts).
 export function setupRoiOverlay(rctx: RoiToolContext) {
   const { ws, state } = rctx;
 
@@ -27,7 +28,7 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
       const selected = roi.id === state.selectedId;
       // All copies of a region as one path: one fill and stroke per region,
       // not per copy.
-      const instances = roiInstances(roi, panel.grid);
+      const instances = rctx.instances(roi, panel.grid);
       ctx.beginPath();
       for (const inst of instances) addPolygon(ctx, v, inst.outline);
       if (selected) {
@@ -36,7 +37,7 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
         ctx.fill();
         ctx.globalAlpha = 1;
       }
-      ws.strokeDual(ctx, color, selected ? 2.5 : 1.5);
+      strokeDual(ctx, color, selected ? 2.5 : 1.5);
       for (const inst of instances) {
         // Label with the current metric when the copy is big enough on screen.
         const xs = inst.outline.map((q) => q.x);
@@ -48,19 +49,15 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
         const label = value === null || value === undefined ? roi.name : `${roi.name}: ${shortNumber(value)}`;
         const s = v.toScreen({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: Math.min(...ys) });
         const w = ctx.measureText(label).width;
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-        ctx.strokeText(label, s.x - w / 2, s.y - 3);
-        ctx.fillStyle = color;
-        ctx.fillText(label, s.x - w / 2, s.y - 3);
+        outlinedText(ctx, label, s.x - w / 2, s.y - 3, color);
       }
     }
     const sel = rctx.selectedRoi();
     if (sel) {
       const color = rctx.roiColor(panel, sel);
-      for (const inst of roiInstances(sel, panel.grid)) {
+      for (const inst of rctx.instances(sel, panel.grid)) {
         for (const q of roiControlPoints(sel))
-          ws.drawHandle(
+          drawHandle(
             ctx,
             v,
             roiFromLocal(sel, panel.grid, inst.row!, inst.col!, q),
@@ -72,32 +69,17 @@ export function setupRoiOverlay(rctx: RoiToolContext) {
     if (panel.scale) drawScaleBar(ws, ctx, v, panel.scale);
   }
 
-  // Adds a closed polygon to the current path.
-  function addPolygon(ctx: CanvasRenderingContext2D, v: ViewerApi, pts: Point[]) {
-    pts.forEach((q, i) => {
-      const s = v.toScreen(q);
-      if (i === 0) ctx.moveTo(s.x, s.y);
-      else ctx.lineTo(s.x, s.y);
-    });
-    ctx.closePath();
-  }
-
   function drawModePreview(ctx: CanvasRenderingContext2D, v: ViewerApi, m: Mode, hover: Point | undefined) {
     if ((m.type === 'ellipse' || m.type === 'rect') && state.draft) {
       const roi = { shape: m.type as Roi['shape'], geom: boxGeom(state.draft.a, state.draft.b, state.draft.equal) };
-      ws.polyPath(ctx, v, shapeOutline(roi));
-      ws.strokeDual(ctx, ws.color('roiDraft') as string, 1.5, [6, 4]);
+      polyPath(ctx, v, shapeOutline(roi));
+      strokeDual(ctx, ws.color('roiDraft') as string, 1.5, [6, 4]);
     } else if (m.type === 'polygon' && m.points.length) {
-      const pts = hover ? [...m.points, hover] : m.points;
       ctx.beginPath();
-      pts.forEach((q, i) => {
-        const s = v.toScreen(q);
-        if (i === 0) ctx.moveTo(s.x, s.y);
-        else ctx.lineTo(s.x, s.y);
-      });
-      ws.strokeDual(ctx, ws.color('roiDraft') as string, 1.5, [6, 4]);
+      addPolygon(ctx, v, hover ? [...m.points, hover] : m.points, false);
+      strokeDual(ctx, ws.color('roiDraft') as string, 1.5, [6, 4]);
       m.points.forEach((q, i) =>
-        ws.drawHandle(ctx, v, q, i === 0 ? ws.COLORS.highlight : (ws.color('roiDraft') as string), 'circle'),
+        drawHandle(ctx, v, q, i === 0 ? ws.COLORS.highlight : (ws.color('roiDraft') as string), 'circle'),
       );
     } else {
       drawScalePreview(ws, ctx, v, m, hover);

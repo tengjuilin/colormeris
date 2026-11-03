@@ -2,10 +2,11 @@
 
 import { isLogScale } from '../../core/colorbar.ts';
 import type { CellCounts } from '../../types/index.ts';
+import { round } from '../round.ts';
 import { MISFIT } from './ticks.ts';
 
 // The app's own check of a panel. `counts` and `clampedShare` come from
-// extractPanel (heatmap/sampling.js), `offMapReasons` counts off-map cells
+// extractPanel (heatmap/sampling.ts), `offMapReasons` counts off-map cells
 // by reason, `bins` is the number of colorbar bins (0 for a smooth bar).
 // Fails on a problem, ticks off the scale's line, many flagged cells
 // (far from the bar's colors) or mostly off-map cells (the wrong
@@ -90,7 +91,7 @@ export function printedCheck(pairs: PrintedPair[], range: { min: number; max: nu
   const log = isLogScale(scale);
   const f = (v: number) => (log ? Math.log10(v) : v);
   const span = Math.abs(f(range.max) - f(range.min)) || 1;
-  const fmt = (v: number) => String(Math.round(v * 1000) / 1000);
+  const fmt = (v: number) => String(round(v, 3));
   const lines: string[] = [];
   const used: { x: number; d: number }[] = [];
   for (const p of pairs) {
@@ -125,7 +126,7 @@ export function printedCheck(pairs: PrintedPair[], range: { min: number; max: nu
     const slope = sxx ? sxy / sxx : 1;
     const bias = used.reduce((a, u) => a + u.d, 0) / n;
     if (sxx && Math.abs(slope - 1) > 0.1)
-      systematic = `the extracted values grow ${slope > 1 ? 'faster' : 'slower'} than the printed ones (slope ${Math.round(slope * 100) / 100})`;
+      systematic = `the extracted values grow ${slope > 1 ? 'faster' : 'slower'} than the printed ones (slope ${round(slope, 2)})`;
     else if (Math.abs(bias) > PRINTED_TOL * span && used.every((u) => Math.sign(u.d) === Math.sign(bias)))
       systematic = `the extracted values are all ${bias > 0 ? 'higher' : 'lower'} by about ${fmt(Math.abs(log ? 10 ** bias : bias))}${log ? '×' : ''}`;
   }

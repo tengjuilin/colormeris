@@ -3,10 +3,10 @@ import { rgbToHex } from '../../../core/color.ts';
 import type { ViewKey } from '../../../types/index.ts';
 import { VIEWS } from '../../common.ts';
 import { viewData } from '../../library-cache.ts';
-import { colorsLut, paintValues, sinePattern } from '../../recolor.ts';
 import { useTooltip } from '../shared/tooltip.tsx';
 import { SINE_N, SINE_PATTERNS } from './compare-model.ts';
 import type { Compared } from './compare-numbers.tsx';
+import { colorsLut, paintValues, sinePattern } from './test-pattern.ts';
 
 // The sine-wave test images of the Compare tab: every compared map applied to
 // the same pattern, in one of the five views. The canvases are painted in a

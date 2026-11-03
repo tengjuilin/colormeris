@@ -1,7 +1,7 @@
 // The Panels card: chips for the panels on this page, links to other pages that have panels, add and delete
 // buttons and the active panel's name. It reads the project during render (useWorkspace re-renders it on every
-// workspace change) and writes through ws / w like the old imperative code did. This is the pattern for the
-// other migrated cards: read in render, mutate in event handlers followed by ws.changed(), and move focus in a
+// workspace change) and writes through w, the private workspace context. This is the pattern for the
+// other migrated cards: read in render, mutate in event handlers followed by w.changed(), and move focus in a
 // layout effect after the render that shows the thing to focus.
 import { useLayoutEffect, useRef } from 'react';
 import type { Panel } from '../../../types/index.ts';
@@ -22,7 +22,7 @@ export function otherPages(panels: Panel[], page: number): [page: number, names:
 }
 
 export function PanelsCard() {
-  const { ws, w } = useWorkspace({ section: 'sec-panels' });
+  const { w } = useWorkspace({ section: 'sec-panels' });
   const { app } = w;
   const active = w.activePanel();
   const here = w.pagePanels();
@@ -76,7 +76,7 @@ export function PanelsCard() {
   function status(p: Panel): { dot: Dot; title: string } {
     const problem = w.toolFor(p).panelProblem(p);
     if (problem) return { dot: 'pending', title: problem };
-    const review = ws.reviewStatus?.(p);
+    const review = w.ws.reviewStatus?.(p);
     if (review === 'rejected')
       return { dot: 'rejected', title: `Rejected in review${p.review?.note ? `: ${p.review.note}` : ''}` };
     return { dot: 'done', title: review === 'accepted' ? 'Calibrated and accepted' : 'Calibrated' };

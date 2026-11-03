@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
-import { cmapData } from '../../../core/colormap-library.ts';
+import { mapByName } from '../../../core/colormap-library.ts';
 import { comparedWith } from '../viewer-state.ts';
 import { MiniStrip } from './compare-numbers.tsx';
 
@@ -15,8 +15,6 @@ export interface CompareTrayProps {
   compareFlipped: ReadonlySet<string>;
   onCompareChange: (next: readonly string[]) => void;
 }
-
-const byName = new Map(cmapData.maps.map((m) => [m.name, m]));
 
 export function CompareTray({ compare, browseRev, compareFlipped, onCompareChange }: CompareTrayProps) {
   const chips = useRef<HTMLDivElement>(null);
@@ -37,7 +35,7 @@ export function CompareTray({ compare, browseRev, compareFlipped, onCompareChang
       <span className="cmap-tray-label">Comparing</span>
       <div className="cmap-tray-chips" ref={chips}>
         {compare.map((name, i) => {
-          const map = byName.get(name);
+          const map = mapByName(name);
           return (
             map && (
               <span className="cmap-chip" key={name}>

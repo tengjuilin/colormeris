@@ -1,7 +1,7 @@
 // The ROI Regions card: draw toggles (E / R / P), the copy-into-every-box option, one chip per region (keyed by
 // region id) and, for the selected region, its name, Reset nudges and Delete. Read in render, write in handlers
 // (docs/react.md, "The card pattern"). The selection lives in the tool state (roi-tool.ts); Delete / Backspace is its onKey.
-import type { Panel, Roi } from '../../../types/index.ts';
+import type { Panel, Roi, RoiModeType } from '../../../types/index.ts';
 import { Actions, BoundInput, Btn, CardHead, Check, Chip, ChipList, Field, SplitActions } from '../../../ui/index.ts';
 import { useBoundText } from '../../react/use-bound.ts';
 import { useWorkspace } from '../../react/use-workspace.ts';
@@ -21,7 +21,7 @@ export function roiMeta(panel: Panel, roi: Roi): string {
 export function RegionsCard() {
   const { w } = useWorkspace({ section: 'sec-rois' });
   const rctx = useRoiContext();
-  const { ws, state } = rctx;
+  const { state } = rctx;
   const { app } = w;
   const panel = w.activePanel();
   // A selection that no longer exists (deleted, undone, other panel) selects nothing.
@@ -34,7 +34,7 @@ export function RegionsCard() {
     if (roi) roi.name = value;
   });
 
-  function draw(shape: string, label: string, title: string) {
+  function draw(shape: RoiModeType, label: string, title: string) {
     return (
       <Btn
         id={`tool-${shape}`}
@@ -91,7 +91,7 @@ export function RegionsCard() {
             title={`${SHAPE_NAMES[roi.shape]}${roi.replicate ? ' copied into every box' : ''}`}
             onClick={() => {
               state.selectedId = roi.id === state.selectedId ? null : roi.id;
-              ws.changed();
+              w.changed();
             }}
           >
             {roi.name}
@@ -113,7 +113,7 @@ export function RegionsCard() {
             disabled={!sel?.replicate || !Object.keys(sel.offsets).length}
             onClick={() => {
               const roi = rctx.selectedRoi();
-              if (roi) ws.commit((p) => (p.rois.find((r) => r.id === roi.id)!.offsets = {}));
+              if (roi) w.commit((p) => (p.rois.find((r) => r.id === roi.id)!.offsets = {}));
             }}
           >
             Reset nudges

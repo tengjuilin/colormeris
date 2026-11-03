@@ -8,7 +8,7 @@ React 19 renders the cards and the colormaps page. The canvas viewer, overlays, 
 
 The workspace (`src/extract/workspace/workspace.ts`) keeps the project and mutates it in place. React learns about changes through a version counter, `src/extract/workspace/store.ts`:
 
-- `notify({light})` bumps the version and runs the subscribers. It is called at the end of `renderSidebar` (so `changed()`, `commit`, undo/redo, `ws.render()` and the agent API all reach it), in `setMode`, in `setTool` (after switching) and on settings changes.
+- `notify({light})` bumps the version and runs the subscribers. It is called at the end of the workspace's `renderSidebar`, after the tool's `reconcile` hook (so `changed()`, `commit`, undo/redo, `ws.render()` and the agent API all reach it), in `setMode`, in `setTool` (after switching) and on settings changes.
 - **Full changes flush synchronously** (`flushSafely` in `src/ui/flush.ts`: `flushSync`, never nested; deferred to a microtask when a flush is already running). Imperative callers such as the agent API and `focusTick` expect the DOM to be current when `changed()` returns.
 - **Light changes** (`changed({light: true})`: every keystroke in a number field, every pointermove of a handle drag) do not flush; React batches them in a microtask. No imperative caller reads the sidebar DOM after a light change.
 - `fullVersion` is bumped by full changes only, for cards that ignore typing and drags.
@@ -44,14 +44,14 @@ They render the classes of the UI standard in `base.css`, so a card cannot drift
 
 Every extract card follows `src/extract/workspace/cards/panels-card.tsx`.
 
-- **Read in render, write in handlers.** Read with `useWorkspace(...)`; keep no local copy of project state. Handlers read live state again (`const panel = w.activePanel()`), because they also run from hotkeys, `.click()` and after light changes. A handler mutates through workspace logic or `w.commit(...)` and ends with `w.changed()`. Never call `changed()` during a render or an effect.
+- **Read in render, write in handlers.** Read with `useWorkspace(...)` and go through `w` (the private context; it holds `w.ws` for the few public-only members such as `reviewStatus` and `settings`); keep no local copy of project state. Handlers read live state again (`const panel = w.activePanel()`), because they also run from hotkeys, `.click()` and after light changes. A handler mutates through workspace logic or `w.commit(...)` and ends with `w.changed()`. Never call `changed()` during a render or an effect.
 - **Fields** bound to the active panel take `key={active.id}`, so a draft never carries over to another panel.
 - **Focus after an action**: set a ref flag before the action; a `useLayoutEffect` focuses the element after the render that shows it and resets the flag in `finally`. Don't focus straight after `changed()`, since `notify` may defer.
 - **Tool cards** check `panel.tool` (not `w.tool()`) before reading a result: during a tool switch a render can run while the active panel already belongs to the new tool. Tell results apart by shape (`'error' in res`, `Array.isArray(res.rows)`).
 - **Render budget**: every light notify re-renders every visible light-subscribed card, so a render is O(panels) or O(ticks) at most, with no pixel work; canvases draw in layout effects keyed on what they show.
 - **Tests** (`*.test.tsx`, `// @vitest-environment jsdom`, `afterEach(cleanup)` because Vitest has no globals) render under `<StrictMode>` with a fake `{ws, w}` around `createProject()` (set `app.sourceCanvas`) and assert the mutation, the history entries and the DOM.
 
-Tool contexts reach the cards through small modules: `roi/cards/roi-context.ts` (`rctx`), `map/cards/map-context.ts` (`mctx`). The Agent card keeps its run state in a reducer (`agent/ui/agent-state.ts`) fed by runner callbacks.
+Tool contexts reach the cards through small modules built with `createToolContext` (`src/extract/react/tool-context.ts`; the getter throws when the tool was not set up): `roi/cards/roi-context.ts` (`rctx`), `map/cards/map-context.ts` (`mctx`). The Agent card keeps its run state in a reducer (`agent/ui/agent-state.ts`) fed by runner callbacks.
 
 ## Colormaps page
 

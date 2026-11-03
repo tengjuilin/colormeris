@@ -1,15 +1,15 @@
 import { rgbToHex } from '../../../core/color.ts';
 import { colorAtT, refineColorbar, sampleColorbar } from '../../../core/colorbar.ts';
-import { cmapData } from '../../../core/colormap-library.ts';
+import { libraryMaps, mapByName, mapColors } from '../../../core/colormap-library.ts';
 import { identifyColorbar } from '../../../core/colormap-match.ts';
 import type { ColorbarSample, Rgb } from '../../../types/index.ts';
-import { pct, roundRgb } from '../../common.ts';
-import { base } from '../../library-cache.ts';
+import { downloadCanvasPng, pct, roundRgb } from '../../common.ts';
 import {
   type ColorIndex,
   createIndexer,
+  createRecolorer,
+  maskCount,
   newColorAt,
-  recolorPixels,
   regionMask,
   similarMask,
   tAtPixel,
@@ -70,8 +70,6 @@ export interface RecolorEnv {
 }
 
 const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-const mapByName = new Map(cmapData.maps.map((m) => [m.name, m]));
-let idMaps: { name: string; kind: string; rgbs: ReturnType<typeof base> }[] | null = null; // built once; the matcher caches each map's Lab by its colors
 
 export function createRecolorEngine(env: RecolorEnv) {
   const { ui } = env;
@@ -79,6 +77,10 @@ export function createRecolorEngine(env: RecolorEnv) {
   let flip = false; // the line was drawn from the old map's high end
   let index: ColorIndex | null = null; // per-pixel t and ΔE
   let region: Uint8Array | null = null; // per-pixel 0/1 from the boxes, or null for the whole image
+  let regionTotal = 0; // pixels in the region, counted when it changes
+  // One output buffer for every render (a big figure is tens of MB per frame otherwise) and the last LUT.
+  // outData and outImage below are views of that buffer: they always hold the latest render.
+  const recolor = createRecolorer({ reuse: true });
   let outData: Uint8ClampedArray | null = null; // the recolored RGBA bytes, for the highlight's colors
   let outImage: ImageData | null = null; // the same as ImageData, to put back after a peek
   let peek: { canvas: HTMLCanvasElement; x: number; y: number } | null = null; // it shows the other version while held
@@ -87,14 +89,14 @@ export function createRecolorEngine(env: RecolorEnv) {
   let mask: Uint8Array | null = null;
   let overlayData: ImageData[] | null = null; // one buffer per overlay
   let pending: number | null = null; // the latest hover, drawn at the next frame
-  let frame: ReturnType<typeof setTimeout> | number = 0;
+  let cancelHover: (() => void) | null = null; // the pending hover frame, set while one is scheduled
   let renderFrame = 0;
   let stripKey: unknown[] | null = null; // what the strips show; they only change with it
   let stopped = false; // between stop() and start(): React's StrictMode mounts, unmounts and mounts again
 
   const newMap = () => {
-    const m = (mapByName.get(env.settings().chosen) || mapByName.get(DEFAULT_MAP))!;
-    return { name: m.name, kind: m.kind, rgbs: base(m) };
+    const m = (mapByName(env.settings().chosen) || mapByName(DEFAULT_MAP))!;
+    return { name: m.name, kind: m.kind, rgbs: mapColors(m) };
   };
 
   // ---- the figure's drawing options (figure-input reads them at event time) ----
@@ -108,6 +110,7 @@ export function createRecolorEngine(env: RecolorEnv) {
     const fig = env.fig();
     if (!fig) return;
     region = fig.img ? regionMask(fig.img.width, fig.img.height, fig.boxes) : null;
+    regionTotal = region ? maskCount(region) : 0;
     mask = null;
     ui.setRegionCount(fig.boxes.length);
     fig.redraw();
@@ -148,8 +151,10 @@ export function createRecolorEngine(env: RecolorEnv) {
   // Name the old map when it is a known one, and read the bar in its
   // direction, so the low end stays the low end whichever way it was drawn.
   function describeOld(rgbs: ColorbarSample['rgb'][], snapped: boolean) {
-    idMaps ??= cmapData.maps.map((m) => ({ name: m.name, kind: m.kind, rgbs: base(m) }));
-    const best = identifyColorbar(rgbs, idMaps)[0];
+    // Only the best map is used: `within: 0` drops the others as soon as they
+    // are sure to score worse (the same best as the full ranking, and its ties
+    // keep the library order). The matcher caches each map's Lab by its colors.
+    const best = identifyColorbar(rgbs, libraryMaps(), { within: 0 })[0];
     const note = describeOldMap(best, snapped);
     flip = note.flip;
     ui.setNote(note);
@@ -206,12 +211,13 @@ export function createRecolorEngine(env: RecolorEnv) {
     const img = fig.img;
     const m = newMap();
     const { tolerance, reversed } = env.settings();
-    const r = recolorPixels(img, index, m, { tolerance, reversed, flip, region });
+    const r = recolor(img, index, m, { tolerance, reversed, flip, region, regionTotal });
     if (out.width !== img.width || out.height !== img.height) {
       out.width = img.width;
       out.height = img.height;
     }
-    outImage = new ImageData(r.data, img.width, img.height);
+    // The buffer is reused, so its ImageData is too, until the image size changes.
+    if (outImage?.data !== r.data) outImage = new ImageData(r.data, img.width, img.height);
     out.getContext('2d')?.putImageData(outImage, 0, 0);
     outData = r.data;
     ui.setOutShown(true);
@@ -235,12 +241,20 @@ export function createRecolorEngine(env: RecolorEnv) {
   // the latest one per frame is drawn.
   function hover(t: number) {
     pending = t;
-    if (frame) return;
+    if (cancelHover) return;
     const run = () => {
-      frame = 0;
+      cancelHover = null;
       if (pending != null) highlight(pending);
     };
-    frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(run) : setTimeout(run, 16);
+    // The cancel is kept with the frame: the ids of requestAnimationFrame and of the setTimeout fallback are
+    // both numbers, so a stop could not tell which to cancel from the id.
+    if (typeof requestAnimationFrame === 'function') {
+      const id = requestAnimationFrame(run);
+      cancelHover = () => cancelAnimationFrame(id);
+    } else {
+      const id = setTimeout(run, 16);
+      cancelHover = () => clearTimeout(id);
+    }
   }
 
   function highlight(t0: number, force = false) {
@@ -291,6 +305,8 @@ export function createRecolorEngine(env: RecolorEnv) {
   }
 
   // Both images have the same size, so a point on either is a point on both.
+  // Continuous and clamped into the image, unlike the CVD tab's imagePixelAt (floored, null outside):
+  // tAtPixel rounds it to the nearest pixel, and a hover just past the edge still reads the edge pixel.
   const pointOn = (c: HTMLCanvasElement, e: PointerEvent) => {
     const r = c.getBoundingClientRect();
     const k = c.width / (c.clientWidth || c.width);
@@ -363,6 +379,7 @@ export function createRecolorEngine(env: RecolorEnv) {
     mask = null;
     overlayData = null;
     region = null;
+    regionTotal = 0;
     flip = false;
     clearHighlight();
     ui.setOutShown(false);
@@ -377,20 +394,8 @@ export function createRecolorEngine(env: RecolorEnv) {
     const fig = env.fig();
     const out = env.out();
     if (!index || !fig || !out) return;
-    out.toBlob((blob) => {
-      if (!blob) {
-        ui.setStatus('Could not make the PNG.');
-        return;
-      }
-      const { chosen, reversed } = env.settings();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = downloadName(fig.name, chosen, reversed);
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    }, 'image/png');
+    const { chosen, reversed } = env.settings();
+    downloadCanvasPng(out, downloadName(fig.name, chosen, reversed), ui.setStatus);
   }
 
   // A stop kills the indexing run and the pending frames; a start (a remount) picks up where it was.
@@ -404,9 +409,8 @@ export function createRecolorEngine(env: RecolorEnv) {
     job++;
     cancelAnimationFrame(renderFrame);
     renderFrame = 0;
-    if (typeof frame === 'number') cancelAnimationFrame(frame);
-    else clearTimeout(frame);
-    frame = 0;
+    cancelHover?.();
+    cancelHover = null;
   }
 
   return {

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { cmapData } from '../../../core/colormap-library.ts';
+import { mapByName } from '../../../core/colormap-library.ts';
 import type { ViewKey } from '../../../types/index.ts';
 import { MapPicker } from '../../map-picker.tsx';
 import { COMPARE_MAX } from '../../route.ts';
@@ -34,7 +34,6 @@ export interface CompareTabProps {
   onToggleFlip: (name: string) => void;
 }
 
-const byName = new Map(cmapData.maps.map((m) => [m.name, m]));
 const FULL_TITLE = `Up to ${COMPARE_MAX} maps can be compared`;
 
 // Where focus goes after the comparison changes from `from`; the request waits for that render.
@@ -85,7 +84,7 @@ const CompareView = memo(function CompareView({
   const list = useMemo<Compared[]>(
     () =>
       compare.flatMap((name, i) => {
-        const map = byName.get(name);
+        const map = mapByName(name);
         return map ? [{ map, reversed: (browseRev[i] ?? false) !== compareFlipped.has(name) }] : [];
       }),
     [compare, compareFlipped, browseRev],

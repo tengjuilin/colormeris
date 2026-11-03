@@ -2,11 +2,13 @@
 // The table stays imperative inside a ref host (cells carry data-r / data-c for the hover link to the image and
 // the table can be large); it is rebuilt only when the cached result, the metric or the unit changes.
 // Read in render, write in handlers (docs/react.md, "The card pattern").
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import type { Panel, RoiResult, RoiStats, Workspace, WorkspaceContext } from '../../../types/index.ts';
 import { BoundSelect, Btn, Check, Field, Hint, Notice, SplitActions } from '../../../ui/index.ts';
 import { formatNumber, roiCsv } from '../../project/project-files.ts';
+import { useTableHover } from '../../react/use-table-hover.ts';
 import { useWorkspace } from '../../react/use-workspace.ts';
+import { copyTable, downloadCsv } from '../../results-actions.ts';
 import { notify } from '../../workspace/store.ts';
 import { metricFor, metricValue, roiTableModel, shortNumber } from '../quantify.ts';
 import { useRoiContext } from './roi-context.ts';
@@ -115,16 +117,10 @@ export function fillRoiTable(table: HTMLTableElement, panel: Panel, res: Result,
   table.replaceChildren(thead, tbody);
 }
 
-async function copyTable(ws: Workspace, metric: keyof RoiStats) {
-  const panel = ws.activePanel();
-  const res = ws.resultFor(panel) as Result;
-  if ('error' in res && res.error) return;
-  try {
-    await navigator.clipboard.writeText(roiTsv(panel, res as RoiResult, metricFor(metric, !!panel.scale)));
-    ws.toast('Table copied — paste into a spreadsheet.');
-  } catch {
-    ws.toast('Clipboard is not available here.', true);
-  }
+function copy(w: WorkspaceContext, metric: keyof RoiStats) {
+  const panel = w.activePanel();
+  const res = w.resultFor(panel) as Result;
+  if (hasRows(res)) void copyTable(w, roiTsv(panel, res, metricFor(metric, !!panel.scale)));
 }
 
 function ResultTable({
@@ -139,30 +135,15 @@ function ResultTable({
   metric: keyof RoiStats;
 }) {
   const table = useRef<HTMLTableElement>(null);
+  // While a handle is dragged the table waits for the drop, as the heatmap's does: rebuilding it on every move
+  // took longer than a frame.
+  const dragging = !!w.app.drag;
   // panel.rois names are part of the header: rebuild when the result object changes (it does for any edit).
   useLayoutEffect(() => {
-    if (table.current) fillRoiTable(table.current, panel, res, metric);
-  }, [panel, res, metric]);
+    if (table.current && !dragging) fillRoiTable(table.current, panel, res, metric);
+  }, [panel, res, metric, dragging]);
 
-  useEffect(() => {
-    const el = table.current;
-    if (!el) return;
-    const over = (e: PointerEvent) => {
-      const td = (e.target as HTMLElement).closest<HTMLElement>('td[data-r]');
-      w.app.tableCell = td ? { row: Number(td.dataset.r), col: Number(td.dataset.c) } : null;
-      w.viewer.requestDraw();
-    };
-    const leave = () => {
-      w.app.tableCell = null;
-      w.viewer.requestDraw();
-    };
-    el.addEventListener('pointerover', over);
-    el.addEventListener('pointerleave', leave);
-    return () => {
-      el.removeEventListener('pointerover', over);
-      el.removeEventListener('pointerleave', leave);
-    };
-  }, [w]);
+  useTableHover(w, table);
 
   return (
     <div className="table-wrap">
@@ -172,11 +153,11 @@ function ResultTable({
 }
 
 export function RoiResultsCard() {
-  const { ws, w } = useWorkspace({ section: 'sec-roi-results' });
+  const { w } = useWorkspace({ section: 'sec-roi-results' });
   const { state } = useRoiContext();
   const panel = w.activePanel();
   // Only the ROI tool shows this card; another tool's result has no regions.
-  const res: Result = panel.tool === 'roi' ? (ws.resultFor(panel) as Result) : { error: '' };
+  const res: Result = panel.tool === 'roi' ? (w.resultFor(panel) as Result) : { error: '' };
   const error = 'error' in res && res.error ? res.error : '';
   const metric = metricFor(state.metric, !!panel.scale);
   const summary = error || !hasRows(res) ? '' : roiSummary(panel, res);
@@ -206,7 +187,7 @@ export function RoiResultsCard() {
           value={metric}
           onChange={(v) => {
             state.metric = v as keyof RoiStats;
-            ws.changed();
+            w.changed();
           }}
         >
           {options.map((o) => (
@@ -229,13 +210,9 @@ export function RoiResultsCard() {
           icon="download"
           disabled={!!error}
           onClick={() => {
-            const p = ws.activePanel();
-            const r = ws.resultFor(p) as Result;
-            if (!('error' in r && r.error))
-              ws.download(
-                new Blob([roiCsv([{ panel: p, result: r as RoiResult }])], { type: 'text/csv' }),
-                ws.csvName(p, '_rois'),
-              );
+            const p = w.activePanel();
+            const r = w.resultFor(p) as Result;
+            if (hasRows(r)) downloadCsv(w, p, roiCsv([{ panel: p, result: r }]), '_rois');
           }}
         >
           Download CSV
@@ -245,7 +222,7 @@ export function RoiResultsCard() {
           icon="copy"
           title="Copy the table to paste into a spreadsheet"
           disabled={!!error}
-          onClick={() => void copyTable(ws, state.metric)}
+          onClick={() => copy(w, state.metric)}
         >
           Copy table
         </Btn>

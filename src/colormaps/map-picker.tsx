@@ -1,7 +1,6 @@
 import { type KeyboardEvent, memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { cmapData } from '../core/colormap-library.ts';
-import { parseHexColors } from '../core/cvd.ts';
+import { cmapData, mapByName, mapColors } from '../core/colormap-library.ts';
 import type { ColormapEntry, Rgb } from '../types/index.ts';
 import { flushSafely } from '../ui/flush.ts';
 
@@ -36,15 +35,6 @@ export interface MapPickerProps {
   onChoose: (name: string, typedReversed: boolean) => void;
 }
 
-const mapByName = new Map(cmapData.maps.map((m) => [m.name, m]));
-const baseColors = new Map<string, Rgb[]>(); // name -> colors, parsed once
-
-function colorsOf(m: ColormapEntry): Rgb[] {
-  let c = baseColors.get(m.name);
-  if (!c) baseColors.set(m.name, (c = parseHexColors(m.colors)));
-  return c;
-}
-
 // One pixel per color, stretched by CSS (same as the viewer's strips).
 function paintStrip(canvas: HTMLCanvasElement, colors: Rgb[]) {
   const ctx2d = canvas.getContext('2d');
@@ -56,9 +46,9 @@ function paintStrip(canvas: HTMLCanvasElement, colors: Rgb[]) {
 
 const MiniStrip = memo(function MiniStrip({ map }: { map: ColormapEntry }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const n = Math.max(1, map.colors.length ? colorsOf(map).length : 1);
+  const n = Math.max(1, map.colors.length ? mapColors(map).length : 1);
   useLayoutEffect(() => {
-    if (ref.current) paintStrip(ref.current, colorsOf(map));
+    if (ref.current) paintStrip(ref.current, mapColors(map));
   }, [map]);
   return (
     <span className="cmap-mini">
@@ -132,7 +122,7 @@ export function MapPicker({ id, label, placeholder, value, disabled, title, onCh
   };
 
   const choose = (name: string, text: string) => {
-    const typedReversed = /_r$/i.test(text.trim()) && !mapByName.has(text.trim());
+    const typedReversed = /_r$/i.test(text.trim()) && !mapByName(text.trim());
     close();
     setTyped(null);
     setFollowed(true);

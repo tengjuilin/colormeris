@@ -1,7 +1,8 @@
 // snapBlock: the filled block of cells inside a rough box.
 
 import type { Box, PixelImage } from '../../types/index.ts';
-import { clamp, FAINT_FILL, FILL, FRAME_GAP, FRAME_LINE, median, runs, SPAN_FILL } from './helpers.ts';
+import { upperMedian } from '../stats.ts';
+import { clamp, FAINT_FILL, FILL, FRAME_GAP, FRAME_LINE, runs, SPAN_FILL } from './helpers.ts';
 import { fitFrame, lineTools } from './line-tools.ts';
 import type { PixelTest } from './types.ts';
 
@@ -217,11 +218,11 @@ export function snapBlock(img: PixelImage, box: Box, options: { margin?: number 
       }
       if (cells.length < 2) return null;
       const sizes = cells.map(([a, b]) => b - a);
-      const size = median(sizes);
+      const size = upperMedian(sizes);
       if (sizes.some((v) => Math.abs(v - size) > Math.max(2, 0.15 * size))) return null;
       const gaps = cells.slice(1).map(([a], i) => a - cells[i][1]);
       if (Math.min(...gaps) < 1) return null;
-      return { pitch: median(cells.slice(1).map(([a], i) => a - cells[i][0])), gap: Math.max(...gaps), size };
+      return { pitch: upperMedian(cells.slice(1).map(([a], i) => a - cells[i][0])), gap: Math.max(...gaps), size };
     };
     // A pale cell beyond the edge `e` (the block's first line, or one past
     // its last) in direction `dir`: its lines past the gap are cell lines.

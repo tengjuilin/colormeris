@@ -12,12 +12,13 @@ import type {
 import { canvasImageData, fileKind, imageToCanvas, openPdf, renderPdfPage, sha256Hex } from '../pdf-loader.ts';
 import { createProject, rescalePanel } from '../project/project.ts';
 import { readProjectZip } from '../project/project-files.ts';
+import { isFormField } from '../typing.ts';
 
 // The source file and its pages: opening PDFs, images and project zips
 // (file dialog, examples, drag and drop, paste), PDF pages, render
 // resolution and the zoom box.
 //
-// w is the workspace's private context (workspace.js). Other modules'
+// w is the workspace's private context (workspace.ts). Other modules'
 // functions are called through it at call time (setMode, changed, ensurePagePanel, ...).
 export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
   const { $, app } = w;
@@ -99,6 +100,7 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
   // Display a page that is already in app.pages.
   function showPage(page: number, { keepView = false }: { keepView?: boolean } = {}) {
     const entry = app.pages.get(page)!;
+    app.drag = null; // a new page or project ends any drag left over
     app.sourceCanvas = entry.canvas;
     app.imageData = entry.imageData;
     app.project.source!.width = entry.canvas.width;
@@ -331,8 +333,8 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
     openFile(e.dataTransfer?.files?.[0]);
   });
   window.addEventListener('paste', (e) => {
-    const target = e.target;
-    if (target instanceof HTMLElement && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return;
+    // Pasting into any form field, a checkbox included, does not open the clipboard image.
+    if (isFormField(e.target)) return;
     const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
     if (!item) return;
     const blob = item.getAsFile();

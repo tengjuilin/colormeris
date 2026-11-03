@@ -1,14 +1,9 @@
 // The figure input shared by the Identify, Recolor and CVD tabs of the colormap
 // viewer: a drop zone with Choose / Example / Clear buttons, paste while the
 // tab is shown, and a canvas with the image on which a line is dragged along
-// the colorbar. The image never leaves the browser.
-//
-// opts: { el, state, tab, label, hints: { empty, loaded }, buttons: [extra
-// buttons for the bar], base(): what to draw under the line (default the
-// image), showLine(): whether to draw it, onLoad(file), onReset(keepImage),
-// onError(msg), onLine(start, end) after a drag, lines: false for no line
-// at all (the CVD tab), dragMode(): 'box' to drag rectangles instead of the
-// line, onBox({ x, y, w, h }) after one (Recolor's regions) }.
+// the colorbar. The image never leaves the browser. Its options are
+// CreateFigureInputOptions below; app/shared/figure-input.tsx wraps it for React.
+import type { el as makeEl } from './common.ts';
 
 const MAX_SIDE = 4000; // larger images are scaled down before sampling
 const EXAMPLE = 'examples/example-jet.png';
@@ -45,6 +40,37 @@ export interface FigureState {
   dragging: boolean;
 }
 
+/** createFigureInput's options. The functions are called at event time, so a host can change what they return. */
+export interface CreateFigureInputOptions {
+  /** common.ts' element maker. */
+  el: typeof makeEl;
+  /** The tab shown now: pasting works while it is `tab`. */
+  state: { readonly tab: string };
+  tab: string;
+  /** aria-label of the canvas. */
+  label: string;
+  hints: { empty: string; loaded: string };
+  /** Extra buttons for the bar, between Example and Clear. */
+  buttons?: HTMLElement[];
+  /** What to draw under the line (default the image). */
+  base?: () => CanvasImageSource | undefined | null;
+  /** Whether to draw the line and boxes. */
+  showLine?: () => boolean;
+  /** false for no line at all (the CVD tab). */
+  lines?: boolean;
+  /** 'box' to drag rectangles instead of the line. */
+  dragMode?: () => string | undefined;
+  /** A click keeps the line there was. */
+  readonly keepLineOnClick?: boolean;
+  onLoad?: (file: File) => void;
+  onReset?: (keepImage?: boolean) => void;
+  onError?: (message: string) => void;
+  /** After a line drag, in image pixels. */
+  onLine?: (start: Pt, end: Pt) => void;
+  /** After a box drag (Recolor's regions). */
+  onBox?: (box: FigureBox) => void;
+}
+
 interface FigureDrag {
   start: Pt;
   px: number;
@@ -54,8 +80,7 @@ interface FigureDrag {
   box: FigureBox | null;
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: TODO(types) the options bag is documented above; the tabs pass differing subsets
-export function createFigureInput(opts: any) {
+export function createFigureInput(opts: CreateFigureInputOptions) {
   const { el, state, tab, hints } = opts;
   const file: HTMLInputElement = el('input', { type: 'file', accept: 'image/*', hidden: '' });
   const example = el('button', { type: 'button', class: 'btn small' }, 'Example image (jet)');
@@ -326,7 +351,7 @@ export function createFigureInput(opts: any) {
 
   const fileOf = (dt: DataTransfer | null) =>
     [...(dt?.files || [])].find((f) => /^image\//.test(f.type)) || [...(dt?.files || [])][0];
-  for (const t of [zone, canvas]) {
+  for (const t of [zone, canvas] as HTMLElement[]) {
     t.addEventListener('dragover', (e: Event) => {
       e.preventDefault();
       region.classList.add('over');

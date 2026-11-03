@@ -1,4 +1,4 @@
-// Map tool, profile selection rules (pure): which profiles are selected after the list changed. The selected
+// Map tool, profile selection rules (pure): which profiles are selected after a click and after the list changed. The selected
 // profile (`selectedId`) is the one edited in the card; `overlay` holds more selected profiles plotted with it.
 import type { Profile } from '../../types/index.ts';
 
@@ -20,4 +20,25 @@ export function reconcileSelection(sel: Selection, profiles: Profile[]) {
     sel.overlay.delete(sel.selectedId);
   }
   if (!sel.selectedId && profiles.length === 1) sel.selectedId = profiles[0].id;
+}
+
+/**
+ * A click on profile `id` (null: on nothing). Without `add` it selects just that one; with `add` (Shift) it
+ * toggles it: an unselected profile becomes the edited one and the previous one joins the overlay, and
+ * deselecting the edited one promotes the last overlay profile. Mutates `sel`.
+ */
+export function selectInSet(sel: Selection, id: string | null, add = false) {
+  if (!add || !id) {
+    sel.selectedId = id;
+    sel.overlay.clear();
+  } else if (id === sel.selectedId || sel.overlay.has(id)) {
+    sel.overlay.delete(id);
+    if (sel.selectedId === id) {
+      sel.selectedId = [...sel.overlay].pop() ?? null;
+      if (sel.selectedId) sel.overlay.delete(sel.selectedId);
+    }
+  } else {
+    if (sel.selectedId) sel.overlay.add(sel.selectedId);
+    sel.selectedId = id;
+  }
 }

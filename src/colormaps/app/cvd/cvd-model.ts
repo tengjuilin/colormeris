@@ -6,7 +6,7 @@ import type { PixelImage, Rgb } from '../../../types/index.ts';
 // chunked simulation with its cache, and the hover readout.
 
 /** key, button, full name, partial name, what is missing (tooltip) */
-export type CvdKind = readonly [key: string, button: string, full: string, partial: string, tip: string];
+type CvdKind = readonly [key: string, button: string, full: string, partial: string, tip: string];
 
 export const TYPES: readonly CvdKind[] = [
   ['protanopia', 'Protan', 'Protanopia', 'Protanomaly', 'Missing or shifted L (red) cones'],
@@ -26,15 +26,15 @@ export const TYPES: readonly CvdKind[] = [
     'Achromatopsia: no color vision at all. Shown as the gray of the same luminance (CIELAB L*), as in Browse; very rare',
   ],
 ];
-export const TYPE = new Map(TYPES.map((t) => [t[0], t]));
-export const MODEL_NAMES: Record<string, string> = {
+const TYPE = new Map(TYPES.map((t) => [t[0], t]));
+const MODEL_NAMES: Record<string, string> = {
   brettel: 'Brettel 1997',
   vienot: 'Viénot 1999',
   machado: 'Machado 2009',
   luminance: 'grayscale by luminance',
 };
 export const DEFAULT_TYPE = 'deuteranopia';
-export const CHUNK = 400000; // pixels simulated between pauses
+const CHUNK = 400000; // pixels simulated between pauses
 export const KEEP = 6; // simulated images kept, so going back to a setting is instant
 export const EXAMPLE_NAME = 'example-jet.png';
 
@@ -53,7 +53,7 @@ export function caption(k: string, severity: number, model: string): string {
 /** Keeps the last KEEP simulated images, most recent last. */
 export type SimCache = Map<string, ImageData>;
 
-export interface SimulateArgs {
+interface SimulateArgs {
   src: PixelImage;
   kind: string;
   model: string;
@@ -96,12 +96,12 @@ export async function simulateImage(a: SimulateArgs): Promise<ImageData | null> 
   return out;
 }
 
-export function pixelAt(img: PixelImage, x: number, y: number): Rgb {
+function pixelAt(img: PixelImage, x: number, y: number): Rgb {
   const o = (y * img.width + x) * 4;
   return [img.data[o], img.data[o + 1], img.data[o + 2]];
 }
 
-export interface ReadoutItem {
+interface ReadoutItem {
   key: string;
   label: string;
   hex: string;
@@ -126,7 +126,10 @@ export function readoutAt(
   return { origHex: rgbToHex(o), items };
 }
 
-/** The pixel of an image under a pointer, or null outside it. */
+/**
+ * The pixel of an image under a pointer, or null outside it. Floored, since the readout names one pixel
+ * (the Recolor tab's pointOn instead keeps a continuous point clamped into the image, which tAtPixel rounds).
+ */
 export function imagePixelAt(
   clientX: number,
   clientY: number,
