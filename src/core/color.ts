@@ -10,11 +10,11 @@ function srgbToLinearExact(c: number) {
   return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
 }
 // Colors are nearly always whole bytes; a table spares a pow per channel,
-// most of the colormap ratings' Lab conversions.
-const LIN8 = Float64Array.from({ length: 256 }, (_, i) => srgbToLinearExact(i));
+// most of the colormap ratings' Lab conversions (and the CVD tab's pixels).
+export const SRGB_TO_LINEAR = Float64Array.from({ length: 256 }, (_, i) => srgbToLinearExact(i));
 
 export function srgbToLinear(c: number) {
-  const hit = LIN8[c];
+  const hit = SRGB_TO_LINEAR[c];
   return hit !== undefined ? hit : srgbToLinearExact(c);
 }
 

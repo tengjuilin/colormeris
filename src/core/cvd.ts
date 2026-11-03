@@ -1,63 +1,12 @@
 import type { Rgb } from '../types/index.ts';
-import { labToRgb, linearToSrgb, rgbToLab, srgbToLinear } from './color.ts';
+import { labToRgb, linearToSrgb, rgbToLab, SRGB_TO_LINEAR, srgbToLinear } from './color.ts';
 
 // Color vision deficiency (CVD) simulation, grayscale and lightness checks for
 // the colormap viewer (colormaps.html). RGB values are 0–255 sRGB.
 
-// Machado, Oliveira & Fernandes (2009), IEEE TVCG 15(6):1291–1298, severity
-// 1.0. Applied to linear RGB, as colorspacious (used by matplotlib's colormap
-// docs) does, so the views match matplotlib's.
-const MACHADO: Record<string, number[][]> = {
-  protanopia: [
-    [0.152286, 1.052583, -0.204868],
-    [0.114503, 0.786281, 0.099216],
-    [-0.003882, -0.048116, 1.051998],
-  ],
-  deuteranopia: [
-    [0.367322, 0.860646, -0.227968],
-    [0.280085, 0.672501, 0.047413],
-    [-0.01182, 0.04294, 0.968881],
-  ],
-  tritanopia: [
-    [1.255528, -0.076749, -0.178779],
-    [-0.078411, 0.930809, 0.147602],
-    [0.004733, 0.691367, 0.3039],
-  ],
-};
-
-export const CVD_TYPES = Object.keys(MACHADO);
-
-export function simulateCvd(rgb: Rgb, type: string) {
-  const m = MACHADO[type];
-  if (!m) throw new Error(`Unknown CVD type: ${type}`);
-  const r = srgbToLinear(rgb[0]);
-  const g = srgbToLinear(rgb[1]);
-  const b = srgbToLinear(rgb[2]);
-  // linearToSrgb clips to [0, 1] and rounds.
-  return [
-    linearToSrgb(m[0][0] * r + m[0][1] * g + m[0][2] * b),
-    linearToSrgb(m[1][0] * r + m[1][1] * g + m[1][2] * b),
-    linearToSrgb(m[2][0] * r + m[2][1] * g + m[2][2] * b),
-  ];
-}
-
-// ---- Image simulation (the CVD tab) ----
-// Three models, as compared in the DaltonLens review
-// (https://daltonlens.org/opensource-cvd-simulation/), all in linear sRGB:
-//   brettel  Brettel, Viénot & Mollon 1997: two half-planes; the only sound
-//            choice for tritan
-//   vienot   Viénot, Brettel & Mollon 1999: one plane; protan and deutan only
-//   machado  Machado et al. 2009: one matrix per severity step of 0.1; the
-//            most principled for partial severity (anomalous trichromacy)
-// Brettel and Viénot model only full dichromacy; lower severities blend with
-// the original in linear RGB, as libDaltonLens does.
-// Achromatopsia (no color at all) is not one of CVD_TYPES, which are the
-// strips' views: it is the gray of the same luminance Y, so the same L* as
-// `grayscale`, with the same severity blend.
-
 // Machado 2009, severity 0.0, 0.1, …, 1.0 (row-major 3 × 3). From the
-// authors' page via colour-science and DaltonLens-Python; the last entries
-// equal MACHADO.
+// authors' page via colour-science and DaltonLens-Python. The last row is
+// MACHADO, the strips' views.
 const MACHADO_SEVERITY: Record<string, number[][]> = {
   protanopia: [
     [1, 0, 0, 0, 1, 0, 0, 0, 1],
@@ -99,6 +48,47 @@ const MACHADO_SEVERITY: Record<string, number[][]> = {
     [1.255528, -0.076749, -0.178779, -0.078411, 0.930809, 0.147602, 0.004733, 0.691367, 0.3039],
   ],
 };
+
+// Machado, Oliveira & Fernandes (2009), IEEE TVCG 15(6):1291–1298, severity
+// 1.0 (the table's last row), as 3 × 3 rows for simulateCvd. Applied to
+// linear RGB, as colorspacious (used by matplotlib's colormap docs) does, so
+// the views match matplotlib's.
+const MACHADO: Record<string, number[][]> = Object.fromEntries(
+  Object.entries(MACHADO_SEVERITY).map(([type, rows]) => {
+    const m = rows[10];
+    return [type, [m.slice(0, 3), m.slice(3, 6), m.slice(6, 9)]];
+  }),
+);
+
+export const CVD_TYPES = Object.keys(MACHADO);
+
+export function simulateCvd(rgb: Rgb, type: string) {
+  const m = MACHADO[type];
+  if (!m) throw new Error(`Unknown CVD type: ${type}`);
+  const r = srgbToLinear(rgb[0]);
+  const g = srgbToLinear(rgb[1]);
+  const b = srgbToLinear(rgb[2]);
+  // linearToSrgb clips to [0, 1] and rounds.
+  return [
+    linearToSrgb(m[0][0] * r + m[0][1] * g + m[0][2] * b),
+    linearToSrgb(m[1][0] * r + m[1][1] * g + m[1][2] * b),
+    linearToSrgb(m[2][0] * r + m[2][1] * g + m[2][2] * b),
+  ];
+}
+
+// ---- Image simulation (the CVD tab) ----
+// Three models, as compared in the DaltonLens review
+// (https://daltonlens.org/opensource-cvd-simulation/), all in linear sRGB:
+//   brettel  Brettel, Viénot & Mollon 1997: two half-planes; the only sound
+//            choice for tritan
+//   vienot   Viénot, Brettel & Mollon 1999: one plane; protan and deutan only
+//   machado  Machado et al. 2009: one matrix per severity step of 0.1; the
+//            most principled for partial severity (anomalous trichromacy)
+// Brettel and Viénot model only full dichromacy; lower severities blend with
+// the original in linear RGB, as libDaltonLens does.
+// Achromatopsia (no color at all) is not one of CVD_TYPES, which are the
+// strips' views: it is the gray of the same luminance Y, so the same L* as
+// `grayscale`, with the same severity blend.
 
 // libDaltonLens' precomputed sRGB parameters (Smith & Pokorny cone
 // fundamentals): the matrix for each half-plane, chosen by the sign of
@@ -210,8 +200,6 @@ export function simulateCvdColor(rgb: Rgb, type: string, opts?: CvdOptions) {
   return out.map(linearToSrgb);
 }
 
-let LIN: Float64Array | null = null; // sRGB byte -> linear, built on first use
-
 // Simulate RGBA bytes (ImageData.data) into `out` (same length; a new array
 // by default), alpha kept. Figures have few distinct colors, so each is
 // computed once (`cache`, shared across chunks of the same image and
@@ -219,7 +207,6 @@ let LIN: Float64Array | null = null; // sRGB byte -> linear, built on first use
 export function simulateCvdPixels(rgba: Uint8ClampedArray, type: string, opts: CvdPixelOptions = {}) {
   const { out = new Uint8ClampedArray(rgba.length), from = 0, to = rgba.length / 4, cache = new Map() } = opts;
   const f = opts.fn || cvdLinearFn(type, opts);
-  LIN ??= Float64Array.from({ length: 256 }, (_, i) => srgbToLinear(i));
   const tmp = [0, 0, 0];
   // Neighbors often share a color (flat areas, background): the last one
   // is kept at hand, so the Map is only asked when the color changes.
@@ -233,7 +220,7 @@ export function simulateCvdPixels(rgba: Uint8ClampedArray, type: string, opts: C
       hit = cache.get(key);
     }
     if (hit === undefined) {
-      f(LIN[rgba[o]], LIN[rgba[o + 1]], LIN[rgba[o + 2]], tmp, 0);
+      f(SRGB_TO_LINEAR[rgba[o]], SRGB_TO_LINEAR[rgba[o + 1]], SRGB_TO_LINEAR[rgba[o + 2]], tmp, 0);
       hit = (linearToSrgb(tmp[0]) << 16) | (linearToSrgb(tmp[1]) << 8) | linearToSrgb(tmp[2]);
       cache.set(key, hit);
     }
