@@ -17,13 +17,7 @@ import { createAgentRunner } from '../runner.ts';
 import { agentDeps, setAgentDeps } from './agent-deps.ts';
 import { type ReviewHandlers, ReviewList } from './agent-review.tsx';
 import { errorText, initialRunState, type RunState, runReducer, statusLine } from './agent-state.ts';
-import { setLabelsModelFocusHandler } from './labels-reader.ts';
-
-/** A model of OpenRouter's model list. */
-interface ModelInfo {
-  id: string;
-  name?: string;
-}
+import { loadModelLists, type ModelInfo, useModelLists } from './model-lists.ts';
 
 const MODES: [AgentSettings['mode'], string, string][] = [
   ['agent', 'Agent only', 'Agent only: the LLM finds, places and checks everything itself'],
@@ -35,24 +29,6 @@ const MODES: [AgentSettings['mode'], string, string][] = [
 ];
 
 type PagesMode = 'current' | 'all' | 'range';
-
-// Model lists for the pickers (public; no key needed).
-async function listModels(base: string, key: string): Promise<{ llms: ModelInfo[]; deciders: ModelInfo[] }> {
-  // TODO(types): models.list is outside the ChatClient slice the app types.
-  // biome-ignore lint/suspicious/noExplicitAny: see above
-  const client = makeOpenRouterClient(await loadOpenRouterSdk(), { key: key || undefined, base }) as any;
-  const collect = async (req: object) => {
-    const out: ModelInfo[] = [];
-    for await (const page of await client.models.list(req)) out.push(...page.result.data);
-    return out;
-  };
-  // The agent needs images and tools; decision models need images.
-  const [llms, deciders] = await Promise.all([
-    collect({ inputModalities: 'image', supportedParameters: 'tools' }),
-    collect({ inputModalities: 'image', outputModalities: 'decisions' }).catch(() => []),
-  ]);
-  return { llms: llms.filter((m) => !m.id.endsWith(':batch')), deciders };
-}
 
 const options = (models: ModelInfo[]) => models.map((m) => <option key={m.id} value={m.id} label={m.name || m.id} />);
 
@@ -80,8 +56,7 @@ export function AgentCard() {
   const abort = useRef<AbortController | null>(null);
   const [pagesMode, setPagesMode] = useState<PagesMode>('current');
   const [range, setRange] = useState('');
-  const [llms, setLlms] = useState<ModelInfo[]>([]);
-  const [deciders, setDeciders] = useState<ModelInfo[]>([]);
+  const { llms, deciders } = useModelLists();
   const [questions, setQuestions] = useState<Question[]>([]);
   const logEl = useRef<HTMLOListElement>(null);
 
@@ -92,25 +67,8 @@ export function AgentCard() {
 
   // ------------------------------------------------------------ models
 
-  const modelsLoaded = useRef(false);
-  const loadModels = useCallback(async () => {
-    if (modelsLoaded.current) return;
-    modelsLoaded.current = true;
-    try {
-      const { base, key } = ws.settings.agent;
-      const out = await listModels(base, key);
-      setLlms(out.llms);
-      setDeciders(out.deciders);
-    } catch (err) {
-      modelsLoaded.current = false;
-      console.warn('Could not list OpenRouter models', err);
-    }
-  }, [ws]);
-  // The Model field of the Grid card (Read labels with AI) calls this on focus.
-  useEffect(() => {
-    setLabelsModelFocusHandler(loadModels);
-    return () => setLabelsModelFocusHandler(() => {});
-  }, [loadModels]);
+  // Shared with the Grid card's labels Model field, which uses the agent-llm-list datalist below.
+  const loadModels = () => void loadModelLists(ws.settings.agent);
 
   // ------------------------------------------------------------ status
 
@@ -293,7 +251,7 @@ export function AgentCard() {
             list="agent-llm-list"
             spellCheck={false}
             value={agent.llm || DEFAULT_LLM}
-            onFocus={() => void loadModels()}
+            onFocus={loadModels}
             onCommit={(v) => setAgent({ llm: v.trim() })}
           />
           <datalist id="agent-llm-list">{options(llms)}</datalist>
@@ -309,7 +267,7 @@ export function AgentCard() {
             list="agent-decision-list"
             spellCheck={false}
             value={agent.decision || DEFAULT_DECISION_MODEL}
-            onFocus={() => void loadModels()}
+            onFocus={loadModels}
             onCommit={(v) => setAgent({ decision: v.trim() })}
           />
           <datalist id="agent-decision-list">{options(deciders)}</datalist>

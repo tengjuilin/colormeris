@@ -98,11 +98,11 @@ test('state: false skips the snapshot of a mutating action', async () => {
 test('a review goes stale when the values change, and results are not mutated in the cache', async () => {
   const { api, ws, panel, setValues } = setup();
   assert.ok((await api.run('set_review', { status: 'accepted' })).ok);
-  assert.equal(ws.reviewStatus!(panel), 'accepted');
+  assert.equal(api.reviewStatus(panel), 'accepted');
   const first = (await api.run('get_results')) as { result: Record<string, unknown> };
   assert.equal((first.result.review as { status: string }).status, 'accepted');
   setValues([3, 2, 1, 0]);
-  assert.equal(ws.reviewStatus!(panel), 'stale');
+  assert.equal(api.reviewStatus(panel), 'stale');
   const st = stateOf(await api.run('set_labels', { rows: ['r1', 'r2'] }));
   assert.equal(st.panels[0].review!.status, 'stale');
   // The first answer kept what it said.
@@ -115,7 +115,7 @@ test('answers apply by question type: a human accept sets the review', async () 
   const q = qs.result.find((x) => x.type === 'confirm_extraction')!;
   const r = await api.run('answer_question', { questionId: q.id, answer: 'accept', source: 'human' });
   assert.ok(r.ok);
-  assert.equal(ws.reviewStatus!(panel), 'accepted');
+  assert.equal(api.reviewStatus(panel), 'accepted');
   const after = (await api.run('get_questions')) as { result: { type: string }[] };
   assert.ok(!after.result.some((x) => x.type === 'confirm_extraction'));
 });

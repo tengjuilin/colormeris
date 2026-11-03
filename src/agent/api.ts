@@ -134,7 +134,6 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     if (!panel.review) return null;
     return currentHash(panel) === panel.review.resultHash ? panel.review.status : 'stale';
   }
-  ws.reviewStatus = reviewStatus;
 
   function resultsJson(panel: Panel): ResultJson {
     const { json, hash } = resultEntry(panel);
@@ -592,5 +591,6 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     tools: toolDefinitions,
     policy,
     log: () => ({ actions: [...actionLog], decisions: [...decisions] }),
+    reviewStatus,
   };
 }

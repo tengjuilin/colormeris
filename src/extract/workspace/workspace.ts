@@ -443,7 +443,7 @@ export function createWorkspace(): Workspace {
     onChange: (fn) => {
       changeListeners.push(fn);
     },
-    reviewStatus: null, // (panel) → 'accepted' | 'rejected' | 'stale' | null, set by agent/api.js
+    reviewStatus: null, // (panel) → 'accepted' | 'rejected' | 'stale' | null, set by pages/extract.ts from the agent API
   };
   w.ws = ws;
   return ws;

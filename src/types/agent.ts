@@ -4,7 +4,7 @@
 // agent/openrouter-client.ts). Results the LLM only reads stay loose.
 
 import type { Box, Point } from './image.ts';
-import type { ColorbarScale, ColormapRef, PanelSettings, ToolKind } from './project.ts';
+import type { ColorbarScale, ColormapRef, Panel, PanelSettings, ReviewStatus, ToolKind } from './project.ts';
 
 // ---------------------------------------------------------------- JSON Schema
 
@@ -192,6 +192,8 @@ export interface ColormerisApi {
   tools: () => ToolDefinition[];
   policy: AgentPolicy;
   log: () => { actions: ActionLogEntry[]; decisions: Decision[] };
+  /** 'accepted' | 'rejected' while the values are unchanged since the review, 'stale' after, null if never reviewed. */
+  reviewStatus: (panel: Panel) => ReviewStatus | null;
 }
 
 // ---------------------------------------------------------------- LLM chat (OpenRouter SDK, camelCase)
