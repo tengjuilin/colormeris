@@ -1,9 +1,9 @@
+import { labToRgb } from '../core/color.ts';
 import { mapColors } from '../core/colormap-library.ts';
-import { CVD_TYPES, grayscale, lightness, simulateCvd } from '../core/cvd.ts';
+import { lightness } from '../core/cvd.ts';
 import type { ColormapEntry, Rgb, ViewData, ViewKey } from '../types/index.ts';
-import { roundRgb } from './common.ts';
-import type { ColormapMetrics } from './metrics.ts';
-import { colormapMetrics, ratingNotes } from './metrics.ts';
+import type { ColormapMetrics, MapFeatures } from './metrics.ts';
+import { colormapMetrics, mapFeatures, ratingNotes } from './metrics.ts';
 
 // Pure, cached data about each colormap: parsed colors, the colors in each
 // view (as seen, three CVD simulations, grayscale), the rating metrics and
@@ -20,30 +20,50 @@ export interface DirectionState {
 /** A map's direction in Browse: its own toggle, then the global Reversed. */
 export const isRev = (state: DirectionState, name: string): boolean => state.reversed !== state.flipped.has(name);
 
-type Views = Record<ViewKey, ViewData>;
-
-const viewsOf = new Map<string, Views>(); // `${name}|${reversed}`
+const featuresOf = new Map<string, MapFeatures>();
+const viewsOf = new Map<string, ViewData>(); // `${name}|${view}|${reversed}`
 const metricsOf = new Map<string, ColormapMetrics>();
 const notesCache = new Map<string, ReturnType<typeof ratingNotes>>();
 
 /** The map's original colors, parsed once (the library's shared array). */
 export const base: (map: ColormapEntry) => Rgb[] = mapColors;
 
-/** The colors of one view, with their lightness (L* is added on first use). */
-export function viewData(map: ColormapEntry, view: ViewKey, reversed: boolean): ViewData {
-  const key = `${map.name}|${reversed}`;
-  let entry = viewsOf.get(key);
-  if (!entry) {
-    let orig = base(map);
-    if (reversed) orig = orig.slice().reverse();
-    const made: Record<string, ViewData> = { orig: { colors: orig } };
-    for (const type of CVD_TYPES) made[type] = { colors: orig.map((c) => roundRgb(simulateCvd(c, type))) };
-    made.gray = { colors: orig.map((c) => roundRgb(grayscale(c))) };
-    entry = made as Views;
-    viewsOf.set(key, entry);
+/**
+ * One record per map: Lab as seen and the CVD simulations with their Lab.
+ * The views (viewData) and the ratings (metrics) both read it, so each color
+ * is simulated and converted once, whichever the viewer asks for first.
+ */
+function features(map: ColormapEntry): MapFeatures {
+  let f = featuresOf.get(map.name);
+  if (!f) featuresOf.set(map.name, (f = mapFeatures(base(map))));
+  return f;
+}
+
+// A view in the map's own direction. Simulated and gray colors are whole
+// bytes already (linearToSrgb rounds and clips), so they need no rounding.
+function forwardView(map: ColormapEntry, view: ViewKey): ViewData {
+  const f = features(map);
+  if (view === 'orig') return { colors: base(map), L: f.labs.map((l) => l[0]) };
+  if (view === 'gray') {
+    // grayscale(c): the gray of the same L*, which the record already has.
+    const colors = f.labs.map((l) => labToRgb([l[0], 0, 0]));
+    return { colors, L: colors.map(lightness) };
   }
-  const v = entry[view];
-  if (!v.L) v.L = v.colors.map((c) => lightness(c));
+  const v = f.cvd[view];
+  return { colors: v.rgbs, L: v.labs.map((l) => l[0]) };
+}
+
+/** The colors of one view, with their lightness. Reversed is the forward view read backwards. */
+export function viewData(map: ColormapEntry, view: ViewKey, reversed: boolean): ViewData {
+  const key = `${map.name}|${view}|${reversed}`;
+  let v = viewsOf.get(key);
+  if (!v) {
+    if (reversed) {
+      const fwd = viewData(map, view, false);
+      v = { colors: fwd.colors.slice().reverse(), L: fwd.L!.slice().reverse() };
+    } else v = forwardView(map, view);
+    viewsOf.set(key, v);
+  }
   return v;
 }
 
@@ -51,7 +71,7 @@ export function viewData(map: ColormapEntry, view: ViewKey, reversed: boolean): 
 export function metrics(map: ColormapEntry): ColormapMetrics {
   let m = metricsOf.get(map.name);
   if (!m) {
-    m = colormapMetrics(base(map), { kind: map.kind, cyclic: map.group === 'cyclic' });
+    m = colormapMetrics(base(map), { kind: map.kind, cyclic: map.group === 'cyclic' }, features(map));
     metricsOf.set(map.name, m);
   }
   return m;

@@ -1,4 +1,4 @@
-import { deltaE2000, rgbToLab } from '../core/color.ts';
+import { deltaE2000, labToLch, rgbToLab } from '../core/color.ts';
 import { CVD_TYPES, simulateCvd } from '../core/cvd.ts';
 import type { Lab, Rgb } from '../types/index.ts';
 
@@ -8,10 +8,39 @@ import type { Lab, Rgb } from '../types/index.ts';
 // grayscale), and a short yes / partly / no rating built from them.
 // Inputs are arrays of 0–255 sRGB colors, in colormap order.
 
+/**
+ * A map's colors as the ratings measure them: Lab as seen, and the simulated
+ * colors and their Lab in each CVD view. The viewer computes it once per map
+ * (library-cache.ts) and shares it with the views it draws.
+ */
+export interface MapFeatures {
+  labs: Lab[];
+  cvd: Record<string, { rgbs: Rgb[]; labs: Lab[] }>;
+}
+
+export function mapFeatures(rgbs: Rgb[]): MapFeatures {
+  const cvd: MapFeatures['cvd'] = {};
+  for (const type of CVD_TYPES) {
+    const sim = rgbs.map((c) => simulateCvd(c, type));
+    cvd[type] = { rgbs: sim, labs: sim.map(rgbToLab) };
+  }
+  return { labs: rgbs.map(rgbToLab), cvd };
+}
+
+// The same features at fewer points (resample's indices).
+function resampleFeatures(f: MapFeatures, n: number): MapFeatures {
+  const cvd: MapFeatures['cvd'] = {};
+  for (const [k, v] of Object.entries(f.cvd)) cvd[k] = { rgbs: resample(v.rgbs, n), labs: resample(v.labs, n) };
+  return { labs: resample(f.labs, n), cvd };
+}
+
 // ΔE2000 between neighboring colors: a flat profile means equal perceptual
 // steps for equal data steps; spikes are bands (as in jet).
 export function perceptualSteps(rgbs: Rgb[]) {
-  const labs = rgbs.map(rgbToLab);
+  return labSteps(rgbs.map(rgbToLab));
+}
+
+function labSteps(labs: Lab[]) {
   const steps: number[] = [];
   for (let i = 1; i < labs.length; i++) steps.push(deltaE2000(labs[i - 1], labs[i]));
   return steps;
@@ -29,18 +58,19 @@ export function stepStats(steps: number[]) {
 
 // CIELCh: lightness, chroma C* = √(a² + b²) and hue angle h in degrees [0, 360).
 export function lchOf(rgb: Rgb) {
-  const [L, a, b] = rgbToLab(rgb);
-  let h = (Math.atan2(b, a) * 180) / Math.PI;
-  if (h < 0) h += 360;
-  return [L, Math.hypot(a, b), h];
+  return labToLch(rgbToLab(rgb));
 }
 
 export function lchProfile(rgbs: Rgb[]) {
+  return lchOfLabs(rgbs.map(rgbToLab));
+}
+
+function lchOfLabs(labs: Lab[]) {
   const L: number[] = [];
   const C: number[] = [];
   const h: number[] = [];
-  for (const rgb of rgbs) {
-    const v = lchOf(rgb);
+  for (const lab of labs) {
+    const v = labToLch(lab);
     L.push(v[0]);
     C.push(v[1]);
     h.push(v[2]);
@@ -49,7 +79,7 @@ export function lchProfile(rgbs: Rgb[]) {
 }
 
 // Evenly pick n of the colors (keeps the first and the last).
-export function resample(rgbs: Rgb[], n: number) {
+export function resample<T>(rgbs: T[], n: number) {
   if (rgbs.length <= n) return rgbs.slice();
   return Array.from({ length: n }, (_, i) => rgbs[Math.round((i * (rgbs.length - 1)) / (n - 1))]);
 }
@@ -98,29 +128,27 @@ function labBound(a: Lab, b: Lab) {
 // Separations in the colormap itself, each CVD view and grayscale (ΔL*).
 // Indices are given as positions t in [0, 1] (or color numbers for
 // qualitative maps) so the viewer can point at the confused pair.
+// `features` (mapFeatures of all of rgbs) spares the conversions when the caller has them.
 export function separations(
   rgbs: Rgb[],
   { kind = 'continuous', cyclic = false, gap = 0.1 }: { kind?: string; cyclic?: boolean; gap?: number } = {},
+  features?: MapFeatures,
 ) {
   const discrete = kind === 'qualitative';
-  const pts = discrete ? rgbs : resample(rgbs, SAMPLES);
-  const n = pts.length;
+  const f = features
+    ? discrete
+      ? features
+      : resampleFeatures(features, SAMPLES)
+    : mapFeatures(discrete ? rgbs : resample(rgbs, SAMPLES));
+  const n = f.labs.length;
   const opts = { gap, cyclic, discrete };
   const at = (s: { min: number; i: number; j: number } | null) =>
     s && { min: s.min, t: discrete ? [s.i, s.j] : [s.i / (n - 1), s.j / (n - 1)] };
-  const out: Record<string, ReturnType<typeof at>> = { orig: at(minSeparation(pts.map(rgbToLab), labDist, opts)) };
-  for (const type of CVD_TYPES) {
-    out[type] = at(
-      minSeparation(
-        pts.map((c) => rgbToLab(simulateCvd(c, type))),
-        labDist,
-        opts,
-      ),
-    );
-  }
+  const out: Record<string, ReturnType<typeof at>> = { orig: at(minSeparation(f.labs, labDist, opts)) };
+  for (const type of CVD_TYPES) out[type] = at(minSeparation(f.cvd[type].labs, labDist, opts));
   out.gray = at(
     minSeparation(
-      pts.map((c) => rgbToLab(c)[0]),
+      f.labs.map((l) => l[0]),
       lDist,
       opts,
     ),
@@ -251,20 +279,13 @@ function readScan<T>(
 }
 
 // Features per view: Lab as seen and in each CVD view, L* in grayscale.
-function viewScans(rgbs: Rgb[], cyclic: boolean) {
+function viewScans(f: MapFeatures, cyclic: boolean) {
   const out: Record<string, ReturnType<typeof readScan<Lab>> | ReturnType<typeof readScan<number>>> = {
-    orig: readScan(rgbs.map(rgbToLab), labDist, cyclic, 0.1, labBound),
+    orig: readScan(f.labs, labDist, cyclic, 0.1, labBound),
   };
-  for (const type of CVD_TYPES)
-    out[type] = readScan(
-      rgbs.map((c) => rgbToLab(simulateCvd(c, type))),
-      labDist,
-      cyclic,
-      0.1,
-      labBound,
-    );
+  for (const type of CVD_TYPES) out[type] = readScan(f.cvd[type].labs, labDist, cyclic, 0.1, labBound);
   out.gray = readScan(
-    rgbs.map((c) => rgbToLab(c)[0]),
+    f.labs.map((l) => l[0]),
     lDist,
     cyclic,
   );
@@ -279,7 +300,7 @@ export function readability(
   { kind = 'continuous', cyclic = false }: { kind?: string; cyclic?: boolean } = {},
 ) {
   if (kind === 'qualitative' || rgbs.length < 2) return null;
-  return pick(viewScans(rgbs, cyclic), 'view');
+  return pick(viewScans(mapFeatures(rgbs), cyclic), 'view');
 }
 
 function gradeReadable(
@@ -297,17 +318,19 @@ function gradeReadable(
 //   cvdSafe    distinct values stay distinct in all three CVD views
 //   graySafe   distinct values stay distinct in grayscale (prints in black and white)
 //   readable   values can be read back from the colors as seen (null for qualitative maps)
+// `features` is mapFeatures(rgbs) when the caller keeps it (library-cache.ts).
 export function colormapMetrics(
   rgbs: Rgb[],
   { kind = 'continuous', cyclic = false }: { kind?: string; cyclic?: boolean } = {},
+  features: MapFeatures = mapFeatures(rgbs),
 ) {
   const discrete = kind === 'qualitative';
   // 64 samples: 8-bit rounding makes neighboring steps of 256 samples noisy.
-  const steps = discrete ? [] : perceptualSteps(resample(rgbs, SAMPLES));
+  const steps = discrete ? [] : labSteps(resample(features.labs, SAMPLES));
   const st = stepStats(steps);
   // Continuous maps get their separations from the readability scan.
-  const scans = discrete || rgbs.length < 2 ? null : viewScans(rgbs, cyclic);
-  const sep = scans ? pick(scans, 'sep') : separations(rgbs, { kind, cyclic });
+  const scans = discrete || rgbs.length < 2 ? null : viewScans(features, cyclic);
+  const sep = scans ? pick(scans, 'sep') : separations(rgbs, { kind, cyclic }, features);
   const cvdWorst = Math.min(...CVD_TYPES.map((t) => sep[t]?.min ?? 0));
   const origMin = sep.orig?.min ?? 0;
   const cvdRatio = origMin > 1e-9 ? cvdWorst / origMin : 0;
@@ -316,7 +339,7 @@ export function colormapMetrics(
   return {
     steps,
     stepStats: st,
-    lch: lchProfile(rgbs),
+    lch: lchOfLabs(features.labs),
     separations: sep,
     cvdWorst,
     cvdRatio,

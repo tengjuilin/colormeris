@@ -58,6 +58,20 @@ export function labToRgb([L, a, b]: Lab): Rgb {
   return [linearToSrgb(R), linearToSrgb(G), linearToSrgb(B)];
 }
 
+// CIELCh pieces of a Lab color: chroma C* = √(a² + b²) and the hue angle
+// in degrees, in [0, 360).
+export const chroma = (lab: Lab) => Math.hypot(lab[1], lab[2]);
+
+export function hueAngle(lab: Lab) {
+  const h = (Math.atan2(lab[2], lab[1]) * 180) / Math.PI;
+  return h < 0 ? h + 360 : h;
+}
+
+/** [L*, C*, h°] of a Lab color. */
+export function labToLch(lab: Lab): [number, number, number] {
+  return [lab[0], chroma(lab), hueAngle(lab)];
+}
+
 export function deltaE76(lab1: Lab, lab2: Lab) {
   const dL = lab1[0] - lab2[0];
   const da = lab1[1] - lab2[1];
