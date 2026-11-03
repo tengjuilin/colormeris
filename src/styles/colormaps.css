@@ -34,8 +34,7 @@ input.cmap-search {
   width: 260px;
   max-width: 100%;
 }
-.cmap-sort,
-.cmap-filters {
+.cmap-sort {
   display: inline-flex;
   align-items: center;
   gap: 6px 10px;

@@ -1,6 +1,6 @@
 // Pure: the colormap viewer's URL (colormaps.html). Which tab is open
 // (#browse, #compare, …), which map shows its details (?map=) and which
-// maps are compared (?compare=). Tested in tests/colormaps/route.test.js.
+// maps are compared (?compare=). Tested in route.test.ts.
 
 // The maps chosen for side-by-side comparison, from the page URL
 // (?compare=viridis,jet). Unknown names and repeats are dropped, matching

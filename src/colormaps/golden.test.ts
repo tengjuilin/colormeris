@@ -9,9 +9,10 @@ import { cmapData } from '../core/colormap-library.ts';
 import { cmapColorAt, colormapSamples } from '../core/colormap-match.ts';
 import { parseHexColors } from '../core/cvd.ts';
 import type { ViewKey } from '../types/index.ts';
+import { colorsLut } from './app/compare/test-pattern.ts';
 import { metrics, viewData } from './library-cache.ts';
 import { colormapMetrics } from './metrics.ts';
-import { colorsLut, indexColors, recolorPixels } from './recolor.ts';
+import { indexColors, recolorPixels } from './recolor.ts';
 
 // Each test runs over the whole library (about 1 s alone, several under a full parallel run).
 const SLOW = 60_000;

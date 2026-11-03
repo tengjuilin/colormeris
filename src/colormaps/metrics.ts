@@ -413,4 +413,3 @@ export function ratingMethod() {
 }
 
 export const READ_WINDOW = FLAT_WINDOW;
-export const CMAP_RATING = RATING;
