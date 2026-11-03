@@ -1,18 +1,18 @@
 // Box and colorbar-line geometry: model boxes to page pixels, search areas, spans.
 
 import type { Box, DecisionBox, Point, ViewFrame } from '../../types/index.ts';
+import { round } from '../round.ts';
 import type { Axis, Span } from './types.ts';
 
 // A box answer (fractions of the image) → page pixels. `frame` describes
 // the image: page point (x0, y0) at image pixel (0, 0), `scale` image
 // pixels per page pixel, `width` × `height` image pixels.
 export function boxToPage(box: DecisionBox, frame: ViewFrame) {
-  const f = (v: number) => Math.round(v * 10) / 10;
   return {
-    x0: f(frame.x0 + (box.left * frame.width) / frame.scale),
-    y0: f(frame.y0 + (box.top * frame.height) / frame.scale),
-    x1: f(frame.x0 + (box.right * frame.width) / frame.scale),
-    y1: f(frame.y0 + (box.bottom * frame.height) / frame.scale),
+    x0: round(frame.x0 + (box.left * frame.width) / frame.scale, 1),
+    y0: round(frame.y0 + (box.top * frame.height) / frame.scale, 1),
+    x1: round(frame.x0 + (box.right * frame.width) / frame.scale, 1),
+    y1: round(frame.y0 + (box.bottom * frame.height) / frame.scale, 1),
   };
 }
 
@@ -72,4 +72,33 @@ export function boxToSpan(box: Box, span: Partial<Record<Axis, Span>>) {
   const [c0, c1] = span.col || [0, 1];
   const [r0, r1] = span.row || [0, 1];
   return { x0: box.x0 + c0 * w, y0: box.y0 + r0 * h, x1: box.x0 + c1 * w, y1: box.y0 + r1 * h };
+}
+
+// ---------------------------------------------------------------- boxes
+
+export const area = (b: Box) => (b.x1 - b.x0) * (b.y1 - b.y0);
+export const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+// Intersection over union of two boxes.
+export function iou(a: Box, b: Box) {
+  const i =
+    Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+  return i / (area(a) + area(b) - i);
+}
+
+// The smallest box holding all of `bs`.
+export function union(bs: Box[]): Box {
+  return {
+    x0: Math.min(...bs.map((b) => b.x0)),
+    y0: Math.min(...bs.map((b) => b.y0)),
+    x1: Math.max(...bs.map((b) => b.x1)),
+    y1: Math.max(...bs.map((b) => b.y1)),
+  };
+}
+
+// The bounding box of a grid's corners.
+export function cornersBox(corners: Point[]): Box {
+  const xs = corners.map((c) => c.x);
+  const ys = corners.map((c) => c.y);
+  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
 }

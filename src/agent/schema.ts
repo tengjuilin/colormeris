@@ -1,3 +1,12 @@
+// Typed interface for software agents (LLMs, other models,
+// scripts). This file is pure: the action catalogue with JSON Schemas for
+// their arguments, a small validator, the state snapshot and the typed
+// questions an agent answers. agent/api.ts binds it to a live workspace as
+// window.colormeris.
+//
+// Coordinates are image pixels of the panel's page image, as in project.json.
+// `t` is the position along the colorbar: 0 at `start`, 1 at `end`.
+
 import { SCALES } from '../core/colorbar.ts';
 import { effectiveLabels, ticksWithT } from '../extract/project/project.ts';
 import type {
@@ -22,15 +31,7 @@ import type {
   ToolDefinition,
   ToolKind,
 } from '../types/index.ts';
-
-// Typed interface for software agents (LLMs, other models,
-// scripts). This file is pure: the action catalogue with JSON Schemas for
-// their arguments, a small validator, the state snapshot and the typed
-// questions an agent answers. agent/api.js binds it to a live workspace as
-// window.colormeris.
-//
-// Coordinates are image pixels of the panel's page image, as in project.json.
-// `t` is the position along the colorbar: 0 at `start`, 1 at `end`.
+import { round } from './round.ts';
 
 export const AGENT_SCHEMA = 'colormeris-agent';
 export const AGENT_VERSION = 1;
@@ -424,6 +425,12 @@ export function validate(schema: JsonSchema | undefined, value: unknown, path = 
   return errs;
 }
 
+// The arguments without those sent as null, except where `keepNull(key)`
+// says null is a meaningful value.
+export function dropNulls(args: ActionArgs, keepNull: (key: string) => boolean = () => false): ActionArgs {
+  return Object.fromEntries(Object.entries(args).filter(([k, v]) => v !== null || keepNull(k)));
+}
+
 // Forgive common LLM habits before validating: optional arguments sent as
 // null are dropped (unless null is a meaningful value), and add_tick with
 // both at and t uses at. Returns {args, notes}.
@@ -431,12 +438,7 @@ export function normalizeArgs(name: string, args: ActionArgs): NormalizedArgs {
   const spec = ACTIONS[name];
   if (!spec || !args || typeof args !== 'object' || Array.isArray(args)) return { args, notes: [] };
   const notes: string[] = [];
-  const out: ActionArgs = {};
-  for (const [k, v] of Object.entries(args)) {
-    const sub = spec.args.properties?.[k];
-    if (v === null && !(sub?.enum || []).includes(null)) continue;
-    out[k] = v;
-  }
+  const out = dropNulls(args, (k) => (spec.args.properties?.[k]?.enum || []).includes(null));
   if (name === 'add_tick' && out.at && out.t !== undefined) {
     delete out.t;
     notes.push('Both at and t were given; used at and ignored t. Next time give only one.');
@@ -463,8 +465,7 @@ export function toolDefinitions(): ToolDefinition[] {
 
 // ---------------------------------------------------------------- state
 
-const r2 = (v: number) => (Number.isFinite(v) ? Math.round(v * 100) / 100 : v);
-const pt = (p: Point | null | undefined) => (p ? { x: r2(p.x), y: r2(p.y) } : null);
+const pt = (p: Point | null | undefined) => (p ? { x: round(p.x, 2), y: round(p.y, 2) } : null);
 
 // Plain JSON view of the workspace. `results` maps panel id → result (or
 // {error}); `problems` maps panel id → what is missing, or null.
@@ -546,7 +547,7 @@ function panelSnapshot(p: Panel, problem: string | null | undefined, reviewStatu
       colormap: cb.colormap ? { ...cb.colormap } : null,
       ticks: ticksWithT(cb).map((k) => ({
         id: k.id,
-        t: Number.isFinite(k.t) ? Math.round(k.t * 1e4) / 1e4 : null,
+        t: Number.isFinite(k.t) ? round(k.t, 4) : null,
         value: Number.isFinite(k.value) ? k.value : null,
       })),
     },
@@ -594,7 +595,7 @@ export function heatmapResultJson(panel: Panel, res: HeatmapResult | ErrorResult
   result.cells.forEach((row, r) => {
     row.forEach((c, k) => {
       if (c.status === 'off-map') offMap.push({ row: r, col: k, reason: c.reason, rgb: [...(c.rgb as Rgb)] });
-      else if (c.flagged) flagged.push({ row: r, col: k, deltaE: r2(c.deltaE), rgb: [...(c.rgb as Rgb)] });
+      else if (c.flagged) flagged.push({ row: r, col: k, deltaE: round(c.deltaE, 2), rgb: [...(c.rgb as Rgb)] });
     });
   });
   // Values that are bounds (past a bar end, or in an open end bin): ≤ or ≥.
@@ -610,10 +611,10 @@ export function heatmapResultJson(panel: Panel, res: HeatmapResult | ErrorResult
     // on the colormap: gray ND cells, a black diagonal) are null.
     values: result.cells.map((row) => row.map((c) => (Number.isFinite(c.value) ? c.value : null))),
     ...(bounds.some((row) => row.some(Boolean)) ? { bounds } : {}),
-    deltaE: result.cells.map((row) => row.map((c) => r2(c.deltaE))),
+    deltaE: result.cells.map((row) => row.map((c) => round(c.deltaE, 2))),
     maxDeltaE: panel.settings.maxDeltaE,
     scale: result.scale ?? panel.colorbar.scale,
-    ...(result.counts ? { counts: { ...result.counts }, clampedShare: r2(result.clampedShare) } : {}),
+    ...(result.counts ? { counts: { ...result.counts }, clampedShare: round(result.clampedShare, 2) } : {}),
     // A binned colorbar: each cell takes its bin's middle value.
     ...(result.bins
       ? { bins: result.bins.map((b) => ({ value: b.value, open: b.open, rgb: b.rgb.map((x) => Math.round(x)) })) }
@@ -737,8 +738,8 @@ export function openQuestions({
         prompt: 'How many rows and columns of cells does this heatmap grid have?',
         evidence: {
           detected: { rows: d.rows, cols: d.cols },
-          rowConfidence: r2(d.rowConfidence),
-          colConfidence: r2(d.colConfidence),
+          rowConfidence: round(d.rowConfidence, 2),
+          colConfidence: round(d.colConfidence, 2),
           uncertain: conf < 1.3 || d.rows === 1 || d.cols === 1,
           // Labels typed so far (e.g. read off the figure); 0 when none.
           labelCounts: { rows: nonEmpty(p.grid.rowLabels), cols: nonEmpty(p.grid.colLabels) },
@@ -764,7 +765,7 @@ export function openQuestions({
         type: 'confirm_tick_order',
         panelId: p.id,
         prompt: 'Tick values do not change monotonically along the colorbar. Is that how the figure is labelled?',
-        evidence: { ticks: ticks.map((k) => ({ id: k.id, t: r2(k.t), value: k.value })) },
+        evidence: { ticks: ticks.map((k) => ({ id: k.id, t: round(k.t, 2), value: k.value })) },
         answerSchema: { enum: ['as_placed', 'fix_needed'] },
       });
     }

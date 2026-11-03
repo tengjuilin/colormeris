@@ -1,3 +1,8 @@
+// Runs the extraction agent: an LLM (any OpenRouter chat model with vision
+// and tools) drives the page through the typed agent API and looks at it
+// through rendered page images with pixel rulers. `client` is an OpenRouter
+// SDK client (or anything with chat.send).
+
 import { rgbToHex } from '../core/color.ts';
 import { colorAtT } from '../core/colorbar.ts';
 import { bilinear, cellSamplePolygon, outerCorners } from '../core/grid.ts';
@@ -29,17 +34,14 @@ import {
   finishCheck,
   LLM_ACTIONS,
   llmTools,
+  panelStarted,
   progressNote,
   pruneImages,
   RUNNER_TOOLS,
   toolResultText,
   validateRunnerTool,
 } from './llm.ts';
-
-// Runs the extraction agent: an LLM (any OpenRouter chat model with vision
-// and tools) drives the page through the typed agent API and looks at it
-// through rendered page images with pixel rulers. `client` is an OpenRouter
-// SDK client (or anything with chat.send).
+import { round } from './round.ts';
 
 const MAX_VIEW = 1024; // longest side of images sent to the LLM
 // Prompt caching (openrouter.ai/docs/guides/best-practices/prompt-caching):
@@ -162,10 +164,9 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
         { x: x0, y: y0 },
         { x: x1, y: y1 },
       ]);
-    const r = (v: number) => Math.round(v * 100) / 100;
     return {
       dataUrl: await canvasDataUrl(out, 'image/jpeg', 0.9),
-      note: `Page ${ws.currentPage()}, region x ${r(x0)}–${r(x1)}, y ${r(y0)}–${r(y1)}, drawn at ${r(scale)}× (${W} × ${H} image pixels plus rulers). Image pixel (0, 0) is page point (${r(x0)}, ${r(y0)}): page x = ${r(x0)} + image x / ${r(scale)}, page y = ${r(y0)} + image y / ${r(scale)}. The rulers on the bottom and right edges show the same page pixels.`,
+      note: `Page ${ws.currentPage()}, region x ${round(x0, 2)}–${round(x1, 2)}, y ${round(y0, 2)}–${round(y1, 2)}, drawn at ${round(scale, 2)}× (${W} × ${H} image pixels plus rulers). Image pixel (0, 0) is page point (${round(x0, 2)}, ${round(y0, 2)}): page x = ${round(x0, 2)} + image x / ${round(scale, 2)}, page y = ${round(y0, 2)} + image y / ${round(scale, 2)}. The rulers on the bottom and right edges show the same page pixels.`,
       region: { x0, y0, scale },
       frame,
     };
@@ -320,8 +321,8 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
   // settings: {client, llmModel, pages: [n], maxSteps, signal,
   // onEvent(type, data), focus, mode, decide, decisionModel}. `focus`
   // ({panelId, note}) asks the agent to fix one rejected panel. mode
-  // "decision" gives the LLM the tools of agent/decide.js, answered with
-  // `decide` (agent/openrouter-client.js) by `decisionModel`.
+  // "decision" gives the LLM the tools of agent/decide.ts, answered with
+  // `decide` (agent/openrouter-client.ts) by `decisionModel`.
   async function run(settings: RunSettings): Promise<RunOutcome> {
     const {
       client,
@@ -369,7 +370,7 @@ export function createAgentRunner(ws: Workspace, api: ColormerisApi) {
           name: p.name,
           page: p.page,
           ready: !ws.resultFor(p).error,
-          started: !!(p.grid.corners || p.colorbar.start || p.grid.rowLabels.length || p.grid.colLabels.length),
+          started: panelStarted(p),
         }));
     const progress = () => progressNote({ pages, viewedPages, panels: runPanels(), currentPage: ws.currentPage() });
 

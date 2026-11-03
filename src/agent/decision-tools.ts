@@ -1,3 +1,13 @@
+// Tools of "agent decision" mode (prompt, schemas and the pure choices in
+// agent/decide.ts). Each request to the decision model is about one
+// heatmap and carries one image: the whole page, a crop around the
+// heatmap, or the strip beside it. Images for the decision model have no
+// rulers and are 300–1568 px a side, as Jev requires.
+//
+//   createDecisionTools(ws, api, {renderView, decide, model, usage, signal})
+//     → {handles(name), call(name, args), prefetch(calls)}
+// `decide` posts a Decisions API body (agent/openrouter-client.ts).
+
 import { projectT } from '../core/colorbar.ts';
 import { findTickLabels, labelReach, snapEdges, snapStrip, snapStripBox } from '../core/locate.ts';
 import { ticksWithT } from '../extract/project/project.ts';
@@ -18,15 +28,19 @@ import type {
   Workspace,
 } from '../types/index.ts';
 import {
+  area,
   barLine,
   besideBox,
   boxToPage,
   checkSummary,
   chooseColorbar,
   cleanDecisionArgs,
+  cornersBox,
   DECISION_TOOLS,
   decisionQuestions,
   growBox,
+  iou,
+  overlaps,
   pageColorbars,
   planGrid,
   printedCheck,
@@ -38,19 +52,12 @@ import {
   tFromTopLeft,
   tickBoxesText,
   tickMisfit,
+  union,
   validateDecisionTool,
 } from './decide.ts';
+import { panelStarted } from './llm.ts';
+import { round } from './round.ts';
 import type { RenderViewFn } from './runner.ts';
-
-// Tools of "agent decision" mode (prompt, schemas and the pure choices in
-// agent/decide.js). Each request to the decision model is about one
-// heatmap and carries one image: the whole page, a crop around the
-// heatmap, or the strip beside it. Images for the decision model have no
-// rulers and are 300–1568 px a side, as Jev requires.
-//
-//   createDecisionTools(ws, api, {renderView, decide, model, usage, signal})
-//     → {handles(name), call(name, args), prefetch(calls)}
-// `decide` posts a Decisions API body (agent/openrouter-client.js).
 
 // TODO(types): tool arguments are validated against DECISION_TOOLS' JSON Schema before use; typing each needs args types generated from the schema.
 // biome-ignore lint/suspicious/noExplicitAny: see above
@@ -75,22 +82,8 @@ interface Choice {
 }
 
 const JEV = { pageSide: 1568, cropSide: 1024, minSide: 300 };
-const r1 = (v: number) => Math.round(v * 10) / 10;
-const boxText = (b: Box) => `x ${r1(b.x0)}–${r1(b.x1)}, y ${r1(b.y0)}–${r1(b.y1)}`;
+const boxText = (b: Box) => `x ${round(b.x0, 1)}–${round(b.x1, 1)}, y ${round(b.y0, 1)}–${round(b.y1, 1)}`;
 const imagePart = (url: string): DecisionImagePart => ({ type: 'image_url', image_url: { url } });
-const area = (b: Box) => (b.x1 - b.x0) * (b.y1 - b.y0);
-const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
-const iou = (a: Box, b: Box) => {
-  const i =
-    Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
-  return i / (area(a) + area(b) - i);
-};
-const union = (bs: Box[]) => ({
-  x0: Math.min(...bs.map((b) => b.x0)),
-  y0: Math.min(...bs.map((b) => b.y0)),
-  x1: Math.max(...bs.map((b) => b.x1)),
-  y1: Math.max(...bs.map((b) => b.y1)),
-});
 const orientation = (bar: Box) => (bar.y1 - bar.y0 >= bar.x1 - bar.x0 ? 'vertical' : 'horizontal');
 const CANDIDATE_COLOR = '#e8590c';
 
@@ -132,16 +125,9 @@ export function createDecisionTools(
 
   const page = () => app.pages.get(ws.currentPage())!;
   const size = () => ({ W: page().canvas.width, H: page().canvas.height });
-  const started = (p: Panel) =>
-    !!(p.grid.corners || p.colorbar.start || p.grid.rowLabels.length || p.grid.colLabels.length);
   const must = (r: { ok: boolean; result?: unknown; error?: string }) => {
     if (!r.ok) throw new Error(r.error);
     return r.result;
-  };
-  const gridBox = (p: Panel): Box => {
-    const xs = p.grid.corners!.map((c) => c.x);
-    const ys = p.grid.corners!.map((c) => c.y);
-    return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
   };
   const clip = (b: Box): Box => {
     const { W, H } = size();
@@ -158,7 +144,7 @@ export function createDecisionTools(
     ...ws
       .pagePanels()
       .filter((p) => p.tool === 'heatmap' && p.grid.corners)
-      .map(gridBox),
+      .map((p) => cornersBox(p.grid.corners!)),
     ...extra,
   ];
 
@@ -176,7 +162,8 @@ export function createDecisionTools(
     if (panelId) must(await api.run('select_panel', { panelId }));
     else {
       const active = ws.activePanel();
-      if (!active || active.page !== ws.currentPage() || started(active)) must(await api.run('add_panel', { name }));
+      if (!active || active.page !== ws.currentPage() || panelStarted(active))
+        must(await api.run('add_panel', { name }));
     }
     const panel = ws.activePanel();
     if (panel.name !== name) must(await api.run('rename_panel', { panelId: panel.id, name }));
@@ -250,12 +237,14 @@ export function createDecisionTools(
       );
     }
     if (Number.isFinite(present) && present! < 0.5)
-      notes.push(`The decision model doubts this heatmap matches the description (${r1(present!)}): check the image.`);
+      notes.push(
+        `The decision model doubts this heatmap matches the description (${round(present!, 1)}): check the image.`,
+      );
     return { cells, rough: partial ? rough : null };
   }
 
   // Places the grid on `box` and settles rows and columns (planGrid in
-  // agent/decide.js): the app counts them from the cell borders, or takes
+  // agent/decide.ts): the app counts them from the cell borders, or takes
   // them from a panel lined up with this one, and cuts the corners to the
   // counted cells when they include something else. Earlier panels whose
   // count was unsure take this one's when they line up with it.
@@ -296,7 +285,7 @@ export function createDecisionTools(
       .map((p) => ({
         id: p.id,
         name: p.name,
-        cells: gridBox(p),
+        cells: cornersBox(p.grid.corners!),
         rows: p.grid.rows,
         cols: p.grid.cols,
         unsure: unsureByPanel.get(p.id),
@@ -351,7 +340,10 @@ export function createDecisionTools(
         if (c && !out.some((o) => overlaps(o.bar, c.bar))) out.push(c);
       }
     }
-    return { candidates: out, none: side.choice === 'none' ? r1(side.probabilities?.none ?? side.confidence!) : null };
+    return {
+      candidates: out,
+      none: side.choice === 'none' ? round(side.probabilities?.none ?? side.confidence!, 1) : null,
+    };
   }
 
   // The page with lettered colorbar candidates, rulers for rough boxes.
@@ -611,7 +603,7 @@ export function createDecisionTools(
   async function ticksView(panel: Panel) {
     const { W, H } = size();
     const cb = panel.colorbar;
-    const cells = gridBox(panel);
+    const cells = cornersBox(panel.grid.corners!);
     const bar = {
       x0: Math.min(cb.start!.x, cb.end!.x) - 6,
       y0: Math.min(cb.start!.y, cb.end!.y) - 6,
@@ -675,7 +667,7 @@ export function createDecisionTools(
     } else {
       // The count of a white end row or column the app left out puts it back.
       const cut = trimmedByPanel.get(panel.id);
-      const g = gridBox(panel);
+      const g = cornersBox(panel.grid.corners!);
       const backRows = cut && cut.alt.row === rows;
       const backCols = cut && cut.alt.col === cols;
       if (backRows || backCols) {
@@ -694,7 +686,7 @@ export function createDecisionTools(
     must(await api.run('set_grid_size', { panelId: panel.id, rows, cols }));
     unsureByPanel.set(panel.id, { row: false, col: false });
     const view = await renderView({
-      region: growBox(gridBox(panel), 0.05, 10, size().W, size().H),
+      region: growBox(cornersBox(panel.grid.corners!), 0.05, 10, size().W, size().H),
       overlay: 'calibration',
       rulers: false,
       maxSide: 900,

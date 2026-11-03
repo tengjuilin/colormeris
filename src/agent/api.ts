@@ -1,3 +1,15 @@
+// Agent API: binds the typed actions of agent/schema.ts to a live workspace
+// and exposes them as window.colormeris, so an LLM or a script can
+// drive the page without clicking pixels:
+//
+//   await colormeris.run('set_grid', {topLeft: {x: 40, y: 60}, bottomRight: {x: 520, y: 400}})
+//   → {ok: true, result, state}   or   {ok: false, error}
+//
+// Answers to typed questions carry a confidence. Below `policy.minConfidence`
+// an answer is logged but not applied, and the question stays open for a
+// human. Every mutating call and every decision is logged; both logs go into
+// the project zip (agent/actions.json, agent/decisions.json).
+
 import { rgbToLab } from '../core/color.ts';
 import {
   labToT,
@@ -29,6 +41,7 @@ import type {
   RoiResult,
   Workspace,
 } from '../types/index.ts';
+import { round } from './round.ts';
 import {
   AGENT_ACTIONS,
   AGENT_SCHEMA,
@@ -44,18 +57,6 @@ import {
   validate,
   validateAction,
 } from './schema.ts';
-
-// Agent API: binds the typed actions of agent/schema.js to a live workspace
-// and exposes them as window.colormeris, so an LLM or a script can
-// drive the page without clicking pixels:
-//
-//   await colormeris.run('set_grid', {topLeft: {x: 40, y: 60}, bottomRight: {x: 520, y: 400}})
-//   → {ok: true, result, state}   or   {ok: false, error}
-//
-// Answers to typed questions carry a confidence. Below `policy.minConfidence`
-// an answer is logged but not applied, and the question stays open for a
-// human. Every mutating call and every decision is logged; both logs go into
-// the project zip (agent/actions.json, agent/decisions.json).
 
 // TODO(types): handler arguments are checked against ACTIONS' JSON Schema in run(); typing each one needs args types generated from the schema.
 // biome-ignore lint/suspicious/noExplicitAny: see above
@@ -260,7 +261,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       }
       const rgb = acc.map((v) => Math.round(v / n));
       const lab = rgbToLab(rgb);
-      const out = { rgb, lab: lab.map((v) => Math.round(v * 100) / 100) };
+      const out = { rgb, lab: lab.map((v) => round(v, 2)) };
       const cb = panel.colorbar;
       if (cb.start && cb.end) {
         const samples = sampleColorbar(img, cb.start, cb.end, cb.halfWidth, cb.nSamples);
@@ -405,8 +406,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
         for (const k of cb.ticks)
           Object.assign(k, pointAtT(cb.start!, cb.end!, projectT(cb.start!, cb.end!, k as Point)));
       });
-      const r1 = (v: number) => Math.round(v * 10) / 10;
-      const pt = (q: Point) => `(${r1(q.x)}, ${r1(q.y)})`;
+      const pt = (q: Point) => `(${round(q.x, 1)}, ${round(q.y, 1)})`;
       let note: string;
       if (!snap) note = 'Placed as given (no snapping).';
       else if (!fit)
@@ -436,7 +436,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
         : mark
           ? `Snapped ${Math.abs(mark.moved)} px along the bar onto the tick mark.`
           : 'No tick mark found nearby; placed as given.';
-      return { tickId: id, t: Math.round(tt * 10000) / 10000, note };
+      return { tickId: id, t: round(tt, 4), note };
     },
 
     set_tick_value: async ({ panelId, tickId, value }) => {

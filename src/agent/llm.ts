@@ -1,3 +1,7 @@
+// Pure parts of the extraction agent (agent/runner.ts runs it): the system
+// prompt, the tools the LLM sees, and trimming old images from the
+// conversation. Messages use the OpenRouter SDK's camelCase shapes.
+
 import type {
   ActionArgs,
   ActionSpec,
@@ -5,19 +9,16 @@ import type {
   ChatMessage,
   JsonSchema,
   LlmTool,
+  Panel,
   RetryGuard,
   RunPanel,
   ToolCallResult,
 } from '../types/index.ts';
 import { AGENT_ACTIONS, validate } from './schema.ts';
 
-// Pure parts of the extraction agent (agent/runner.js runs it): the system
-// prompt, the tools the LLM sees, and trimming old images from the
-// conversation. Messages use the OpenRouter SDK's camelCase shapes.
-
 export const DEFAULT_LLM = 'anthropic/claude-sonnet-5.5';
 
-const SYSTEM_PROMPT = `You are the extraction agent of Colormeris, a tool that turns colors in scientific figures back into numbers. Your job: find every gridded heatmap on the pages you are given and calibrate one panel per heatmap so its values can be extracted. You act only through tools.
+export const AGENT_SYSTEM_PROMPT = `You are the extraction agent of Colormeris, a tool that turns colors in scientific figures back into numbers. Your job: find every gridded heatmap on the pages you are given and calibrate one panel per heatmap so its values can be extracted. You act only through tools.
 
 Coordinates are pixels of the current page image (its width and height are in get_state). Each image you receive shows a region of the page: image pixel (0, 0) is the region's top-left corner, and its note gives the conversion page x = x0 + image x / scale (same for y). Rulers on the bottom and right edges are labelled in page pixels; use them to check your conversion. Precision matters: a few pixels of error shift every cell or every tick value. Always zoom in (view_page with a small region, so the scale is high) before placing anything, read the coordinates off the rulers, and check the conversion twice. After placing, look again at a zoomed view and correct any offset of more than 1–2 pixels.
 
@@ -38,7 +39,7 @@ Errors and retries:
 
 When every heatmap on every page is done, call finish with one line per panel and anything a human should check. The first finish is answered with a checklist: look at each page once more, calibrate any heatmap still missing, then call finish again. Keep your messages short.`;
 
-// Agent actions the LLM may call (see agent/schema.js). File, tool, ROI
+// Agent actions the LLM may call (see agent/schema.ts). File, tool, ROI
 // and question-answering actions are left to the runner and the user.
 export const LLM_ACTIONS = [
   'get_state',
@@ -63,11 +64,18 @@ export const LLM_ACTIONS = [
   'redo',
 ];
 
+// A box in page pixels; the key order is part of the bytes sent to the LLM.
+const BOX_FIELDS = {
+  properties: { x0: { type: 'number' }, y0: { type: 'number' }, x1: { type: 'number' }, y1: { type: 'number' } },
+  required: ['x0', 'y0', 'x1', 'y1'],
+} satisfies JsonSchema;
+// The rough box schema of decision-mode tools (description last).
+export const boxSchema = (description: string): JsonSchema => ({ type: 'object', ...BOX_FIELDS, description });
+
 const region: JsonSchema = {
   type: 'object',
   description: 'Area to show, in page pixels. Omit for the whole page.',
-  properties: { x0: { type: 'number' }, y0: { type: 'number' }, x1: { type: 'number' }, y1: { type: 'number' } },
-  required: ['x0', 'y0', 'x1', 'y1'],
+  ...BOX_FIELDS,
 };
 
 // Tools handled by the runner itself.
@@ -97,15 +105,17 @@ export function validateRunnerTool(name: string, args: ActionArgs) {
   return validate(spec.args, args);
 }
 
+// One tool in the SDK's chat format.
+export const toLlmTool = (name: string, { description, args }: ActionSpec): LlmTool => ({
+  type: 'function',
+  function: { name, description, parameters: args },
+});
+
 // Tool definitions in the SDK's chat format.
 export function llmTools() {
-  const fn = (name: string, description: string, parameters: JsonSchema): LlmTool => ({
-    type: 'function',
-    function: { name, description, parameters },
-  });
   return [
-    ...LLM_ACTIONS.map((n) => fn(n, AGENT_ACTIONS[n].description, AGENT_ACTIONS[n].args)),
-    ...Object.entries(RUNNER_TOOLS).map(([n, t]) => fn(n, t.description, t.args)),
+    ...LLM_ACTIONS.map((n) => toLlmTool(n, AGENT_ACTIONS[n])),
+    ...Object.entries(RUNNER_TOOLS).map(([n, t]) => toLlmTool(n, t)),
   ];
 }
 
@@ -114,6 +124,10 @@ export function llmTools() {
 // Models tend to call finish (or stop talking) after the first heatmap.
 // `panels` are the run's heatmap panels [{id, name, page, ready, started}]
 // (started: has a grid, colorbar or labels).
+
+// Whether a panel has been worked on: a grid, colorbar or labels.
+export const panelStarted = (p: Panel) =>
+  !!(p.grid.corners || p.colorbar.start || p.grid.rowLabels.length || p.grid.colLabels.length);
 
 // Where the run stands, for tool results and nudges.
 export function progressNote({
@@ -289,6 +303,3 @@ export function parsePages(text: unknown, pageCount: number) {
   if (!pages.size) throw new Error('No pages in range.');
   return [...pages].sort((x, y) => x - y);
 }
-
-export const AGENT_SYSTEM_PROMPT = SYSTEM_PROMPT;
-export const AGENT_LIMITS = { MAX_ATTEMPTS, MAX_ERRORS_IN_A_ROW, MAX_FINISH_REFUSALS };

@@ -3,14 +3,13 @@
 import { fitCellCounts, rectCorners } from '../../core/grid.ts';
 import { snapBlock, snapEdges } from '../../core/locate.ts';
 import type { Box, PixelImage } from '../../types/index.ts';
+import { area } from './geometry.ts';
 import { FAIR_FIT } from './grid-plan.ts';
 
-const area = (b: Box) => (b.x1 - b.x0) * (b.y1 - b.y0);
 const holds = (a: Box, b: Box) => a.x0 <= b.x0 + 3 && a.y0 <= b.y0 + 3 && a.x1 >= b.x1 - 3 && a.y1 >= b.y1 - 3;
-export const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
 // The cells from the decision model's two boxes, snapped to pixels
-// (core/locate.js snapBlock): `rough` on the whole page, `boxed` on a
+// (core/locate.ts snapBlock): `rough` on the whole page, `boxed` on a
 // crop around it. A crop box on a pale edge column has no solid core to
 // snap from; the page-wide box then still reaches the block. A short crop
 // box can also stop the snap at a pale row (the 24h cytokine heatmap: 6 of

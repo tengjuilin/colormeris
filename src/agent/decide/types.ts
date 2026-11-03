@@ -12,12 +12,6 @@ export interface TickTV {
   t: number;
   value: number;
 }
-/** A tick-label box of findTickLabels: where it projects on the strip, and a note on odd ones. */
-interface TickMark {
-  at: Point;
-  box?: Box;
-  note?: string;
-}
 /** A colorbar strip found on the page (stripCandidate). */
 export interface StripInfo {
   bar: Box;

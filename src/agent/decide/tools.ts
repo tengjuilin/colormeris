@@ -1,11 +1,9 @@
 // The tools the LLM may call in decision mode: schemas, argument cleaning and validation, and the SDK tool list.
 
 import { SCALES } from '../../core/colorbar.ts';
-import type { ActionArgs, ActionSpec, JsonSchema, LlmTool } from '../../types/index.ts';
-import { RUNNER_TOOLS } from '../llm.ts';
-import { AGENT_ACTIONS, validate } from '../schema.ts';
-
-const SCALE_NAMES = SCALES;
+import type { ActionArgs, ActionSpec, JsonSchema } from '../../types/index.ts';
+import { boxSchema, RUNNER_TOOLS, toLlmTool } from '../llm.ts';
+import { AGENT_ACTIONS, dropNulls, validate } from '../schema.ts';
 
 // Agent actions the LLM may call in this mode. The app counts rows and
 // columns; the LLM may only correct a count with correct_grid_size (with a
@@ -24,12 +22,6 @@ export const DECISION_LLM_ACTIONS = [
 ];
 
 const panelId: JsonSchema = { type: 'string', description: 'Panel to act on. Defaults to the active panel.' };
-const roughBox = (description: string): JsonSchema => ({
-  type: 'object',
-  properties: { x0: { type: 'number' }, y0: { type: 'number' }, x1: { type: 'number' }, y1: { type: 'number' } },
-  required: ['x0', 'y0', 'x1', 'y1'],
-  description,
-});
 const DECISION_QUESTION: JsonSchema = {
   type: 'object',
   properties: {
@@ -43,7 +35,7 @@ const DECISION_QUESTION: JsonSchema = {
   required: ['type', 'instructions'],
 };
 
-// Tools handled by agent/decision-tools.js (plus view_page, view_pages_overview and finish).
+// Tools handled by agent/decision-tools.ts (plus view_page, view_pages_overview and finish).
 export const DECISION_TOOLS: Record<string, ActionSpec> = {
   locate_heatmap: {
     description:
@@ -58,7 +50,7 @@ export const DECISION_TOOLS: Record<string, ActionSpec> = {
           description: 'What singles this heatmap out on the page: panel letter, title, position, first row label.',
         },
         panelId: { type: 'string', description: 'Re-locate this panel instead of using a new one.' },
-        box: roughBox(
+        box: boxSchema(
           "Only when a first locate found the wrong heatmap: the cells' rough extent in page pixels, read from the page image's rulers. The decision model is not asked; each edge moves at most a few px onto the cells' edge.",
         ),
       },
@@ -95,7 +87,7 @@ export const DECISION_TOOLS: Record<string, ActionSpec> = {
           },
         },
         scale: {
-          enum: SCALE_NAMES,
+          enum: SCALES,
           description:
             'Leave out unless the labels grow by constant factors (log10). piecewise: uneven tick values interpolated between neighbours.',
         },
@@ -117,7 +109,7 @@ export const DECISION_TOOLS: Record<string, ActionSpec> = {
           description: 'Letter of a colorbar candidate, e.g. "B".',
         },
         fromPanel: { type: 'string', description: 'Id of a panel whose colorbar this heatmap shares.' },
-        box: roughBox("The colored strip's rough extent in page pixels, from the page rulers."),
+        box: boxSchema("The colored strip's rough extent in page pixels, from the page rulers."),
       },
     },
   },
@@ -135,7 +127,7 @@ export const DECISION_TOOLS: Record<string, ActionSpec> = {
           minLength: 3,
           description: 'What in the image shows the count, e.g. "3 replicate cells under each column label".',
         },
-        box: roughBox("Only when the outer grid lines miss the cells: the cells' rough extent in page pixels."),
+        box: boxSchema("Only when the outer grid lines miss the cells: the cells' rough extent in page pixels."),
       },
       required: ['rows', 'cols', 'reason'],
     },
@@ -176,7 +168,7 @@ export const DECISION_TOOLS: Record<string, ActionSpec> = {
     args: {
       type: 'object',
       properties: {
-        region: roughBox('Area in page pixels. Omit for the whole page.'),
+        region: boxSchema('Area in page pixels. Omit for the whole page.'),
         overlay: { enum: ['none', 'calibration', 'reconstruction'] },
         questions: { type: 'object', description: 'Up to 6 questions by id: {id: {type, instructions, criteria}}.' },
       },
@@ -188,10 +180,9 @@ export const DECISION_TOOLS: Record<string, ActionSpec> = {
 // Models send null for optional arguments they do not use ({mark: 2, t:
 // null}); those mean "not given" (as normalizeArgs does for the agent API).
 export function cleanDecisionArgs(name: string, args: ActionArgs | null): ActionArgs | null {
-  const drop = (o: ActionArgs): ActionArgs => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null));
-  const out = args && typeof args === 'object' ? drop(args) : args;
+  const out = args && typeof args === 'object' ? dropNulls(args) : args;
   if (name === 'set_ticks' && Array.isArray(out?.ticks))
-    out.ticks = out.ticks.map((k: unknown) => (k && typeof k === 'object' ? drop(k as ActionArgs) : k));
+    out.ticks = out.ticks.map((k: unknown) => (k && typeof k === 'object' ? dropNulls(k as ActionArgs) : k));
   return out;
 }
 
@@ -225,15 +216,9 @@ export function validateDecisionTool(name: string, args: ActionArgs) {
 
 // Tool definitions in the SDK's chat format.
 export function decisionLlmTools() {
-  const fn = (name: string, description: string, parameters: JsonSchema): LlmTool => ({
-    type: 'function',
-    function: { name, description, parameters },
-  });
   return [
-    ...Object.entries(DECISION_TOOLS).map(([n, t]) => fn(n, t.description, t.args)),
-    ...DECISION_LLM_ACTIONS.map((n) => fn(n, AGENT_ACTIONS[n].description, AGENT_ACTIONS[n].args)),
-    ...['view_page', 'view_pages_overview', 'finish'].map((n) =>
-      fn(n, RUNNER_TOOLS[n].description, RUNNER_TOOLS[n].args),
-    ),
+    ...Object.entries(DECISION_TOOLS).map(([n, t]) => toLlmTool(n, t)),
+    ...DECISION_LLM_ACTIONS.map((n) => toLlmTool(n, AGENT_ACTIONS[n])),
+    ...['view_page', 'view_pages_overview', 'finish'].map((n) => toLlmTool(n, RUNNER_TOOLS[n])),
   ];
 }
