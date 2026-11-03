@@ -2,9 +2,10 @@
 
 import type { Box, PixelImage, Rgb } from '../../types/index.ts';
 import { readPixel } from '../grid.ts';
+import { upperMedian } from '../stats.ts';
 import type { BarTools } from './bar-strips.ts';
 import { BAR_STEP, BAR_THICK, barTools, followStrip } from './bar-strips.ts';
-import { componentsOf, median } from './helpers.ts';
+import { componentsOf } from './helpers.ts';
 import type { Bar, BarCandidate, Component, StripKind } from './types.ts';
 
 // What the colors along a strip look like: the median color of each
@@ -24,7 +25,7 @@ function stripKind(img: PixelImage, bar: Bar): StripKind | null {
   for (let u = a; u < b; u++) {
     const line: Rgb[] = [];
     for (let c = c0 + m; c < c1 - m; c++) line.push(px(u, c));
-    const med = [0, 1, 2].map((i) => median(line.map((rgb) => rgb[i])));
+    const med = [0, 1, 2].map((i) => upperMedian(line.map((rgb) => rgb[i])));
     means.push(med);
     const near = line.filter((rgb) => rgb.every((x, i) => Math.abs(x - med[i]) <= 30)).length;
     if (near < 0.6 * line.length) uneven++;

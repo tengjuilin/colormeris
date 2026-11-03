@@ -1,4 +1,4 @@
-import { rgbToLab } from '../core/color.ts';
+import { lerpRgb, onWhite, rgbToLab } from '../core/color.ts';
 import { labToT } from '../core/colorbar.ts';
 import type { MatchMap } from '../core/colormap-match.ts';
 import { cmapColorAt } from '../core/colormap-match.ts';
@@ -60,9 +60,9 @@ export function createIndexer(img: PixelImage, samples: ColorbarSample[]) {
       // Transparent pixels count as white, as readPixel does.
       if (a < 255) {
         const k = a / 255;
-        r = Math.round(r * k + 255 * (1 - k));
-        g = Math.round(g * k + 255 * (1 - k));
-        b = Math.round(b * k + 255 * (1 - k));
+        r = Math.round(onWhite(r, k));
+        g = Math.round(onWhite(g, k));
+        b = Math.round(onWhite(b, k));
       }
       const key = (r << 16) | (g << 8) | b;
       if (key !== lastKey) {
@@ -289,7 +289,7 @@ export function colorsLut(colors: Rgb[], qualitative = false) {
       const x = u * (n - 1);
       const i = Math.min(n - 2, Math.floor(x));
       const f = x - i;
-      c = [0, 1, 2].map((q) => colors[i][q] + f * (colors[i + 1][q] - colors[i][q]));
+      c = lerpRgb(colors[i], colors[i + 1], f);
     }
     lut[k * 3] = Math.round(c[0]);
     lut[k * 3 + 1] = Math.round(c[1]);

@@ -1,5 +1,5 @@
 import type { ColorbarSample, Lab, Rgb } from '../types/index.ts';
-import { deltaE2000, rgbToLab } from './color.ts';
+import { deltaE2000, lerpRgb, rgbToLab } from './color.ts';
 import { libraryMaps, mapByName, mapColors } from './colormap-library.ts';
 
 // Which known colormap is this? Two ways for the colormap viewer:
@@ -53,7 +53,7 @@ function colorAt(map: MatchMap, t: number): Rgb {
   const x = Math.max(0, Math.min(1, t)) * (n - 1);
   const i = Math.min(n - 2, Math.floor(x));
   const f = x - i;
-  return [0, 1, 2].map((k) => c[i][k] + f * (c[i + 1][k] - c[i][k]));
+  return lerpRgb(c[i], c[i + 1], f);
 }
 export const cmapColorAt = colorAt;
 
@@ -61,7 +61,7 @@ function sampleAt(rgbs: Rgb[], t: number): Rgb {
   const x = t * (rgbs.length - 1);
   const i = Math.min(rgbs.length - 2, Math.floor(x));
   const f = x - i;
-  return [0, 1, 2].map((k) => rgbs[i][k] + f * (rgbs[i + 1][k] - rgbs[i][k]));
+  return lerpRgb(rgbs[i], rgbs[i + 1], f);
 }
 
 // Mean of the smallest KEEP share of the values.

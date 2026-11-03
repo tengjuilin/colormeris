@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { deltaE76, deltaE2000, labToRgb, rgbToHex, rgbToLab } from './color.ts';
+import {
+  chroma,
+  deltaE76,
+  deltaE2000,
+  hueAngle,
+  labToRgb,
+  lerpRgb,
+  onWhite,
+  parseHexColors,
+  rgbToHex,
+  rgbToLab,
+} from './color.ts';
 
 const close = (a: number, b: number, eps: number) => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b}`);
 
@@ -35,4 +46,16 @@ test('deltaE76 is Euclidean', () => {
 
 test('rgbToHex', () => {
   assert.equal(rgbToHex([255, 0, 16]), '#ff0010');
+});
+
+test('onWhite, lerpRgb, chroma, hueAngle and parseHexColors', () => {
+  assert.equal(onWhite(100, 1), 100);
+  assert.equal(onWhite(100, 0), 255);
+  assert.deepEqual(lerpRgb([0, 10, 20], [100, 10, 0], 0.25), [25, 10, 15]);
+  assert.equal(chroma([50, 3, 4]), 5);
+  assert.equal(hueAngle([50, 0, -1]), 270);
+  assert.deepEqual(parseHexColors('ff0010000aff'), [
+    [255, 0, 16],
+    [0, 10, 255],
+  ]);
 });

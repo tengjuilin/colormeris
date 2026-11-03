@@ -28,7 +28,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export const clamp8 = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
 export const roundRgb = (rgb: Rgb): Rgb => rgb.map(clamp8) as Rgb;
-export const pct = (v: number) => `${Math.round(v * 100)}%`;
+export { pct } from '../core/stats.ts';
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,

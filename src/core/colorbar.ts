@@ -13,9 +13,10 @@ import type {
   Rgb,
   TickWithT,
 } from '../types/index.ts';
-import { colorDistance, deltaE76, deltaE2000, labToRgb, rgbToLab } from './color.ts';
+import { chroma, colorDistance, deltaE76, deltaE2000, hueAngle, labToRgb, rgbToLab } from './color.ts';
 import { colormapSamples } from './colormap-match.ts';
 import { readPixel } from './grid.ts';
+import { median } from './stats.ts';
 
 // Colorbar calibration: sample the bar's colors along a line, map positions
 // along the bar (t in [0, 1], start → end) to data values via user ticks, and
@@ -363,9 +364,8 @@ const END_ZONE = 0.04; // share of the bar at each end where a past-end match la
 const OFF_MAP_FACTOR = 2; // ΔE over this × maxDeltaE: off the map whatever its hue
 const HUE_LIMIT = 45; // hue difference (degrees) between two colorful colors that rules a match out
 
-const hueOf = (lab: Lab) => (Math.atan2(lab[2], lab[1]) * 180) / Math.PI;
 const hueGap = (a: Lab, b: Lab) => {
-  const h = Math.abs(hueOf(a) - hueOf(b)) % 360;
+  const h = Math.abs(hueAngle(a) - hueAngle(b)) % 360;
   return h > 180 ? 360 - h : h;
 };
 const labMean = (labs: Lab[]) => [0, 1, 2].map((i) => labs.reduce((s, l) => s + l[i], 0) / labs.length);
@@ -484,12 +484,6 @@ export function colorStatus(
 const SIDE_EDGE = 15; // sideways step that counts as leaving the strip
 const MAX_SIDE = 60; // widest half-strip searched, in pixels
 const labAt = (img: PixelImage, p: Point) => rgbToLab(readPixel(img, p.x, p.y));
-const chroma = (lab: Lab) => Math.hypot(lab[1], lab[2]);
-const median = (v: ArrayLike<number>) => {
-  const s = Array.from(v).sort((a, b) => a - b);
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-};
 
 function axes(start: Point, end: Point) {
   const len = Math.hypot(end.x - start.x, end.y - start.y);

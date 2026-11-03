@@ -72,6 +72,14 @@ export function labToLch(lab: Lab): [number, number, number] {
   return [lab[0], chroma(lab), hueAngle(lab)];
 }
 
+// A channel value (0–255) at opacity a (0–1) over a white page: transparent
+// pixels count as white everywhere (readPixel, the indexers, the samplers).
+export const onWhite = (v: number, a: number) => v * a + 255 * (1 - a);
+
+// The color a share f (0–1) of the way from a to b, per channel in sRGB (as
+// colormaps interpolate between their listed colors). Not rounded.
+export const lerpRgb = (a: Rgb, b: Rgb, f: number): Rgb => [0, 1, 2].map((k) => a[k] + f * (b[k] - a[k]));
+
 export function deltaE76(lab1: Lab, lab2: Lab) {
   const dL = lab1[0] - lab2[0];
   const da = lab1[1] - lab2[1];

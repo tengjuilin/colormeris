@@ -2,8 +2,9 @@
 
 import type { Box, PixelImage, Rgb } from '../../types/index.ts';
 import { readPixel } from '../grid.ts';
+import { upperMedian } from '../stats.ts';
 import { BAR_STEP } from './bar-strips.ts';
-import { background, differs, median } from './helpers.ts';
+import { background, differs } from './helpers.ts';
 import type { TickBest, TickLabel, TickLabelsResult } from './types.ts';
 
 // Positions of the steps between a binned colorbar's bins along it
@@ -17,7 +18,7 @@ export function binEdges(img: PixelImage, bar: Box, vertical: boolean) {
   for (let u = a; u < b; u++) {
     const line: Rgb[] = [];
     for (let c = c0 + m; c < c1 - m; c++) line.push(vertical ? readPixel(img, c, u) : readPixel(img, u, c));
-    means.push([0, 1, 2].map((i) => median(line.map((rgb) => rgb[i]))));
+    means.push([0, 1, 2].map((i) => upperMedian(line.map((rgb) => rgb[i]))));
   }
   const diff = (p: Rgb, q: Rgb) => Math.max(...p.map((x, k: number) => Math.abs(x - q[k])));
   const out: number[] = [];
@@ -63,7 +64,7 @@ export function tickMarks(
     // ... and out of step with the evenly spaced others (t7's ticks fall
     // between bins at a tick mark; they stay).
     const rest = on.filter((l) => l !== off[0]).map(mid);
-    const step = median(rest.slice(1).map((u, i) => u - rest[i]));
+    const step = upperMedian(rest.slice(1).map((u, i) => u - rest[i]));
     const k = Math.round((mid(off[0]) - rest[0]) / step);
     if (Math.abs(mid(off[0]) - (rest[0] + k * step)) > Math.max(tol, 0.08 * step)) on = on.filter((l) => l !== off[0]);
   }
@@ -102,8 +103,8 @@ export function tickMarks(
   }
   // Odd sizes: far more characters or a far larger box than the others.
   const sizes = on.map((l) => (l.box.x1 - l.box.x0) * (l.box.y1 - l.box.y0));
-  const typical = median(sizes);
-  const glyphs = median(on.map((l) => l.n));
+  const typical = upperMedian(sizes);
+  const glyphs = upperMedian(on.map((l) => l.n));
   const m = vertical ? (bar.x0 + bar.x1) / 2 : (bar.y0 + bar.y1) / 2;
   // Labels without tick marks (user decision 2026-10-17): the first and
   // last label label the strip's ends when they sit at them, within half

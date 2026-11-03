@@ -1,6 +1,7 @@
-import { colorDistance, deltaE76, rgbToLab } from '../../core/color.ts';
+import { colorDistance, deltaE76, onWhite, rgbToLab } from '../../core/color.ts';
 import { colorAtT, colorbarSamples, labToT, makeValueFn, sampleColorbar, tickProblem } from '../../core/colorbar.ts';
 import { bilinear, gridPixelSize, invertBilinear, readPixel } from '../../core/grid.ts';
+import { medianInPlace } from '../../core/stats.ts';
 import type {
   ColorbarSample,
   Corners,
@@ -299,20 +300,13 @@ function sampleBin(
         g[k] = d[q + 1];
         b[k] = d[q + 2];
       } else {
-        r[k] = d[q] * a + 255 * (1 - a);
-        g[k] = d[q + 1] * a + 255 * (1 - a);
-        b[k] = d[q + 2] * a + 255 * (1 - a);
+        r[k] = onWhite(d[q], a);
+        g[k] = onWhite(d[q + 1], a);
+        b[k] = onWhite(d[q + 2], a);
       }
     }
   }
-  return [median(r, n), median(g, n), median(b, n)];
-}
-
-function median(buf: Float64Array, n: number) {
-  const values = buf.subarray(0, n);
-  values.sort();
-  const m = n >> 1;
-  return n % 2 ? values[m] : (values[m - 1] + values[m]) / 2;
+  return [medianInPlace(r.subarray(0, n)), medianInPlace(g.subarray(0, n)), medianInPlace(b.subarray(0, n))];
 }
 
 // RGBA pixels (one per bin) of the reconstruction: each value repainted with

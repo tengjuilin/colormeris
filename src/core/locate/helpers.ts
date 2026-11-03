@@ -2,6 +2,7 @@
 // noise, ink and stroke tests, runs of full lines, connected components.
 
 import type { PixelImage, Rgb } from '../../types/index.ts';
+import { onWhite } from '../color.ts';
 import { readPixel } from '../grid.ts';
 import type { Component, PixelTest } from './types.ts';
 
@@ -36,10 +37,6 @@ export const MIN_CHROMA = 6;
 export const PALE = 14;
 
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-export const median = (v: ArrayLike<number>) => {
-  const s = Array.from(v).sort((a, b) => a - b);
-  return s.length ? s[s.length >> 1] : 0;
-};
 export const mean = (rgb: Rgb) => (rgb[0] + rgb[1] + rgb[2]) / 3;
 
 // Page background near a box: the most common color on the window's
@@ -91,9 +88,9 @@ export function differsAt(img: PixelImage, bg: Rgb, tol: number) {
   return (x: number, y: number) => {
     const i = (y * img.width + x) * 4;
     const a = d[i + 3] / 255;
-    const r = a < 1 ? d[i] * a + 255 * (1 - a) : d[i];
-    const g = a < 1 ? d[i + 1] * a + 255 * (1 - a) : d[i + 1];
-    const b = a < 1 ? d[i + 2] * a + 255 * (1 - a) : d[i + 2];
+    const r = a < 1 ? onWhite(d[i], a) : d[i];
+    const g = a < 1 ? onWhite(d[i + 1], a) : d[i + 1];
+    const b = a < 1 ? onWhite(d[i + 2], a) : d[i + 2];
     return Math.abs(r - br) > tol || Math.abs(g - bgg) > tol || Math.abs(b - bb) > tol;
   };
 }

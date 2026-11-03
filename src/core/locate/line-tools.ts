@@ -3,6 +3,7 @@
 
 import type { Box, PixelImage, Rgb } from '../../types/index.ts';
 import { readPixel } from '../grid.ts';
+import { upperMedian } from '../stats.ts';
 import {
   background,
   clamp,
@@ -12,7 +13,6 @@ import {
   MAX_FRAME,
   MIN_CHROMA,
   MIN_RUN,
-  median,
   noiseTol,
   PALE,
   stroke,
@@ -121,7 +121,7 @@ export function lineTools(img: PixelImage, wx0: number, wy0: number, wx1: number
       }
       // A frame near the span's ends is not a grid line, and neither is
       // a run as wide as half a cell (a column of white cells).
-      const cell = median(parts.filter((p) => !p.kind).map((p) => p.j - p.i));
+      const cell = upperMedian(parts.filter((p) => !p.kind).map((p) => p.j - p.i));
       const ends = Math.max(1, Math.round(0.03 * kinds.length));
       return parts.filter((p) => p.kind && p.i >= ends && p.j <= kinds.length - ends && p.j - p.i <= 0.5 * cell);
     };

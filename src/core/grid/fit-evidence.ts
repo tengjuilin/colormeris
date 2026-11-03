@@ -1,8 +1,9 @@
 // Evidence for cell borders along one axis (used by fitCellCounts).
 
 import type { Corners, PixelImage } from '../../types/index.ts';
+import { medianInPlace } from '../stats.ts';
 import { bilinear } from './geometry.ts';
-import { median, readPixel } from './sampling.ts';
+import { readPixel } from './sampling.ts';
 
 // ---- Cell counts from cell borders ---------------------------------------
 //
@@ -127,7 +128,7 @@ export function borderEvidence(rgb: Float32Array, N: number, lines: number): Evi
     let w = 0;
     for (let j = 0; j < lines; j++) w += Number(Math.min(ch[0][j], ch[1][j], ch[2][j]) >= GAP_WHITE);
     light[i] = w / lines;
-    const m = ch.map((c) => median(Float32Array.from(c)));
+    const m = ch.map((c) => medianInPlace(Float32Array.from(c)));
     if (Math.max(...m) - Math.min(...m) > 30) continue;
     let same = 0;
     for (let j = 0; j < lines; j++)

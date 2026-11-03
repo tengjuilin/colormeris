@@ -1,5 +1,6 @@
 import { deltaE2000, labToLch, rgbToLab } from '../core/color.ts';
 import { CVD_TYPES, simulateCvd } from '../core/cvd.ts';
+import { pct } from '../core/stats.ts';
 import type { Lab, Rgb } from '../types/index.ts';
 
 // Perceptual measures of a colormap for the colormap viewer: step sizes
@@ -354,8 +355,6 @@ export function colormapMetrics(
 }
 
 export type ColormapMetrics = ReturnType<typeof colormapMetrics>;
-
-const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 // The CVD view that keeps the least separation.
 export function worstCvd(m: ColormapMetrics) {
