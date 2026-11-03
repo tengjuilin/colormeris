@@ -126,7 +126,10 @@ export function readoutAt(
   return { origHex: rgbToHex(o), items };
 }
 
-/** The pixel of an image under a pointer, or null outside it. */
+/**
+ * The pixel of an image under a pointer, or null outside it. Floored, since the readout names one pixel
+ * (the Recolor tab's pointOn instead keeps a continuous point clamped into the image, which tAtPixel rounds).
+ */
 export function imagePixelAt(
   clientX: number,
   clientY: number,

@@ -30,6 +30,24 @@ export const clamp8 = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
 export const roundRgb = (rgb: Rgb): Rgb => rgb.map(clamp8) as Rgb;
 export { pct } from '../core/stats.ts';
 
+/** Saves a canvas as `name` (a PNG); onError when the browser cannot encode it. */
+export function downloadCanvasPng(canvas: HTMLCanvasElement, name: string, onError: (msg: string) => void) {
+  canvas.toBlob((blob) => {
+    if (!blob) {
+      onError('Could not make the PNG.');
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    // Revoked a moment later: some browsers start the download after click() returns.
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, 'image/png');
+}
+
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   attrs?: Record<string, unknown> | null,

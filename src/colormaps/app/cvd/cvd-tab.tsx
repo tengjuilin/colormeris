@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { ACHROMAT, resolveCvdModel } from '../../../core/cvd.ts';
+import { downloadCanvasPng } from '../../common.ts';
 import { FigureCanvas, type FigureHandle, FigureInput, useFigureInput } from '../shared/figure-input.tsx';
 import {
   caption,
@@ -142,19 +143,7 @@ function downloadPng(
     panes.forEach((src, i) => g.drawImage(src, (i % cols) * (w + gap), Math.floor(i / cols) * (h + gap)));
     what = `cvd-${model}-s${severity.toFixed(1)}`;
   }
-  c.toBlob((blob) => {
-    if (!blob) {
-      onError('Could not make the PNG.');
-      return;
-    }
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${fig.name}-${what}.png`;
-    document.body.append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }, 'image/png');
+  downloadCanvasPng(c, `${fig.name}-${what}.png`, onError);
 }
 
 export function CvdTab({ active, getTab }: CvdTabProps) {

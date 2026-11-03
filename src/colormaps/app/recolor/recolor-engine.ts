@@ -3,7 +3,7 @@ import { colorAtT, refineColorbar, sampleColorbar } from '../../../core/colorbar
 import { libraryMaps, mapByName, mapColors } from '../../../core/colormap-library.ts';
 import { identifyColorbar } from '../../../core/colormap-match.ts';
 import type { ColorbarSample, Rgb } from '../../../types/index.ts';
-import { pct, roundRgb } from '../../common.ts';
+import { downloadCanvasPng, pct, roundRgb } from '../../common.ts';
 import {
   type ColorIndex,
   createIndexer,
@@ -89,7 +89,7 @@ export function createRecolorEngine(env: RecolorEnv) {
   let mask: Uint8Array | null = null;
   let overlayData: ImageData[] | null = null; // one buffer per overlay
   let pending: number | null = null; // the latest hover, drawn at the next frame
-  let frame: ReturnType<typeof setTimeout> | number = 0;
+  let cancelHover: (() => void) | null = null; // the pending hover frame, set while one is scheduled
   let renderFrame = 0;
   let stripKey: unknown[] | null = null; // what the strips show; they only change with it
   let stopped = false; // between stop() and start(): React's StrictMode mounts, unmounts and mounts again
@@ -241,12 +241,20 @@ export function createRecolorEngine(env: RecolorEnv) {
   // the latest one per frame is drawn.
   function hover(t: number) {
     pending = t;
-    if (frame) return;
+    if (cancelHover) return;
     const run = () => {
-      frame = 0;
+      cancelHover = null;
       if (pending != null) highlight(pending);
     };
-    frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(run) : setTimeout(run, 16);
+    // The cancel is kept with the frame: the ids of requestAnimationFrame and of the setTimeout fallback are
+    // both numbers, so a stop could not tell which to cancel from the id.
+    if (typeof requestAnimationFrame === 'function') {
+      const id = requestAnimationFrame(run);
+      cancelHover = () => cancelAnimationFrame(id);
+    } else {
+      const id = setTimeout(run, 16);
+      cancelHover = () => clearTimeout(id);
+    }
   }
 
   function highlight(t0: number, force = false) {
@@ -297,6 +305,8 @@ export function createRecolorEngine(env: RecolorEnv) {
   }
 
   // Both images have the same size, so a point on either is a point on both.
+  // Continuous and clamped into the image, unlike the CVD tab's imagePixelAt (floored, null outside):
+  // tAtPixel rounds it to the nearest pixel, and a hover just past the edge still reads the edge pixel.
   const pointOn = (c: HTMLCanvasElement, e: PointerEvent) => {
     const r = c.getBoundingClientRect();
     const k = c.width / (c.clientWidth || c.width);
@@ -384,20 +394,8 @@ export function createRecolorEngine(env: RecolorEnv) {
     const fig = env.fig();
     const out = env.out();
     if (!index || !fig || !out) return;
-    out.toBlob((blob) => {
-      if (!blob) {
-        ui.setStatus('Could not make the PNG.');
-        return;
-      }
-      const { chosen, reversed } = env.settings();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = downloadName(fig.name, chosen, reversed);
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    }, 'image/png');
+    const { chosen, reversed } = env.settings();
+    downloadCanvasPng(out, downloadName(fig.name, chosen, reversed), ui.setStatus);
   }
 
   // A stop kills the indexing run and the pending frames; a start (a remount) picks up where it was.
@@ -411,9 +409,8 @@ export function createRecolorEngine(env: RecolorEnv) {
     job++;
     cancelAnimationFrame(renderFrame);
     renderFrame = 0;
-    if (typeof frame === 'number') cancelAnimationFrame(frame);
-    else clearTimeout(frame);
-    frame = 0;
+    cancelHover?.();
+    cancelHover = null;
   }
 
   return {
