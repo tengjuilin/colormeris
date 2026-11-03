@@ -162,7 +162,7 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
       // with it. Distances are taken once, at the start of the drag:
       // re-projecting the moved ticks on every event shrank them towards the
       // fixed end whenever the line turned.
-      const fixed = $('bar-tick-mode').value === 'fixed';
+      const fixed = app.barTickMode === 'fixed';
       const len = () => Math.hypot(cb.end!.x - cb.start!.x, cb.end!.y - cb.start!.y);
       handle.ts ??= ticksWithT(cb).map((k) => k.t);
       handle.len ??= len();

@@ -27,6 +27,7 @@ import { setupWorkspaceHotkeys } from './hotkeys.ts';
 import { setupWorkspaceInteract } from './interact.ts';
 import { setupWorkspaceOverlay } from './overlay.ts';
 import { setupWorkspacePanels } from './panels.ts';
+import { allSections, sectionVisible } from './sections.ts';
 import { setupWorkspaceSource } from './source.ts';
 import { notify } from './store.ts';
 
@@ -122,6 +123,7 @@ export function createWorkspace(): Workspace {
     tableCell: null,
     showOverlay: true,
     keepRect: true,
+    barTickMode: 'follow',
     showRecon: false,
   };
 
@@ -223,8 +225,7 @@ export function createWorkspace(): Workspace {
   let helpLoaded: boolean | null = null;
   function renderSidebarDom(light: boolean) {
     const loaded = !!app.sourceCanvas;
-    for (const t of Object.values(tools)) for (const id of t.sections || []) $(id).hidden = true;
-    for (const id of ['sec-panels', 'sec-grid', 'sec-colorbar', ...(tool.sections || [])]) $(id).hidden = !loaded;
+    for (const id of allSections(Object.values(tools))) $(id).hidden = !sectionVisible(loaded, tool, id);
     $('empty-state').hidden = loaded;
     // Open the help when nothing is loaded, close it once a file is; only on the change, so a manual toggle sticks.
     if (helpLoaded !== loaded) {
@@ -232,8 +233,6 @@ export function createWorkspace(): Workspace {
       const help = document.querySelector<HTMLDetailsElement>('details.help');
       if (help) help.open = !loaded;
     }
-    // The agent card needs a file; its tool (data-tool) still decides where it shows.
-    $('sec-agent').hidden = !loaded || $('sec-agent').dataset.tool !== tool.kind;
     $('view-tools').hidden = !loaded;
     $('btn-export-zip').disabled = !loaded;
     $('btn-undo').disabled = !app.history.length;

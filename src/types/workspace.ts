@@ -50,6 +50,9 @@ export interface Handle {
   [key: string]: unknown;
 }
 
+/** What colorbar ticks do while an end of the bar is dragged (AppState.barTickMode). */
+export type BarTickMode = 'follow' | 'fixed';
+
 /** A grid cell, row and column 0-based. */
 export interface Cell {
   row: number;
@@ -92,6 +95,8 @@ export interface AppState {
   showOverlay: boolean;
   /** Grid card: dragging a corner keeps the grid a rectangle. */
   keepRect: boolean;
+  /** Colorbar card: dragging an end moves the ticks with the bar ('follow') or leaves them on the page ('fixed'). */
+  barTickMode: BarTickMode;
   /** Heatmap Results card: repaint the sampled areas with the colors of their values. */
   showRecon: boolean;
 }
