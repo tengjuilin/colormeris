@@ -1,4 +1,5 @@
 import type { Handle, Point, ViewerApi, ViewerCallbacks } from '../types/index.ts';
+import { pointerEnd } from './pointer-end.ts';
 import { isFormField } from './typing.ts';
 
 // Zoomable, pannable canvas view of the source image with an overlay layer,
@@ -72,7 +73,11 @@ export class Viewer implements ViewerApi {
     this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
     this.canvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
-    this.canvas.addEventListener('pointercancel', () => (this.pointer = null));
+    // A cancelled pointer (touch taken over by the browser, capture lost) ends a
+    // drag like a release; lostpointercapture also follows every pointerup, when
+    // this.pointer is already null.
+    this.canvas.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
+    this.canvas.addEventListener('lostpointercapture', (e) => this.onPointerCancel(e));
     this.canvas.addEventListener('pointerleave', () => {
       this.hover = null;
       this.cb.onHover?.(null);
@@ -240,9 +245,22 @@ export class Viewer implements ViewerApi {
     this.pointer = null;
     this.canvas.classList.remove('grabbing', 'dragging');
     const { sx, sy } = this.eventPoint(e);
-    if (p.draw && p.moved) this.cb.onDragEnd?.(this.toImage(sx, sy), e);
-    else if (p.handle && p.moved) this.cb.onHandleDrop?.(p.handle);
-    else if (!p.moved && !p.panOnly && e.button === 0) this.cb.onClick?.(this.toImage(sx, sy), e);
+    this.endGesture(p, pointerEnd(p, { button: e.button }), this.toImage(sx, sy), e);
+  }
+
+  onPointerCancel(e: PointerEvent) {
+    const p = this.pointer;
+    if (!p || p.id !== e.pointerId) return;
+    this.pointer = null;
+    this.canvas.classList.remove('grabbing', 'dragging');
+    // A cancel event's coordinates may be 0, 0: end at the last hovered point.
+    this.endGesture(p, pointerEnd(p, { cancelled: true }), this.hover?.img ?? p.start, e);
+  }
+
+  endGesture(p: PointerState, end: ReturnType<typeof pointerEnd>, img: Point, e: PointerEvent) {
+    if (end === 'drawEnd') this.cb.onDragEnd?.(img, e);
+    else if (end === 'handleDrop') this.cb.onHandleDrop?.(p.handle!);
+    else if (end === 'click') this.cb.onClick?.(img, e);
     this.requestDraw();
   }
 

@@ -18,6 +18,7 @@ export function setupWorkspaceHistory(w: WorkspaceContext): HistoryMembers {
   }
 
   function restore(snap: AppState['history'][number]) {
+    app.drag = null; // a drag's handle refers to the panels being replaced
     app.project.panels = snap.panels;
     app.project.activePanelId = snap.activePanelId;
     // Undoing a change made on another page takes you back to that page.
@@ -52,6 +53,7 @@ export function setupWorkspaceHistory(w: WorkspaceContext): HistoryMembers {
 
   // Opening a file or re-rendering at another resolution starts a new history.
   function clearHistory() {
+    app.drag = null;
     app.history = [];
     app.future = [];
   }

@@ -100,6 +100,7 @@ export function setupWorkspaceSource(w: WorkspaceContext): SourceMembers {
   // Display a page that is already in app.pages.
   function showPage(page: number, { keepView = false }: { keepView?: boolean } = {}) {
     const entry = app.pages.get(page)!;
+    app.drag = null; // a new page or project ends any drag left over
     app.sourceCanvas = entry.canvas;
     app.imageData = entry.imageData;
     app.project.source!.width = entry.canvas.width;

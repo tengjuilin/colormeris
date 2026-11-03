@@ -162,6 +162,8 @@ export function createWorkspace(): Workspace {
       }
     }
     app.mode = type ? { type, points: [] } : null;
+    // Leaving a mode ends any drag the viewer never dropped (results wait while app.drag is set).
+    if (!type) app.drag = null;
     updateModebar();
     tool.onModeChange?.(type);
     viewer.requestDraw();
