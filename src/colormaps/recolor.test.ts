@@ -8,7 +8,17 @@ import { cmapColorAt } from '../core/colormap-match.ts';
 import { parseHexColors } from '../core/cvd.ts';
 import { makeImage, setPixel } from '../testing/helpers.ts';
 import type { PixelImage } from '../types/index.ts';
-import { createIndexer, indexColors, newColorAt, recolorPixels, regionMask, similarMask, tAtPixel } from './recolor.ts';
+import {
+  createIndexer,
+  createRecolorer,
+  indexColors,
+  maskCount,
+  newColorAt,
+  recolorPixels,
+  regionMask,
+  similarMask,
+  tAtPixel,
+} from './recolor.ts';
 
 const map = (name: string) => {
   const m = cmapData.maps.find((x) => x.name === name)!;
@@ -113,6 +123,19 @@ test('tAtPixel reads back positions, null off the bar', () => {
   });
   assert.equal(tAtPixel(index, 11, 99), null);
   assert.equal(tAtPixel(index, -1, 0), null);
+});
+
+test('a reusing recolorer writes into one buffer with the same results', () => {
+  const img = figure();
+  const index = indexColors(img, barOf(img));
+  const region = regionMask(img.width, img.height, [{ x: 1.5, y: 10, w: 20, h: 1 }])!;
+  const recolor = createRecolorer({ reuse: true });
+  const a = recolor(img, index, viridis, { region, regionTotal: maskCount(region) });
+  assert.deepEqual(a, recolorPixels(img, index, viridis, { region }));
+  const b = recolor(img, index, jet, { tolerance: 1e9 });
+  assert.equal(b.data, a.data); // the same buffer, overwritten
+  assert.deepEqual(b, recolorPixels(img, index, jet, { tolerance: 1e9 }));
+  assert.notEqual(recolorPixels(img, index, jet).data, recolorPixels(img, index, jet).data);
 });
 
 test('a region limits recoloring, the highlight and the hover lookup', () => {

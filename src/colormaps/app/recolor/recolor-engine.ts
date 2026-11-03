@@ -7,8 +7,9 @@ import { pct, roundRgb } from '../../common.ts';
 import {
   type ColorIndex,
   createIndexer,
+  createRecolorer,
+  maskCount,
   newColorAt,
-  recolorPixels,
   regionMask,
   similarMask,
   tAtPixel,
@@ -76,6 +77,10 @@ export function createRecolorEngine(env: RecolorEnv) {
   let flip = false; // the line was drawn from the old map's high end
   let index: ColorIndex | null = null; // per-pixel t and ΔE
   let region: Uint8Array | null = null; // per-pixel 0/1 from the boxes, or null for the whole image
+  let regionTotal = 0; // pixels in the region, counted when it changes
+  // One output buffer for every render (a big figure is tens of MB per frame otherwise) and the last LUT.
+  // outData and outImage below are views of that buffer: they always hold the latest render.
+  const recolor = createRecolorer({ reuse: true });
   let outData: Uint8ClampedArray | null = null; // the recolored RGBA bytes, for the highlight's colors
   let outImage: ImageData | null = null; // the same as ImageData, to put back after a peek
   let peek: { canvas: HTMLCanvasElement; x: number; y: number } | null = null; // it shows the other version while held
@@ -105,6 +110,7 @@ export function createRecolorEngine(env: RecolorEnv) {
     const fig = env.fig();
     if (!fig) return;
     region = fig.img ? regionMask(fig.img.width, fig.img.height, fig.boxes) : null;
+    regionTotal = region ? maskCount(region) : 0;
     mask = null;
     ui.setRegionCount(fig.boxes.length);
     fig.redraw();
@@ -205,12 +211,13 @@ export function createRecolorEngine(env: RecolorEnv) {
     const img = fig.img;
     const m = newMap();
     const { tolerance, reversed } = env.settings();
-    const r = recolorPixels(img, index, m, { tolerance, reversed, flip, region });
+    const r = recolor(img, index, m, { tolerance, reversed, flip, region, regionTotal });
     if (out.width !== img.width || out.height !== img.height) {
       out.width = img.width;
       out.height = img.height;
     }
-    outImage = new ImageData(r.data, img.width, img.height);
+    // The buffer is reused, so its ImageData is too, until the image size changes.
+    if (outImage?.data !== r.data) outImage = new ImageData(r.data, img.width, img.height);
     out.getContext('2d')?.putImageData(outImage, 0, 0);
     outData = r.data;
     ui.setOutShown(true);
@@ -362,6 +369,7 @@ export function createRecolorEngine(env: RecolorEnv) {
     mask = null;
     overlayData = null;
     region = null;
+    regionTotal = 0;
     flip = false;
     clearHighlight();
     ui.setOutShown(false);

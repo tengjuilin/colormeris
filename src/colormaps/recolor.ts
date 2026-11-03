@@ -129,47 +129,70 @@ export function regionMask(width: number, height: number, boxes?: RecolorBox[] |
   return m;
 }
 
+/** recolorPixels' options. */
+export interface RecolorOptions {
+  tolerance?: number;
+  reversed?: boolean;
+  flip?: boolean;
+  region?: Uint8Array | null;
+  /** maskCount(region), when the caller keeps it: a region only changes with its boxes. */
+  regionTotal?: number;
+}
+
+/** Pixels set in a region mask. */
+export function maskCount(region: Uint8Array) {
+  let total = 0;
+  for (let i = 0; i < region.length; i++) total += region[i];
+  return total;
+}
+
+// A recolor function that keeps its last LUT (dragging the tolerance
+// recolors with the same map) and, with `reuse`, writes every result into
+// one buffer instead of allocating an image's worth of bytes per frame. A
+// reused buffer is overwritten by the next call: callers that keep a result
+// (the Recolor tab keeps it for the highlight and the peek) must want the
+// latest one.
+export function createRecolorer({ reuse = false }: { reuse?: boolean } = {}) {
+  let last: { rgbs: Rgb[]; kind: string; reversed: boolean; lut: Uint8ClampedArray } | null = null;
+  let buffer: Uint8ClampedArray<ArrayBuffer> | null = null;
+  return (img: PixelImage, index: ColorIndex, map: MatchMap, opts: RecolorOptions = {}) => {
+    const { tolerance = 12, reversed = false, flip = false, region = null, regionTotal } = opts;
+    if (last?.rgbs !== map.rgbs || last.kind !== map.kind || last.reversed !== reversed) {
+      last = { rgbs: map.rgbs, kind: map.kind, reversed, lut: mapLut(map, reversed) };
+    }
+    const { lut } = last;
+    const src = img.data;
+    let out: Uint8ClampedArray<ArrayBuffer>;
+    if (reuse && buffer?.length === src.length) {
+      out = buffer;
+      out.set(src);
+    } else {
+      out = new Uint8ClampedArray(src);
+      if (reuse) buffer = out;
+    }
+    const { t, de } = index;
+    let changed = 0;
+    for (let i = 0; i < t.length; i++) {
+      if (!(de[i] <= tolerance) || (region && !region[i])) continue;
+      let u = Math.min(1, Math.max(0, t[i]));
+      if (flip) u = 1 - u;
+      const k = Math.round(u * (LUT_N - 1)) * 3;
+      const o = i * 4;
+      out[o] = lut[k];
+      out[o + 1] = lut[k + 1];
+      out[o + 2] = lut[k + 2];
+      out[o + 3] = 255;
+      changed++;
+    }
+    const total = region ? (regionTotal ?? maskCount(region)) : t.length;
+    return { width: img.width, height: img.height, data: out, changed, total };
+  };
+}
+
 // Returns { width, height, data, changed, total } with a new RGBA byte
 // array; total is the number of pixels in the region (all without one).
-// The last LUT is kept: dragging the tolerance recolors with the same map.
-let lastLut: { rgbs: Rgb[]; kind: string; reversed: boolean; lut: Uint8ClampedArray } | null = null;
-export function recolorPixels(
-  img: PixelImage,
-  index: ColorIndex,
-  map: MatchMap,
-  {
-    tolerance = 12,
-    reversed = false,
-    flip = false,
-    region = null,
-  }: { tolerance?: number; reversed?: boolean; flip?: boolean; region?: Uint8Array | null } = {},
-) {
-  if (lastLut?.rgbs !== map.rgbs || lastLut.kind !== map.kind || lastLut.reversed !== reversed) {
-    lastLut = { rgbs: map.rgbs, kind: map.kind, reversed, lut: mapLut(map, reversed) };
-  }
-  const { lut } = lastLut;
-  const src = img.data;
-  const out = new Uint8ClampedArray(src);
-  const { t, de } = index;
-  let changed = 0;
-  for (let i = 0; i < t.length; i++) {
-    if (!(de[i] <= tolerance) || (region && !region[i])) continue;
-    let u = Math.min(1, Math.max(0, t[i]));
-    if (flip) u = 1 - u;
-    const k = Math.round(u * (LUT_N - 1)) * 3;
-    const o = i * 4;
-    out[o] = lut[k];
-    out[o + 1] = lut[k + 1];
-    out[o + 2] = lut[k + 2];
-    out[o + 3] = 255;
-    changed++;
-  }
-  let total = t.length;
-  if (region) {
-    total = 0;
-    for (let i = 0; i < region.length; i++) total += region[i];
-  }
-  return { width: img.width, height: img.height, data: out, changed, total };
+export function recolorPixels(img: PixelImage, index: ColorIndex, map: MatchMap, opts: RecolorOptions = {}) {
+  return createRecolorer()(img, index, map, opts);
 }
 
 // Pixels within `band` of position t0 (both in bar order) and within the
