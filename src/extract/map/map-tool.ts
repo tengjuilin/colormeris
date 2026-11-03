@@ -18,6 +18,7 @@ import { createAxisTick, createProfile } from '../project/project.ts';
 import { formatNumber, mapPanelFiles } from '../project/project-files.ts';
 import { drawScaleBar, drawScalePreview, scaleBarClick } from '../scale-bar.ts';
 import { hexToRgb } from '../settings/settings.ts';
+import { drawHandle, outlinedText, segmentPath, strokeDual } from '../workspace/draw.ts';
 import { focusAxisTick } from './cards/axis-tick-focus.ts';
 import { setMapToolContext } from './cards/map-context.ts';
 import { createProfilePlot, type ProfilePlot } from './cards/profile-plot.ts';
@@ -334,22 +335,18 @@ export function setupMapTool(ws: Workspace) {
     for (const key of ['x', 'y'] as const) {
       for (const k of panel.map[key].ticks) {
         const q = onAxisEdge(panel, key, k);
-        ws.drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
+        drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
         if (Number.isFinite(k.value))
           label(ctx, v.toScreen(q), formatNumber(k.value), AXIS_COLORS[key], key === 'x' ? 'below' : 'left');
       }
     }
     for (const l of panel.map.profiles) {
-      const a = v.toScreen(l.a);
-      const b = v.toScreen(l.b);
       const color = profileColor(panel, l);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ws.strokeDual(ctx, color, isSelected(l.id) ? 2.5 : 1.5);
-      ws.drawHandle(ctx, v, l.a, color, 'square');
-      ws.drawHandle(ctx, v, l.b, color, 'circle');
-      label(ctx, a, l.name, color, 'above');
+      segmentPath(ctx, v, l.a, l.b);
+      strokeDual(ctx, color, isSelected(l.id) ? 2.5 : 1.5);
+      drawHandle(ctx, v, l.a, color, 'square');
+      drawHandle(ctx, v, l.b, color, 'circle');
+      label(ctx, v.toScreen(l.a), l.name, color, 'above');
     }
     if (panel.scale) drawScaleBar(ws, ctx, v, panel.scale);
     drawTrace(ctx, v, panel);
@@ -366,7 +363,7 @@ export function setupMapTool(ws: Workspace) {
     const q = v.toScreen({ x: s.px, y: s.py });
     ctx.beginPath();
     ctx.arc(q.x, q.y, 6, 0, 2 * Math.PI);
-    ws.strokeDual(ctx, ws.color('trace') as string, 2);
+    strokeDual(ctx, ws.color('trace') as string, 2);
     // Four significant digits, as in the profile plot's readout.
     label(
       ctx,
@@ -408,11 +405,7 @@ export function setupMapTool(ws: Workspace) {
     const w = ctx.measureText(text).width;
     const x = where === 'left' ? s.x - w - 8 : s.x - (where === 'above' ? 0 : w / 2);
     const y = where === 'below' ? s.y + 18 : where === 'left' ? s.y + 5 : s.y - 6;
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-    ctx.strokeText(text, x, y);
-    ctx.fillStyle = color;
-    ctx.fillText(text, x, y);
+    outlinedText(ctx, text, x, y, color);
   }
 
   function drawModePreview(ctx: CanvasRenderingContext2D, v: ViewerApi, m: Mode, hover: Point | undefined) {
@@ -427,7 +420,7 @@ export function setupMapTool(ws: Workspace) {
       const c = panel.grid.corners;
       const [a, b] = key === 'x' ? [bilinear(c, t, 0), q] : [q, bilinear(c, 1, t)];
       line(ctx, v, a, b, AXIS_COLORS[key]);
-      ws.drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
+      drawHandle(ctx, v, q, AXIS_COLORS[key], 'circle');
     } else if (m.type === 'profile' && m.points.length === 1) {
       // In the color the new profile will get.
       line(ctx, v, m.points[0], ws.snapAxis(m.points[0], hover), profileColorAt(panel.map.profiles.length));
@@ -437,12 +430,8 @@ export function setupMapTool(ws: Workspace) {
   }
 
   function line(ctx: CanvasRenderingContext2D, v: ViewerApi, p: Point, q: Point, color: string) {
-    const a = v.toScreen(p);
-    const b = v.toScreen(q);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ws.strokeDual(ctx, color, 1.5, [6, 4]);
+    segmentPath(ctx, v, p, q);
+    strokeDual(ctx, color, 1.5, [6, 4]);
   }
 
   function hoverText(panel: Panel, _cell: Cell | null, p: Point) {

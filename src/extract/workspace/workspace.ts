@@ -103,7 +103,6 @@ export function createWorkspace(): Workspace {
     get highlight() {
       return color('highlight') as string;
     },
-    outline: 'rgba(0,0,0,0.65)',
   };
 
   const app: AppState = {
@@ -418,9 +417,6 @@ export function createWorkspace(): Workspace {
     zoomToPoints,
     setValue,
     setPressed,
-    strokeDual: w.strokeDual,
-    polyPath: w.polyPath,
-    drawHandle: w.drawHandle,
     snapAxis: w.snapAxis,
     render: () => renderSidebar(),
     mountCards: (settings: SettingsSource) => mountCards({ ws, w }, settings),

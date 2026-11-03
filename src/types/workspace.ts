@@ -204,7 +204,6 @@ export interface OverlayColors {
   readonly bar: string;
   readonly flag: string;
   readonly highlight: string;
-  outline: string;
 }
 
 /** Options of ws.addHotkey: `always` runs before a file is open; `tool` limits it to one tool. */
@@ -263,9 +262,6 @@ export interface WorkspaceContext {
   commit: (fn: (panel: Panel) => unknown) => void;
 
   // ---- overlay.ts
-  strokeDual: (ctx: CanvasRenderingContext2D, color: string, width: number, dash?: number[]) => void;
-  polyPath: (ctx: CanvasRenderingContext2D, v: ViewerApi, pts: Point[]) => void;
-  drawHandle: (ctx: CanvasRenderingContext2D, v: ViewerApi, p: Point, color: string, shape?: string) => void;
   drawOverlay: (ctx: CanvasRenderingContext2D, v: ViewerApi) => void;
 
   // ---- interact.ts
@@ -307,7 +303,7 @@ export interface WorkspaceContext {
 
 /** Members each setup module returns: `function setupWorkspaceHistory(w: WorkspaceContext): HistoryMembers`. */
 export type HistoryMembers = Pick<WorkspaceContext, 'pushHistory' | 'clearHistory' | 'undo' | 'redo' | 'commit'>;
-export type OverlayMembers = Pick<WorkspaceContext, 'strokeDual' | 'polyPath' | 'drawHandle' | 'drawOverlay'>;
+export type OverlayMembers = Pick<WorkspaceContext, 'drawOverlay'>;
 export type InteractMembers = Pick<
   WorkspaceContext,
   'onClick' | 'hitTest' | 'onHandleDrag' | 'onHandleDrop' | 'onHover' | 'handlePoint' | 'applyDetectedSize' | 'snapAxis'
@@ -364,9 +360,6 @@ export interface Workspace {
   zoomToPoints: WorkspaceContext['zoomToPoints'];
   setValue: WorkspaceContext['setValue'];
   setPressed: WorkspaceContext['setPressed'];
-  strokeDual: WorkspaceContext['strokeDual'];
-  polyPath: WorkspaceContext['polyPath'];
-  drawHandle: WorkspaceContext['drawHandle'];
   snapAxis: WorkspaceContext['snapAxis'];
   /** Full sidebar render. */
   render: () => void;
