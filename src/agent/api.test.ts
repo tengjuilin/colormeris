@@ -108,3 +108,14 @@ test('a review goes stale when the values change, and results are not mutated in
   // The first answer kept what it said.
   assert.equal((first.result.review as { status: string }).status, 'accepted');
 });
+
+test('answers apply by question type: a human accept sets the review', async () => {
+  const { api, ws, panel } = setup();
+  const qs = (await api.run('get_questions')) as { result: { id: string; type: string }[] };
+  const q = qs.result.find((x) => x.type === 'confirm_extraction')!;
+  const r = await api.run('answer_question', { questionId: q.id, answer: 'accept', source: 'human' });
+  assert.ok(r.ok);
+  assert.equal(ws.reviewStatus!(panel), 'accepted');
+  const after = (await api.run('get_questions')) as { result: { type: string }[] };
+  assert.ok(!after.result.some((x) => x.type === 'confirm_extraction'));
+});

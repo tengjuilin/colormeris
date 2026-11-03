@@ -21,7 +21,7 @@ import {
   snapTick,
   tickProblem,
 } from '../core/colorbar.ts';
-import { cellAt, detectGridSize, readPixel, rectCorners } from '../core/grid.ts';
+import { cellAt, detectGridSize, rectCorners } from '../core/grid.ts';
 import { fileKind } from '../extract/pdf-loader.ts';
 import { ANCHOR_DEFAULTS, boxLabel, createPanel, createRoi, ticksWithT } from '../extract/project/project.ts';
 import { centroid, geomToBox } from '../extract/roi/geometry.ts';
@@ -38,11 +38,13 @@ import type {
   PanelResult,
   Point,
   Question,
+  QuestionType,
   ResultJson,
   RoiResult,
   RunOptions,
   Workspace,
 } from '../types/index.ts';
+import { averagePixel, colorbarNote, tickNote } from './action-notes.ts';
 import { round } from './round.ts';
 import {
   AGENT_ACTIONS,
@@ -215,10 +217,12 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     return d;
   }
 
-  function applyAnswer(q: Question, answer: Args, d: Decision) {
-    if (q.type === 'confirm_grid_size') {
-      ws.commit((p) => applyGridSize(p, answer.rows, answer.cols));
-    } else if (q.type === 'confirm_extraction') {
+  // What an applied answer changes, by question type. classify_flagged(_cells)
+  // and confirm_tick_order are recorded decisions only; results report
+  // excluded cells from the log.
+  const applyAnswer: Partial<Record<QuestionType, (q: Question, answer: Args, d: Decision) => void>> = {
+    confirm_grid_size: (_q, answer) => ws.commit((p) => applyGridSize(p, answer.rows, answer.cols)),
+    confirm_extraction: (q, answer, d) =>
       ws.commit(
         (p) =>
           (p.review = {
@@ -229,11 +233,8 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
             resultHash: q.resultHash!,
             time: d.time,
           }),
-      );
-    }
-    // classify_flagged(_cells) and confirm_tick_order are recorded
-    // decisions; results report excluded cells from the log.
-  }
+      ),
+  };
 
   const handlers: Record<string, (args: Args) => unknown> = {
     get_state: () => state(),
@@ -266,7 +267,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       decisions.push(d);
       if (applied) {
         await takePanel(q.panelId);
-        applyAnswer(q, answer, d);
+        applyAnswer[q.type]?.(q, answer, d);
       } else
         ws.toast(
           `Needs review: ${q.prompt} (${source} ${confidence === null ? 'gave no confidence' : `was ${Math.round(confidence * 100)}% sure`})`,
@@ -277,16 +278,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
     sample_pixel: async ({ panelId, x, y, radius = 0 }) => {
       const panel = await takePanel(panelId);
       const img = imageOf(panel);
-      const acc = [0, 0, 0];
-      let n = 0;
-      for (let dy = -radius; dy <= radius; dy++) {
-        for (let dx = -radius; dx <= radius; dx++) {
-          const px = readPixel(img, x + dx, y + dy);
-          for (let i = 0; i < 3; i++) acc[i] += px[i];
-          n++;
-        }
-      }
-      const rgb = acc.map((v) => Math.round(v / n));
+      const rgb = averagePixel(img, x, y, radius);
       const lab = rgbToLab(rgb);
       const out = { rgb, lab: lab.map((v) => round(v, 2)) };
       const cb = panel.colorbar;
@@ -433,18 +425,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
         for (const k of cb.ticks)
           Object.assign(k, pointAtT(cb.start!, cb.end!, projectT(cb.start!, cb.end!, k as Point)));
       });
-      const pt = (q: Point) => `(${round(q.x, 1)}, ${round(q.y, 1)})`;
-      let note: string;
-      if (!snap) note = 'Placed as given (no snapping).';
-      else if (!fit)
-        note =
-          'No colored strip was found under the line, so it was placed as given. Check that the line runs along the bar.';
-      else {
-        note = `Snapped to the strip (${Math.round(fit.stripHalf * 2 + 1)} px wide): start ${pt(start)} → ${pt(s)}, end ${pt(end)} → ${pt(e)}, halfWidth ${hw}.`;
-        const missed = ['start', 'end'].filter((k) => !fit.found[k as 'start' | 'end']);
-        if (missed.length)
-          note += ` No clear edge was found near the ${missed.join(' and ')}; ${missed.length > 1 ? 'they were' : 'it was'} only moved sideways. Check ${missed.length > 1 ? 'them' : 'it'} on a zoomed view.`;
-      }
+      const note = colorbarNote({ snap, fit, given: { start, end }, placed: { start: s, end: e }, halfWidth: hw });
       return { start: s, end: e, halfWidth: panel.colorbar.halfWidth, note };
     },
 
@@ -458,12 +439,7 @@ export function createAgentApi(ws: Workspace): ColormerisApi {
       if (mark) tt = mark.t;
       const id = ws.newTickId();
       ws.commit((p) => p.colorbar.ticks.push({ id, ...pointAtT(start, end, tt), value }));
-      const note = !snap
-        ? 'Placed as given.'
-        : mark
-          ? `Snapped ${Math.abs(mark.moved)} px along the bar onto the tick mark.`
-          : 'No tick mark found nearby; placed as given.';
-      return { tickId: id, t: round(tt, 4), note };
+      return { tickId: id, t: round(tt, 4), note: tickNote(snap, mark) };
     },
 
     set_tick_value: async ({ panelId, tickId, value }) => {

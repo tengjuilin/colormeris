@@ -727,59 +727,80 @@ export function openQuestions({
   detections: Record<string, GridDetection | undefined>;
   decisions: Decision[];
 }): Question[] {
-  const qs: Question[] = [];
   const answered = new Set(decisions.filter((d) => d.applied).map((d) => d.questionId));
-  const push = (q: Question) => !answered.has(q.id) && qs.push(q);
+  const qs: Question[] = [];
   for (const p of panels) {
-    const d = detections[p.id];
-    if (p.grid.corners && p.grid.autoSize && d) {
-      const conf = Math.min(d.rowConfidence, d.colConfidence);
-      push({
-        id: `grid:${p.id}:${d.rows}x${d.cols}:${cornerKey(p.grid.corners)}`,
-        type: 'confirm_grid_size',
-        panelId: p.id,
-        prompt: 'How many rows and columns of cells does this heatmap grid have?',
-        evidence: {
-          detected: { rows: d.rows, cols: d.cols },
-          rowConfidence: round(d.rowConfidence, 2),
-          colConfidence: round(d.colConfidence, 2),
-          uncertain: conf < 1.3 || d.rows === 1 || d.cols === 1,
-          // Labels typed so far (e.g. read off the figure); 0 when none.
-          labelCounts: { rows: nonEmpty(p.grid.rowLabels), cols: nonEmpty(p.grid.colLabels) },
-        },
-        answerSchema: {
-          type: 'object',
-          properties: {
-            rows: { type: 'integer', minimum: 1, maximum: 1000 },
-            cols: { type: 'integer', minimum: 1, maximum: 1000 },
-          },
-          required: ['rows', 'cols'],
-        },
-        suggested: { rows: d.rows, cols: d.cols },
-      });
-    }
-    const ticks = ticksWithT(p.colorbar)
-      .filter((k) => Number.isFinite(k.t) && Number.isFinite(k.value))
-      .sort((a, b) => a.t - b.t);
-    const dirs = new Set(ticks.slice(1).map((k, i) => Math.sign(k.value - ticks[i].value)));
-    if (ticks.length >= 3 && dirs.size > 1) {
-      push({
-        id: `ticks:${p.id}:${ticks.map((k) => `${k.t.toFixed(3)}=${k.value}`).join(',')}`,
-        type: 'confirm_tick_order',
-        panelId: p.id,
-        prompt: 'Tick values do not change monotonically along the colorbar. Is that how the figure is labelled?',
-        evidence: { ticks: ticks.map((k) => ({ id: k.id, t: round(k.t, 2), value: k.value })) },
-        answerSchema: { enum: ['as_placed', 'fix_needed'] },
-      });
-    }
     const res = results[p.id] as unknown as ResultView | undefined;
-    if (!res || res.error) continue;
-    const hash = hashes[p.id] ?? resultKeyHash(res);
-    if (p.tool === 'heatmap' && res.flagged.length > MAX_CELL_QUESTIONS) {
-      // Many flagged cells usually mean one cause (often the colorbar), so
-      // they get one question instead of one per cell.
-      const des = res.flagged.map((f) => f.deltaE).sort((a, b) => a - b);
-      push({
+    const ok = res && !res.error ? res : null;
+    const hash = ok ? (hashes[p.id] ?? resultKeyHash(ok)) : '';
+    qs.push(
+      ...gridSizeQuestion(p, detections[p.id]),
+      ...tickOrderQuestion(p),
+      ...(ok ? [...flaggedQuestions(p, ok, hash), ...extractionQuestion(p, ok, hash)] : []),
+    );
+  }
+  return qs.filter((q) => !answered.has(q.id));
+}
+
+// One builder per question type; each returns the panel's questions of
+// that type (none or more).
+
+function gridSizeQuestion(p: Panel, d: GridDetection | undefined): Question[] {
+  if (!p.grid.corners || !p.grid.autoSize || !d) return [];
+  const conf = Math.min(d.rowConfidence, d.colConfidence);
+  return [
+    {
+      id: `grid:${p.id}:${d.rows}x${d.cols}:${cornerKey(p.grid.corners)}`,
+      type: 'confirm_grid_size',
+      panelId: p.id,
+      prompt: 'How many rows and columns of cells does this heatmap grid have?',
+      evidence: {
+        detected: { rows: d.rows, cols: d.cols },
+        rowConfidence: round(d.rowConfidence, 2),
+        colConfidence: round(d.colConfidence, 2),
+        uncertain: conf < 1.3 || d.rows === 1 || d.cols === 1,
+        // Labels typed so far (e.g. read off the figure); 0 when none.
+        labelCounts: { rows: nonEmpty(p.grid.rowLabels), cols: nonEmpty(p.grid.colLabels) },
+      },
+      answerSchema: {
+        type: 'object',
+        properties: {
+          rows: { type: 'integer', minimum: 1, maximum: 1000 },
+          cols: { type: 'integer', minimum: 1, maximum: 1000 },
+        },
+        required: ['rows', 'cols'],
+      },
+      suggested: { rows: d.rows, cols: d.cols },
+    },
+  ];
+}
+
+function tickOrderQuestion(p: Panel): Question[] {
+  const ticks = ticksWithT(p.colorbar)
+    .filter((k) => Number.isFinite(k.t) && Number.isFinite(k.value))
+    .sort((a, b) => a.t - b.t);
+  const dirs = new Set(ticks.slice(1).map((k, i) => Math.sign(k.value - ticks[i].value)));
+  if (ticks.length < 3 || dirs.size <= 1) return [];
+  return [
+    {
+      id: `ticks:${p.id}:${ticks.map((k) => `${k.t.toFixed(3)}=${k.value}`).join(',')}`,
+      type: 'confirm_tick_order',
+      panelId: p.id,
+      prompt: 'Tick values do not change monotonically along the colorbar. Is that how the figure is labelled?',
+      evidence: { ticks: ticks.map((k) => ({ id: k.id, t: round(k.t, 2), value: k.value })) },
+      answerSchema: { enum: ['as_placed', 'fix_needed'] },
+    },
+  ];
+}
+
+// Flagged heatmap cells: one question per cell, or one for all of them
+// when there are many (usually one cause, often the colorbar).
+function flaggedQuestions(p: Panel, res: ResultView, hash: string): Question[] {
+  if (p.tool !== 'heatmap') return [];
+  if (res.flagged.length > MAX_CELL_QUESTIONS) {
+    const des = res.flagged.map((f) => f.deltaE).sort((a, b) => a - b);
+    return [
+      {
         id: `flags:${p.id}:${hash}`,
         type: 'classify_flagged_cells',
         panelId: p.id,
@@ -794,31 +815,32 @@ export function openQuestions({
           cells: res.flagged.map((f) => ({ row: f.row, col: f.col })),
         },
         answerSchema: { enum: ['keep_all', 'exclude_all', 'recheck_colorbar'] },
-      });
-    } else if (p.tool === 'heatmap') {
-      for (const f of res.flagged) {
-        push({
-          id: `flag:${p.id}:${f.row},${f.col}:${f.deltaE}`,
-          type: 'classify_flagged',
-          panelId: p.id,
-          prompt:
-            "This cell's color is far from every colorbar color. Keep its value, exclude it, or recheck the colorbar?",
-          evidence: {
-            row: f.row,
-            col: f.col,
-            rowLabel: res.rowLabels[f.row],
-            colLabel: res.colLabels[f.col],
-            value: res.values[f.row][f.col],
-            deltaE: f.deltaE,
-            maxDeltaE: res.maxDeltaE,
-            rgb: f.rgb,
-          },
-          answerSchema: { enum: ['keep', 'exclude', 'recheck_colorbar'] },
-        });
-      }
-    }
-    if (p.review?.resultHash === hash) continue; // already accepted or rejected as it is
-    push({
+      },
+    ];
+  }
+  return res.flagged.map((f) => ({
+    id: `flag:${p.id}:${f.row},${f.col}:${f.deltaE}`,
+    type: 'classify_flagged',
+    panelId: p.id,
+    prompt: "This cell's color is far from every colorbar color. Keep its value, exclude it, or recheck the colorbar?",
+    evidence: {
+      row: f.row,
+      col: f.col,
+      rowLabel: res.rowLabels[f.row],
+      colLabel: res.colLabels[f.col],
+      value: res.values[f.row][f.col],
+      deltaE: f.deltaE,
+      maxDeltaE: res.maxDeltaE,
+      rgb: f.rgb,
+    },
+    answerSchema: { enum: ['keep', 'exclude', 'recheck_colorbar'] },
+  }));
+}
+
+function extractionQuestion(p: Panel, res: ResultView, hash: string): Question[] {
+  if (p.review?.resultHash === hash) return []; // already accepted or rejected as it is
+  return [
+    {
       id: `accept:${p.id}:${hash}`,
       type: 'confirm_extraction',
       panelId: p.id,
@@ -829,9 +851,8 @@ export function openQuestions({
           ? { rows: res.values.length, cols: res.values[0].length, flaggedCount: res.flagged.length }
           : { regions: res.regions.length, flaggedPx: res.regions.reduce((s, x) => s + x.flaggedPx, 0) },
       answerSchema: { enum: ['accept', 'reject'] },
-    });
-  }
-  return qs;
+    },
+  ];
 }
 
 const MAX_CELL_QUESTIONS = 3;
