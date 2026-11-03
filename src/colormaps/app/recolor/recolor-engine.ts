@@ -145,8 +145,10 @@ export function createRecolorEngine(env: RecolorEnv) {
   // Name the old map when it is a known one, and read the bar in its
   // direction, so the low end stays the low end whichever way it was drawn.
   function describeOld(rgbs: ColorbarSample['rgb'][], snapped: boolean) {
-    // The matcher caches each library map's Lab by its colors, so this is cheap the second time.
-    const best = identifyColorbar(rgbs, libraryMaps())[0];
+    // Only the best map is used: `within: 0` drops the others as soon as they
+    // are sure to score worse (the same best as the full ranking, and its ties
+    // keep the library order). The matcher caches each map's Lab by its colors.
+    const best = identifyColorbar(rgbs, libraryMaps(), { within: 0 })[0];
     const note = describeOldMap(best, snapped);
     flip = note.flip;
     ui.setNote(note);

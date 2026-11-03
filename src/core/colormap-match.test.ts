@@ -6,6 +6,9 @@ import { parseHexColors } from './cvd.ts';
 
 const maps = cmapData.maps.map((m) => ({ name: m.name, kind: m.kind, rgbs: parseHexColors(m.colors) }));
 const byName = (n: string) => maps.find((m) => m.name === n)!;
+// The best map only: `within: 0` gives the full ranking's first entry (checked
+// below) several times faster, which keeps these whole-library tests quick.
+const bestOf = (s: number[][]) => identifyColorbar(s, maps, { within: 0 })[0];
 
 // Deterministic noise of ±6 per channel, like JPEG artifacts.
 let seed = 1;
@@ -27,18 +30,18 @@ function bar(name: string, { n = 180, reversed = false }: { n?: number; reversed
 
 test('a sampled colorbar is matched with its direction', () => {
   for (const name of ['viridis', 'magma', 'cividis', 'RdBu', 'twilight', 'turbo', 'tab10']) {
-    const best = identifyColorbar(bar(name), maps)[0];
+    const best = bestOf(bar(name));
     assert.equal(best.name, name);
     assert.equal(best.reversed, false, name);
     assert.equal(matchLevel(best.score), 'exact', `${name} ${best.score}`);
   }
-  const r = identifyColorbar(bar('jet', { reversed: true }), maps)[0];
+  const r = bestOf(bar('jet', { reversed: true }));
   assert.deepEqual([r.name, r.reversed], ['jet', true]);
 }, 20_000); // matches 7 bars against the whole library: ~1 s alone, over 5 s on a busy machine
 
 test('overshoot into the frame is trimmed off', () => {
   const s = [...Array(10).fill([255, 255, 255]), ...bar('plasma'), ...Array(6).fill([0, 0, 0])];
-  const best = identifyColorbar(s, maps)[0];
+  const best = bestOf(s);
   assert.equal(best.name, 'plasma');
   assert.equal(matchLevel(best.score), 'exact');
   assert.ok(best.trim[0] > 0 && best.trim[1] > 0);
@@ -57,13 +60,14 @@ test('within: the same best maps and scores as the full ranking', () => {
     const full = identifyColorbar(s, maps);
     const near = full.filter((r) => r.score <= full[0].score + 0.5);
     assert.deepEqual(identifyColorbar(s, maps, { within: 0.5 }), near);
+    assert.deepEqual(bestOf(s), full[0]);
   }
 }, 20_000);
 
 test('an unknown map gets no exact match', () => {
   // Pure red to pure green is in none of the matplotlib maps.
   const s = Array.from({ length: 100 }, (_, i) => [255 - Math.round(2.55 * i), Math.round(2.55 * i), 0]);
-  assert.notEqual(matchLevel(identifyColorbar(s, maps)[0].score), 'exact');
+  assert.notEqual(matchLevel(bestOf(s).score), 'exact');
 });
 
 test('loose pixels of a heatmap find its map, ignoring the white background', () => {
