@@ -14,10 +14,12 @@ import type {
   ViewerApi,
   Workspace,
 } from '../../types/index.ts';
+import { distanceToSegment, lockAxis, nextName, segmentProjection } from '../edit-math.ts';
 import { createAxisTick, createProfile } from '../project/project.ts';
 import { formatNumber, mapPanelFiles } from '../project/project-files.ts';
-import { drawScaleBar, drawScalePreview, scaleBarClick } from '../scale-bar.ts';
+import { drawScaleBar, drawScalePreview, SCALE_MODE_TEXTS, scaleBarClick } from '../scale-bar.ts';
 import { hexToRgb } from '../settings/settings.ts';
+import { isTextEntry } from '../typing.ts';
 import { drawHandle, outlinedText, segmentPath, strokeDual } from '../workspace/draw.ts';
 import { focusAxisTick } from './cards/axis-tick-focus.ts';
 import { setMapToolContext } from './cards/map-context.ts';
@@ -239,7 +241,7 @@ export function setupMapTool(ws: Workspace) {
       xtick: ['Click a labelled tick on the x axis, then type its value. Press Done when finished.'],
       ytick: ['Click a labelled tick on the y axis, then type its value. Press Done when finished.'],
       profile: ['Click the start of the profile line.', 'Click its end. Hold Alt to disable axis snapping.'],
-      scale: ['Click one end of the scale bar.', 'Click the other end. Hold Alt to disable axis snapping.'],
+      scale: SCALE_MODE_TEXTS,
     },
     onModeChange,
     onClick,
@@ -382,11 +384,7 @@ export function setupMapTool(ws: Workspace) {
     for (const l of selectedProfiles()) {
       const samples = (ws.resultFor(panel) as MapResult).profiles?.[l.id];
       if (!Array.isArray(samples) || samples.length < 2) continue;
-      const dx = l.b.x - l.a.x;
-      const dy = l.b.y - l.a.y;
-      const len2 = dx * dx + dy * dy;
-      const t = ((p.x - l.a.x) * dx + (p.y - l.a.y) * dy) / len2;
-      const dist = Math.abs((p.x - l.a.x) * dy - (p.y - l.a.y) * dx) / Math.sqrt(len2);
+      const { t, across: dist } = segmentProjection(p, l.a, l.b);
       if (t < 0 || t > 1 || dist > Math.max(l.halfWidth, 0) + 8 / viewer.scale) continue;
       const i = Math.round(t * (samples.length - 1));
       if (samples[i].outside) continue;
@@ -459,13 +457,6 @@ export function setupMapTool(ws: Workspace) {
     if (type) stopSweep();
   }
 
-  function nextProfileName(panel: Panel) {
-    let n = 1;
-    const used = new Set(panel.map.profiles.map((l) => l.name));
-    while (used.has(`Profile ${n}`)) n++;
-    return `Profile ${n}`;
-  }
-
   function onClick(mode: Mode | null, p: Point, e: PointerEvent) {
     if (mode?.type === 'xtick' || mode?.type === 'ytick') {
       const key = mode.type[0] as AxisKey;
@@ -489,7 +480,12 @@ export function setupMapTool(ws: Workspace) {
         return true;
       }
       ws.setMode(null);
-      const profile = createProfile(a, b, { name: nextProfileName(ws.activePanel()) });
+      const profile = createProfile(a, b, {
+        name: nextName(
+          'Profile',
+          ws.activePanel().map.profiles.map((l) => l.name),
+        ),
+      });
       ws.commit((pn) => pn.map.profiles.push(profile));
       selectProfile(profile.id);
       return true;
@@ -505,14 +501,7 @@ export function setupMapTool(ws: Workspace) {
   }
 
   function profileAt(p: Point, tol: number) {
-    for (const l of ws.activePanel().map.profiles) {
-      const dx = l.b.x - l.a.x;
-      const dy = l.b.y - l.a.y;
-      const len2 = dx * dx + dy * dy || 1;
-      const t = Math.min(1, Math.max(0, ((p.x - l.a.x) * dx + (p.y - l.a.y) * dy) / len2));
-      if (Math.hypot(l.a.x + t * dx - p.x, l.a.y + t * dy - p.y) <= tol) return l;
-    }
-    return null;
+    return ws.activePanel().map.profiles.find((l) => distanceToSegment(p, l.a, l.b) <= tol) ?? null;
   }
 
   function hitTest(p: Point, tol: number): Handle | null {
@@ -565,12 +554,7 @@ export function setupMapTool(ws: Workspace) {
       } else {
         // Moved by the offset from where the drag started; with Shift only
         // along its larger component, so the line moves straight across or down.
-        let dx = p.x - handle.start.x;
-        let dy = p.y - handle.start.y;
-        if (e.shiftKey) {
-          if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
-          else dx = 0;
-        }
+        const { dx, dy } = lockAxis(p.x - handle.start.x, p.y - handle.start.y, e.shiftKey);
         l.a = { x: handle.a.x + dx, y: handle.a.y + dy };
         l.b = { x: handle.b.x + dx, y: handle.b.y + dy };
       }
@@ -588,13 +572,7 @@ export function setupMapTool(ws: Workspace) {
   mctx.deleteSelected = deleteSelected;
 
   function onKey(e: KeyboardEvent) {
-    const t = e.target;
-    const typing =
-      t instanceof HTMLElement &&
-      /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) &&
-      (t as HTMLInputElement).type !== 'checkbox' &&
-      (t as HTMLInputElement).type !== 'range';
-    if (typing || e.metaKey || e.ctrlKey || !app.sourceCanvas) return false;
+    if (isTextEntry(e.target) || e.metaKey || e.ctrlKey || !app.sourceCanvas) return false;
     if (!app.mode && (e.key === 'Delete' || e.key === 'Backspace') && selectedProfile()) {
       e.preventDefault();
       deleteSelected();

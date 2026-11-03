@@ -18,9 +18,11 @@ import type {
   ToolHooks,
   Workspace,
 } from '../../types/index.ts';
+import { nextName } from '../edit-math.ts';
 import { createRoi, gridGeometry } from '../project/project.ts';
 import { roiCsv } from '../project/project-files.ts';
-import { scaleBarClick } from '../scale-bar.ts';
+import { SCALE_MODE_TEXTS, scaleBarClick } from '../scale-bar.ts';
+import { isTextEntry } from '../typing.ts';
 import { setRoiContext } from './cards/roi-context.ts';
 import {
   boundsOf,
@@ -171,7 +173,7 @@ export function setupRoiTool(ws: Workspace) {
         m.points.length < 3
           ? `Click to add points (${m.points.length} so far).`
           : 'Click the first point, double-click or press Enter to close. Backspace removes the last point.',
-      scale: ['Click one end of the scale bar.', 'Click the other end. Hold Alt to disable axis snapping.'],
+      scale: SCALE_MODE_TEXTS,
     },
     onModeChange,
     onClick,
@@ -240,13 +242,6 @@ export function setupRoiTool(ws: Workspace) {
 
   // ---------------------------------------------------------------- drawing regions
 
-  function nextRoiName(panel: Panel) {
-    let n = 1;
-    const used = new Set(panel.rois.map((r) => r.name));
-    while (used.has(`ROI ${n}`)) n++;
-    return `ROI ${n}`;
-  }
-
   // Add a region drawn in image pixels; copy it into every box when asked.
   function placeShape(shape: RoiShape, geomPx: RoiGeom) {
     const panel = ws.activePanel();
@@ -259,10 +254,19 @@ export function setupRoiTool(ws: Workspace) {
     const cell = grid.corners ? cellAt(grid, centre) : null;
     if (state.replicate && cell) {
       roi = createRoi(shape, fitGeom(shape, geomToBox(shape, geomPx, grid, cell.row, cell.col), UNIT), {
-        name: nextRoiName(panel),
+        name: nextName(
+          'ROI',
+          panel.rois.map((r) => r.name),
+        ),
       });
     } else {
-      roi = createRoi(shape, fitGeom(shape, geomPx, gridLimit(grid)), { name: nextRoiName(panel), replicate: false });
+      roi = createRoi(shape, fitGeom(shape, geomPx, gridLimit(grid)), {
+        name: nextName(
+          'ROI',
+          panel.rois.map((r) => r.name),
+        ),
+        replicate: false,
+      });
       if (state.replicate && grid.corners) ws.toast('Drawn outside the grid, so it was added as a single region.');
     }
     ws.setMode(null);
@@ -428,13 +432,7 @@ export function setupRoiTool(ws: Workspace) {
   }
 
   function onKey(e: KeyboardEvent) {
-    const t = e.target;
-    const typing =
-      t instanceof HTMLElement &&
-      /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) &&
-      (t as HTMLInputElement).type !== 'checkbox' &&
-      (t as HTMLInputElement).type !== 'range';
-    if (typing || e.metaKey || e.ctrlKey || !app.sourceCanvas) return false;
+    if (isTextEntry(e.target) || e.metaKey || e.ctrlKey || !app.sourceCanvas) return false;
     const m = app.mode;
     if (m?.type === 'polygon') {
       if (e.key === 'Enter') {

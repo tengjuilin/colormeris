@@ -6,6 +6,12 @@ import { drawHandle, outlinedText, segmentPath, strokeDual } from './workspace/d
 // units) and the Map tool (profile distances in real units). The Scale card
 // (scale-bar-card.tsx, React) acts on the active panel, whatever the tool.
 
+/** Mode bar texts while measuring ('scale' mode), the same in every tool. */
+export const SCALE_MODE_TEXTS = [
+  'Click one end of the scale bar.',
+  'Click the other end. Hold Alt to disable axis snapping.',
+];
+
 /** Set before the commit that adds a scale bar; the Scale card focuses its length field in the layout effect after that render. */
 export const scaleFocus = { pending: false };
 

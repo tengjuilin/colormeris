@@ -1,4 +1,5 @@
 import type { Handle, Point, ViewerApi, ViewerCallbacks } from '../types/index.ts';
+import { isFormField } from './typing.ts';
 
 // Zoomable, pannable canvas view of the source image with an overlay layer,
 // draggable handles and a pixel loupe.
@@ -79,7 +80,7 @@ export class Viewer implements ViewerApi {
     });
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' && !isTyping(e)) {
+      if (e.code === 'Space' && !isFormField(e.target)) {
         this.spaceDown = true;
         this.canvas.classList.add('grab');
         e.preventDefault();
@@ -345,9 +346,4 @@ export class Viewer implements ViewerApi {
     this.loupe.style.display = 'block';
     this.loupe.style.transform = `translate(${Math.round(lx)}px, ${Math.round(ly)}px)`;
   }
-}
-
-function isTyping(e: KeyboardEvent) {
-  const t = e.target;
-  return t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 }

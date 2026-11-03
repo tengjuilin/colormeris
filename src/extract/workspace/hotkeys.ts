@@ -1,5 +1,6 @@
 import type { HotkeyOptions, HotkeysMembers, ToolKind, WorkspaceContext } from '../../types/index.ts';
 import { comboFromEvent, findHotkey, isMacPlatform } from '../settings/settings.ts';
+import { isTextEntry } from '../typing.ts';
 
 const isMac = isMacPlatform(globalThis.navigator);
 
@@ -74,14 +75,9 @@ export function setupWorkspaceHotkeys(w: WorkspaceContext): HotkeysMembers {
     // A modal (the Settings dialog) takes the keyboard.
     if (e.defaultPrevented || document.querySelector('dialog[open]')) return;
     if (w.tool().onKey?.(e)) return;
-    const t = e.target;
-    const typing =
-      t instanceof HTMLElement &&
-      /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) &&
-      (t as HTMLInputElement).type !== 'checkbox' &&
-      (t as HTMLInputElement).type !== 'range';
+    const typing = isTextEntry(e.target);
     if (e.key === 'Escape') {
-      if (typing) (t as HTMLElement).blur();
+      if (typing) (e.target as HTMLElement).blur();
       else w.setMode(null);
       return;
     }

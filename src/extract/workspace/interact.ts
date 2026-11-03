@@ -2,6 +2,7 @@ import { rgbToHex } from '../../core/color.ts';
 import { pointAtT, projectT } from '../../core/colorbar.ts';
 import { cellAt, detectGridSize, readPixel, rectCorners } from '../../core/grid.ts';
 import type { Cell, Handle, InteractMembers, Panel, Point, WorkspaceContext } from '../../types/index.ts';
+import { distanceToSegment, lockAxis } from '../edit-math.ts';
 import { ticksWithT } from '../project/project.ts';
 
 // Pointer input on the viewer: clicks while placing the grid, colorbar and
@@ -112,9 +113,7 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
     // where a click on the line places one).
     const { start, end } = panel.colorbar;
     if (start && end && app.mode?.type !== 'tick') {
-      const t = Math.min(1, Math.max(0, projectT(start, end, p)));
-      const q = pointAtT(start, end, t);
-      if (Math.hypot(q.x - p.x, q.y - p.y) <= tol) return { kind: 'bar', last: p };
+      if (distanceToSegment(p, start, end) <= tol) return { kind: 'bar', last: p };
     }
     return null;
   }
@@ -183,12 +182,7 @@ export function setupWorkspaceInteract(w: WorkspaceContext): InteractMembers {
       const cb = panel.colorbar;
       const pts = [cb.start!, cb.end!, ...(cb.ticks.filter((k) => Number.isFinite(k.x)) as Point[])];
       handle.from ??= pts.map((q) => ({ x: q.x, y: q.y }));
-      let dx = p.x - handle.last!.x;
-      let dy = p.y - handle.last!.y;
-      if (e.shiftKey) {
-        if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
-        else dx = 0;
-      }
+      const { dx, dy } = lockAxis(p.x - handle.last!.x, p.y - handle.last!.y, e.shiftKey);
       pts.forEach((q, i) => {
         q.x = handle.from![i].x + dx;
         q.y = handle.from![i].y + dy;
