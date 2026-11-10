@@ -25,7 +25,7 @@ uv run --with matplotlib --with cmasher --with cmcrameri --with cmocean --with c
 
 `scripts/fetch-r-palettes.py` refreshes the R palettes in `scripts/data/r-palettes.json`, which the export script reads.
 
-**Releasing the package**: bump `version` in `packages/core/package.json`, commit, then push a tag `core-vX.Y.Z` with the same version. `.github/workflows/release.yml` checks that the tag matches, runs lint, typecheck, tests and `build:core`, and publishes to npm with provenance. It needs the repository secret `NPM_TOKEN`. Tag and push only when the user asks.
+**Releasing the package**: bump `version` in `packages/core/package.json`, commit, then push a tag `core-vX.Y.Z` with the same version. `.github/workflows/release.yml` checks that the tag matches, runs lint, typecheck, tests and `build:core`, and publishes to npm with provenance through trusted publishing (no token: the package's npm settings trust `tengjuilin/colormeris` `release.yml`). Tag and push only when the user asks.
 
 `.claude/launch.json` has the preview configs `colormeris` (Vite, port 8000), `colormeris-alt` (Vite, port 8002, when 8000 is taken) and `colormeris-build` (build + `vite preview` on 8004). Start them with preview_start, not Bash. CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests, the site build and `pack:core` on every push; `pages.yml` deploys `dist/` to GitHub Pages after CI passes on `main`.
 
@@ -84,5 +84,5 @@ Libraries from npm (pinned): React 19 and react-dom only. The package has no dep
 ## Status
 
 - 2026-11-10 (branch `split`): the extraction tools were removed and the shared color code became the `colormeris` package. The viewer moved to the home page. The golden tests show the package gives the same results as the code before the split.
-- The package is not on npm yet: it is MIT licensed (`LICENSE`, also in `packages/core/`) and needs the `NPM_TOKEN` secret and a first `core-v0.1.0` tag.
+- 2026-11-10: `colormeris@0.1.0` (MIT) was published by hand from the user's machine (npm 2FA with a security key; new packages are held for review for a few minutes). Later releases go through `release.yml` by tag.
 - React UI (2026-10-29) and TypeScript migration (2026-10-28): see docs/react.md for the design and the A/B against the pre-React build.

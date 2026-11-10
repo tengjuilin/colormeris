@@ -1,8 +1,10 @@
 name: Publish the colormeris package
 
 # Publishes packages/core to npm when a tag core-vX.Y.Z is pushed. The tag must
-# match packages/core/package.json's version. Needs the repository secret
-# NPM_TOKEN (an npm automation token that can publish colormeris).
+# match packages/core/package.json's version. No token: npm trusts this
+# workflow (trusted publisher on the colormeris package's npm settings:
+# tengjuilin / colormeris / release.yml) through GitHub's OIDC token, and adds
+# provenance by itself. That needs id-token: write and npm 11.5.1 or later.
 on:
   push:
     tags: ['core-v*']
@@ -28,6 +30,6 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build:core
-      - run: npm publish ./packages/core --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: npm 11.5.1 or later (trusted publishing)
+        run: npm install -g npm@11.5.2
+      - run: npm publish ./packages/core --access public
