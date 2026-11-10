@@ -1,5 +1,5 @@
+import { cmapData } from 'colormeris';
 import { memo, type Ref, useCallback, useMemo, useRef, useState } from 'react';
-import { cmapData } from '../../../core/colormap-library.ts';
 import { COMPARE_MAX } from '../../route.ts';
 import { StickyTop } from '../sticky-top.tsx';
 import { TabNav } from '../tab-nav.tsx';

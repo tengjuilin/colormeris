@@ -1,8 +1,7 @@
-import { lightnessStats } from '../../../core/cvd.ts';
+import { lightnessStats, READ_DE, worstCvd } from 'colormeris';
 import type { ColormapEntry } from '../../../types/index.ts';
 import { pct, VIEWS } from '../../common.ts';
 import { metrics, viewData } from '../../library-cache.ts';
-import { READ_DE, worstCvd } from '../../metrics.ts';
 
 // The pure parts of the Compare tab: the numbers table (columns, facts per map,
 // sorting, the best value per column), the plot metrics and the sine test

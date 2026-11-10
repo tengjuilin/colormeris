@@ -21,7 +21,7 @@ import {
 } from './recolor-model.ts';
 import { createValueStore, useStoreValue, type ValueStore } from './value-store.ts';
 
-// The Recolor tab of the colormap viewer (colormaps.html): load a figure,
+// The Recolor tab of the colormap viewer (index.html): load a figure,
 // drag along its colorbar, pick another colormap, and the figure is redrawn
 // in it (recolor.ts). Pixels far from the bar's colors (background, text,
 // axes) keep theirs, and so does everything outside the regions drawn with

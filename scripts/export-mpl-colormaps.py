@@ -1,4 +1,4 @@
-"""Write src/generated/colormap-data.json with the colormaps for colormaps.html.
+"""Write packages/core/src/generated/colormap-data.json: the colormap library of the colormeris package.
 
 Run:  uv run --with matplotlib --with cmasher --with cmcrameri --with cmocean --with colorcet --with seaborn --with colormaps python scripts/export-mpl-colormaps.py
 
@@ -661,9 +661,9 @@ def packed(m):
 # The unpacking side, written into the file. `colors` is unpacked on first use
 # into the 6-digit hex strings the viewer, the tests and core/colormap-match.js read.
 data = {"sources": sources, "maps": [packed(m) for m in maps]}
-out = Path(__file__).resolve().parent.parent / "src" / "generated" / "colormap-data.json"
+out = Path(__file__).resolve().parent.parent / "packages" / "core" / "src" / "generated" / "colormap-data.json"
 # Colors are packed (`rgb`: base64 of per-channel differences, see pack_colors);
-# src/core/colormap-library.ts unpacks them on first use.
+# packages/core/src/colormap-library.ts unpacks them on first use.
 out.write_text(json.dumps(data, separators=(",", ":")) + "\n")
 counts = {s["key"]: sum(m["source"] == s["key"] for m in maps) for s in sources if s.get("family") != "R packages"}
 counts["R packages"] = sum(m["source"].startswith("r-") for m in maps)

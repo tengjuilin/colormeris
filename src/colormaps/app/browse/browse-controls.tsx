@@ -1,5 +1,5 @@
+import { cmapData } from 'colormeris';
 import { memo, useEffect, useRef } from 'react';
-import { cmapData } from '../../../core/colormap-library.ts';
 import { VIEWS } from '../../common.ts';
 import { useAnchorPopover } from '../shared/use-anchor-popover.ts';
 import { useDispatch } from '../viewer-context.ts';

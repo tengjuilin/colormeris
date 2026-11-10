@@ -1,3 +1,4 @@
+import { ACHROMAT, resolveCvdModel } from 'colormeris';
 import {
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -7,7 +8,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ACHROMAT, resolveCvdModel } from '../../../core/cvd.ts';
 import { downloadCanvasPng } from '../../common.ts';
 import { FigureCanvas, type FigureHandle, FigureInput, useFigureInput } from '../shared/figure-input.tsx';
 import {
@@ -23,7 +23,7 @@ import {
 } from './cvd-model.ts';
 import { createHoverStore, type HoverStore, useHover } from './hover-store.ts';
 
-// The CVD tab of the colormap viewer (colormaps.html): a figure next to how it
+// The CVD tab of the colormap viewer (index.html): a figure next to how it
 // may look with a color vision deficiency (or with no color at all), after the
 // DaltonLens simulator (https://daltonlens.org/colorblindness-simulator). The
 // jet example is shown until the user gives an image. The simulation is in

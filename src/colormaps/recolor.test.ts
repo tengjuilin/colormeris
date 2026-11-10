@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
+import type { MatchMap } from 'colormeris';
+import { cmapColorAt, cmapData, deltaE2000, parseHexColors, rgbToLab, sampleColorbar } from 'colormeris';
 import { test } from 'vitest';
-import { deltaE2000, rgbToLab } from '../core/color.ts';
-import { sampleColorbar } from '../core/colorbar.ts';
-import { cmapData } from '../core/colormap-library.ts';
-import type { MatchMap } from '../core/colormap-match.ts';
-import { cmapColorAt } from '../core/colormap-match.ts';
-import { parseHexColors } from '../core/cvd.ts';
 import { makeImage, setPixel } from '../testing/helpers.ts';
 import type { PixelImage } from '../types/index.ts';
 import {

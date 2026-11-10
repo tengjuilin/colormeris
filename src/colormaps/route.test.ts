@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
+import { cmapData } from 'colormeris';
 import { test } from 'vitest';
-import { cmapData } from '../core/colormap-library.ts';
 import { COMPARE_MAX, formatViewerUrl, parseCompare, parseViewerRoute } from './route.ts';
 
 test('parseCompare keeps known names once, in order, up to the cap', () => {

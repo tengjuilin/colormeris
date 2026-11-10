@@ -4,14 +4,11 @@
 // numbers must stay the same (rounded to 1e-9, so float noise passes).
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { cmapColorAt, cmapData, colormapMetrics, colormapSamples, parseHexColors } from 'colormeris';
 import { test } from 'vitest';
-import { cmapData } from '../core/colormap-library.ts';
-import { cmapColorAt, colormapSamples } from '../core/colormap-match.ts';
-import { parseHexColors } from '../core/cvd.ts';
 import type { ViewKey } from '../types/index.ts';
 import { colorsLut } from './app/compare/test-pattern.ts';
 import { metrics, viewData } from './library-cache.ts';
-import { colormapMetrics } from './metrics.ts';
 import { indexColors, recolorPixels } from './recolor.ts';
 
 // Each test runs over the whole library (about 1 s alone, several under a full parallel run).

@@ -1,8 +1,6 @@
+import { CMAP_REFS, cmapData, ratingMethod } from 'colormeris';
 import { forwardRef, memo } from 'react';
-import { cmapData } from '../../core/colormap-library.ts';
 import { RATING_COLS } from '../common.ts';
-import { ratingMethod } from '../metrics.ts';
-import { CMAP_REFS } from '../references.ts';
 import { REF_NUMBERS } from './ref-numbers.ts';
 
 // "About the ratings, methods and references" (the footer).

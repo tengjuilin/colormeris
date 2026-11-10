@@ -1,6 +1,4 @@
-import { libraryMaps, mapByName, mapColors } from '../../../core/colormap-library.ts';
-import { matchLevel } from '../../../core/colormap-match.ts';
-import { readPixel } from '../../../core/grid.ts';
+import { libraryMaps, mapByName, mapColors, matchLevel, readPixel } from 'colormeris';
 import type { PixelImage, Rgb } from '../../../types/index.ts';
 
 // The pure part of the Identify tab: the maps to match against, the grouping

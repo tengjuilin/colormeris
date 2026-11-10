@@ -25,3 +25,5 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Build and pack the colormeris package
+        run: npm run pack:core

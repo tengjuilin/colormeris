@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
+import { cmapData } from 'colormeris';
 import { test } from 'vitest';
-import { cmapData } from '../core/colormap-library.ts';
 import { base, isRev, metrics, notesOf, sepOf, viewData } from './library-cache.ts';
 
 const viridis = cmapData.maps.find((m) => m.name === 'viridis')!;

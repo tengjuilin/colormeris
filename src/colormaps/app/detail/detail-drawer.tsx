@@ -1,5 +1,5 @@
+import { mapByName } from 'colormeris';
 import { type Dispatch, forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from 'react';
-import { mapByName } from '../../../core/colormap-library.ts';
 import type { ViewerAction } from '../viewer-state.ts';
 import { DetailBody } from './detail-body.tsx';
 

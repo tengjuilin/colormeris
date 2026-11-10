@@ -2,7 +2,7 @@ import { createElement, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ColormapsApp } from '../colormaps/app/colormaps-app.tsx';
 
-// The colormap viewer's entry (colormaps.html): React renders the whole page
+// The colormap viewer's entry (index.html): React renders the whole page
 // into #cmap-root (no JSX here, so the page's script name stays .ts).
 
 export function showStartupError(err: unknown) {

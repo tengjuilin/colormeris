@@ -2,8 +2,8 @@
 // The shared wrappers: Strip, RatingPills / RatingCells, SvgFigure, the tooltip and the figure input.
 import assert from 'node:assert/strict';
 import { act, cleanup, render } from '@testing-library/react';
+import { cmapData } from 'colormeris';
 import { afterEach, beforeEach, test, vi } from 'vitest';
-import { cmapData } from '../../../core/colormap-library.ts';
 import { base } from '../../library-cache.ts';
 import { FigureCanvas, FigureInput, useFigureInput } from './figure-input.tsx';
 import { RatingCells, RatingPills } from './rating.tsx';

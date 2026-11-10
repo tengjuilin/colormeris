@@ -1,4 +1,4 @@
-import { matchLevel } from '../../../core/colormap-match.ts';
+import { matchLevel } from 'colormeris';
 import { pct } from '../../common.ts';
 
 // The pure parts of the Recolor tab: constants and texts, how the old colormap

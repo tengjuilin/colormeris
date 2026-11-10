@@ -15,7 +15,9 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
-    "noImplicitOverride": true
+    "noImplicitOverride": true,
+    // The package's source, as in vite.config.ts.
+    "paths": { "colormeris": ["./packages/core/src/index.ts"] }
   },
-  "include": ["src", "scripts", "vite.config.ts"]
+  "include": ["src", "packages/core/src", "scripts", "vite.config.ts"]
 }

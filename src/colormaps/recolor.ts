@@ -1,4 +1,4 @@
-// Recolor a figure into another colormap (the Recolor tab of colormaps.html).
+// Recolor a figure into another colormap (the Recolor tab of index.html).
 //   indexColors     each pixel's position t along the calibrated colorbar
 //                   and its color distance (ΔE76) to the bar, once per bar
 //   recolorPixels   pixels close to the bar get the new map's color at t;
@@ -12,10 +12,8 @@
 // are sampleColorbar's [{ t, lab }] from the bar's start to its end. The
 // Compare tab's test patterns are in app/compare/test-pattern.ts.
 
-import { onWhite, rgbToLab } from '../core/color.ts';
-import { labToT } from '../core/colorbar.ts';
-import type { MatchMap } from '../core/colormap-match.ts';
-import { cmapColorAt } from '../core/colormap-match.ts';
+import type { MatchMap } from 'colormeris';
+import { cmapColorAt, labToT, onWhite, rgbToLab } from 'colormeris';
 import type { ColorbarSample, PixelImage, Rgb } from '../types/index.ts';
 
 const INDEX_DE = 'de76'; // fast, and the tolerance is a rough cut anyway
