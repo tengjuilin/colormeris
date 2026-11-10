@@ -193,4 +193,4 @@ The maps were exported from these packages, with their colors unchanged: Matplot
 
 ## License
 
-TODO: license
+MIT. See [LICENSE](LICENSE). The colormap data keeps the licenses of the packages it comes from (above).

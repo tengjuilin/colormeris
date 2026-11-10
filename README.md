@@ -48,3 +48,7 @@ npm run pack:core    # the package as a .tgz in packages/core/
 The site imports the package from its source, so edits in `packages/core/src/` reload at once. CI runs lint, typecheck, tests, the build and the package pack; `main` deploys to GitHub Pages, and a tag `core-vX.Y.Z` publishes the package to npm.
 
 Docs: [docs/usage.md](docs/usage.md) (the viewer's manual), [docs/react.md](docs/react.md), [docs/typescript.md](docs/typescript.md), and [CLAUDE.md](CLAUDE.md) (architecture, conventions, status).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

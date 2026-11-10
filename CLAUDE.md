@@ -84,5 +84,5 @@ Libraries from npm (pinned): React 19 and react-dom only. The package has no dep
 ## Status
 
 - 2026-11-10 (branch `split`): the extraction tools were removed and the shared color code became the `colormeris` package. The viewer moved to the home page. The golden tests show the package gives the same results as the code before the split.
-- The package is not on npm yet: it needs a license (none chosen; `packages/core/README.md` says `TODO: license`), the `NPM_TOKEN` secret and a first `core-v0.1.0` tag.
+- The package is not on npm yet: it is MIT licensed (`LICENSE`, also in `packages/core/`) and needs the `NPM_TOKEN` secret and a first `core-v0.1.0` tag.
 - React UI (2026-10-29) and TypeScript migration (2026-10-28): see docs/react.md for the design and the A/B against the pre-React build.

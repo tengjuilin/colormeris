@@ -2,6 +2,7 @@
   "name": "colormeris",
   "version": "0.1.0",
   "description": "Colormap library, color science (CIELAB, ΔE2000, color vision deficiency), colormap matching and ratings, and colorbar sampling, as pure TypeScript functions.",
+  "license": "MIT",
   "type": "module",
   "sideEffects": false,
   "exports": {

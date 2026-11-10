@@ -2,6 +2,7 @@
   "name": "colormeris-site",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "The Colormeris colormap viewer (GitHub Pages site) and the colormeris npm package (packages/core).",
   "type": "module",
   "scripts": {
