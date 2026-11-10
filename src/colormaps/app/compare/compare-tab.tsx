@@ -1,5 +1,5 @@
+import { mapByName } from 'colormeris';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { mapByName } from '../../../core/colormap-library.ts';
 import type { ViewKey } from '../../../types/index.ts';
 import { MapPicker } from '../../map-picker.tsx';
 import { COMPARE_MAX } from '../../route.ts';
@@ -12,7 +12,7 @@ import { buildComparePlots } from './compare-plots.ts';
 import { CompareHead, CompareRow } from './compare-rows.tsx';
 import { SineSection } from './sine-section.tsx';
 
-// The Compare tab of the colormap viewer (colormaps.html): up to 10 maps side
+// The Compare tab of the colormap viewer (index.html): up to 10 maps side
 // by side as strips, four plots with every map on the same axes, a sortable
 // table of the numbers, and every map applied to a sine-wave test image. The
 // choice lives in the viewer (?compare=); this tab gets it as props and

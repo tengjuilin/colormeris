@@ -1,4 +1,4 @@
-import { rgbToHex } from '../../../core/color.ts';
+import { rgbToHex } from 'colormeris';
 import type { ColormapEntry, Rgb } from '../../../types/index.ts';
 import { el, svgEl } from '../../common.ts';
 import { metrics, viewData } from '../../library-cache.ts';

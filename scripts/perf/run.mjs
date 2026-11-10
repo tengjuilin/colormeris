@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 
 const root = resolve(import.meta.dirname, '../..');
-const PORT = 8010;
+const PORT = 8006;
 const LOADS = Number(process.env.PERF_LOADS ?? 5);
 const CHROME = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
@@ -36,10 +36,7 @@ function combine(runs) {
 const browser = await chromium.launch({ executablePath: CHROME, headless: true });
 try {
   const results = {};
-  for (const [name, path, fn] of [
-    ['extract', 'extract.html#heatmap', 'extract'],
-    ['colormaps', 'colormaps.html#browse', 'colormaps'],
-  ]) {
+  for (const [name, path, fn] of [['colormaps', 'index.html#browse', 'colormaps']]) {
     const runs = [];
     for (let i = 0; i < LOADS; i++) {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });

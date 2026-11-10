@@ -3,9 +3,9 @@
 // pair marks and the remembered folds. Canvases and the 2D context are stubbed.
 import assert from 'node:assert/strict';
 import { cleanup, fireEvent, render } from '@testing-library/react';
+import { cmapData } from 'colormeris';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, test, vi } from 'vitest';
-import { cmapData } from '../../../core/colormap-library.ts';
 import { TooltipProvider } from '../shared/tooltip.tsx';
 import { DetailBody, type DetailBodyProps } from './detail-body.tsx';
 import { createDetailFolds, DetailFoldsContext } from './detail-folds.ts';

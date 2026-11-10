@@ -1,4 +1,4 @@
-import { rgbToHex } from '../core/color.ts';
+import { rgbToHex } from 'colormeris';
 import type { ColormapEntry, Rgb } from '../types/index.ts';
 
 // The pure parts of the colormap tooltip, shared by the React

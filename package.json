@@ -1,30 +1,24 @@
 {
-  "name": "colormeris",
+  "name": "colormeris-site",
   "version": "0.1.0",
   "private": true,
-  "description": "Static web app that turns colors in scientific figures back into numbers (heatmap, ROI and map tools) and browses colormaps.",
+  "description": "The Colormeris colormap viewer (GitHub Pages site) and the colormeris npm package (packages/core).",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/copy-pdfjs-assets.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/copy-pdfjs-assets.mjs",
     "build": "vite build",
+    "build:core": "rm -rf packages/core/dist && tsc -p packages/core/tsconfig.json",
+    "pack:core": "npm run build:core && npm pack ./packages/core --pack-destination packages/core",
     "preview": "vite preview",
     "typecheck": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "biome check",
     "format": "biome format --write",
-    "check": "npm run lint && npm run typecheck && npm test",
-    "proxy": "node scripts/openrouter-proxy.mjs",
-    "docs": "tsx scripts/agent-docs.ts",
-    "fixtures": "node scripts/make-calibration.mjs",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build:core",
     "perf": "node scripts/perf/run.mjs"
   },
   "dependencies": {
-    "@openrouter/sdk": "1.4.10",
-    "jszip": "3.10.2",
-    "pdfjs-dist": "6.3.289",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
@@ -39,7 +33,6 @@
     "@vitejs/plugin-react": "6.1.2",
     "jsdom": "30.1.2",
     "playwright-core": "1.64.1",
-    "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.5",
     "vitest": "5.0.5"

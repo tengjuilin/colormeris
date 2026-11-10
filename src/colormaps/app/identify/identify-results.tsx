@@ -1,5 +1,5 @@
+import { mapByName } from 'colormeris';
 import { memo } from 'react';
-import { mapByName } from '../../../core/colormap-library.ts';
 import { pct } from '../../common.ts';
 import type { FigureLine } from '../../figure-input.ts';
 import { COMPARE_MAX } from '../../route.ts';

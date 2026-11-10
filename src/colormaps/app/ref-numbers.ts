@@ -1,5 +1,4 @@
-import { cmapData } from '../../core/colormap-library.ts';
-import { buildRefNumbers } from '../references.ts';
+import { buildRefNumbers, cmapData } from 'colormeris';
 
 // The footer's reference numbers (key -> number, in the order of first use in
 // the default Browse list). The footer lists the references in this order and

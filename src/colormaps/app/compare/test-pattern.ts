@@ -1,6 +1,6 @@
 // The Compare tab's test images (sine-section.tsx): a value pattern in
 // [0, 1] painted through a colormap. Pure: no DOM.
-import { lerpRgb } from '../../../core/color.ts';
+import { lerpRgb } from 'colormeris';
 import type { Rgb } from '../../../types/index.ts';
 
 const LUT_N = 4096; // colors precomputed along the values

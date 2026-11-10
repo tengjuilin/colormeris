@@ -1,5 +1,5 @@
+import { rgbToHex } from 'colormeris';
 import { useLayoutEffect, useRef } from 'react';
-import { rgbToHex } from '../../../core/color.ts';
 import type { ViewKey } from '../../../types/index.ts';
 import { VIEWS } from '../../common.ts';
 import { viewData } from '../../library-cache.ts';

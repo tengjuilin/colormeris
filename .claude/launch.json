@@ -21,14 +21,6 @@
       "autoPort": true
     },
     {
-      "name": "openrouter-proxy",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "scripts/openrouter-proxy.mjs"
-      ],
-      "port": 8787
-    },
-    {
       "name": "colormeris-build",
       "runtimeExecutable": "sh",
       "runtimeArgs": [

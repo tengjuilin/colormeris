@@ -1,5 +1,5 @@
+import { mapByName } from 'colormeris';
 import { createContext, type Dispatch, memo, useCallback, useContext, useLayoutEffect, useRef } from 'react';
-import { mapByName } from '../../../core/colormap-library.ts';
 import type { ColormapEntry } from '../../../types/index.ts';
 import { VIEWS } from '../../common.ts';
 import { COMPARE_MAX } from '../../route.ts';

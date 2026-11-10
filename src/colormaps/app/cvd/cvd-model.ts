@@ -1,5 +1,5 @@
-import { deltaE2000, rgbToHex, rgbToLab } from '../../../core/color.ts';
-import { type CvdPixelOptions, cvdLinearFn, resolveCvdModel, simulateCvdPixels } from '../../../core/cvd.ts';
+import type { CvdPixelOptions } from 'colormeris';
+import { cvdLinearFn, deltaE2000, resolveCvdModel, rgbToHex, rgbToLab, simulateCvdPixels } from 'colormeris';
 import type { PixelImage, Rgb } from '../../../types/index.ts';
 
 // The pure part of the CVD tab: the kinds of deficiency, the captions, the

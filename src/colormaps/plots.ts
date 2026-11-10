@@ -1,7 +1,7 @@
-import { rgbToHex } from '../core/color.ts';
+import type { colormapMetrics } from 'colormeris';
+import { rgbToHex } from 'colormeris';
 import type { ColormapEntry, Rgb, ViewData, ViewKey } from '../types/index.ts';
 import type { el as elFn, svgEl as svgElFn } from './common.ts';
-import type { colormapMetrics } from './metrics.ts';
 import type { Tooltip } from './tooltip-element.ts';
 
 // SVG plots of the colormap viewer: axes, line and dot series with a

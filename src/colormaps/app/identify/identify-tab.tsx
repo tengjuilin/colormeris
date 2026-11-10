@@ -1,8 +1,14 @@
+import {
+  cmapData,
+  identifyColorbar,
+  identifyColors,
+  mapByName,
+  mapColors,
+  refineColorbar,
+  rgbToHex,
+  sampleColorbar,
+} from 'colormeris';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { rgbToHex } from '../../../core/color.ts';
-import { refineColorbar, sampleColorbar } from '../../../core/colorbar.ts';
-import { cmapData, mapByName, mapColors } from '../../../core/colormap-library.ts';
-import { identifyColorbar, identifyColors } from '../../../core/colormap-match.ts';
 import type { Rgb } from '../../../types/index.ts';
 import { clamp8, roundRgb } from '../../common.ts';
 import type { FigureLine } from '../../figure-input.ts';
@@ -11,7 +17,7 @@ import { Strip } from '../shared/strip.tsx';
 import { describeMatches, identifyMaps, wholeImagePixels } from './identify-model.ts';
 import { IdentifyResults, type Outcome } from './identify-results.tsx';
 
-// The Identify tab of the colormap viewer (colormaps.html): load an image of a
+// The Identify tab of the colormap viewer (index.html): load an image of a
 // figure, drag along its colorbar (or use the whole image), and list the closest
 // known maps. The image input is figure-input.ts, the pure parts are in
 // identify-model.ts, the verdict and list in identify-results.tsx.

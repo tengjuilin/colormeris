@@ -1,5 +1,5 @@
+import { cmapData } from 'colormeris';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { cmapData } from '../../core/colormap-library.ts';
 import type { ColormapEntry } from '../../types/index.ts';
 import type { FigureLine } from '../figure-input.ts';
 import { isRev, metrics } from '../library-cache.ts';
@@ -21,7 +21,7 @@ import { useUrlSync } from './use-url-sync.ts';
 import { DispatchContext, ViewerStateContext } from './viewer-context.ts';
 import { initFromRoute, loadStripView, saveStripView, type ViewerState, viewerReducer } from './viewer-state.ts';
 
-// The colormap viewer page (colormaps.html), in five tabs:
+// The colormap viewer page (index.html), in five tabs:
 //   Browse    every colormap as five vector strips (as seen, three
 //             color-vision-deficiency simulations, grayscale) with rating
 //             columns; one map at a time opens in the detail view (app/detail)

@@ -1,7 +1,13 @@
-import { rgbToHex } from '../../../core/color.ts';
-import { colorAtT, refineColorbar, sampleColorbar } from '../../../core/colorbar.ts';
-import { libraryMaps, mapByName, mapColors } from '../../../core/colormap-library.ts';
-import { identifyColorbar } from '../../../core/colormap-match.ts';
+import {
+  colorAtT,
+  identifyColorbar,
+  libraryMaps,
+  mapByName,
+  mapColors,
+  refineColorbar,
+  rgbToHex,
+  sampleColorbar,
+} from 'colormeris';
 import type { ColorbarSample, Rgb } from '../../../types/index.ts';
 import { downloadCanvasPng, pct, roundRgb } from '../../common.ts';
 import {

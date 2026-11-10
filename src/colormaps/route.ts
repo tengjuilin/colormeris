@@ -1,4 +1,4 @@
-// Pure: the colormap viewer's URL (colormaps.html). Which tab is open
+// Pure: the colormap viewer's URL (index.html). Which tab is open
 // (#browse, #compare, …), which map shows its details (?map=) and which
 // maps are compared (?compare=). Tested in route.test.ts.
 

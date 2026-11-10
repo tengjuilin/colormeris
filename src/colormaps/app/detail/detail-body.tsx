@@ -1,8 +1,8 @@
+import { CMAP_REFS, citeFor } from 'colormeris';
 import { type Dispatch, memo, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import type { ColormapEntry, ViewKey } from '../../../types/index.ts';
 import { GLYPH, VIEWS } from '../../common.ts';
 import { notesOf, viewData } from '../../library-cache.ts';
-import { CMAP_REFS, citeFor } from '../../references.ts';
 import { COMPARE_MAX } from '../../route.ts';
 import { REF_NUMBERS } from '../ref-numbers.ts';
 import { ProbeStrip } from '../shared/probe-strip.tsx';
@@ -12,7 +12,7 @@ import { useDetailFolds } from './detail-folds.ts';
 import { StatsList, ViewTable, Zones } from './detail-numbers.tsx';
 import { DetailPlots } from './detail-plots.tsx';
 
-// The detail view of one colormap (colormaps.html): the name with Expand all,
+// The detail view of one colormap (index.html): the name with Expand all,
 // the comparison button and Close, the map in all five views, the rating
 // sentences, the four plots, and three folds (numbers, where values get
 // confused, references). It sits in the drawer on wide screens and under the

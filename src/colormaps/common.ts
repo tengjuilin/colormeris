@@ -1,7 +1,7 @@
 import type { Rgb, ViewKey } from '../types/index.ts';
 
 // DOM helpers and constants shared by the colormap viewer's modules
-// (colormaps.html). The React app and plots.ts import them.
+// (index.html). The React app and plots.ts import them.
 
 export const VIEWS: { key: ViewKey; label: string; short: string }[] = [
   { key: 'orig', label: 'Colormap', short: 'Colormap' },
@@ -28,7 +28,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export const clamp8 = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
 export const roundRgb = (rgb: Rgb): Rgb => rgb.map(clamp8) as Rgb;
-export { pct } from '../core/stats.ts';
+export { pct } from 'colormeris';
 
 /** Saves a canvas as `name` (a PNG); onError when the browser cannot encode it. */
 export function downloadCanvasPng(canvas: HTMLCanvasElement, name: string, onError: (msg: string) => void) {

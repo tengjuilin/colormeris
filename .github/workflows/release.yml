@@ -1,0 +1,33 @@
+name: Publish the colormeris package
+
+# Publishes packages/core to npm when a tag core-vX.Y.Z is pushed. The tag must
+# match packages/core/package.json's version. Needs the repository secret
+# NPM_TOKEN (an npm automation token that can publish colormeris).
+on:
+  push:
+    tags: ['core-v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - name: Tag matches the package version
+        run: test "core-v$(node -p "require('./packages/core/package.json').version")" = "$GITHUB_REF_NAME"
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build:core
+      - run: npm publish ./packages/core --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

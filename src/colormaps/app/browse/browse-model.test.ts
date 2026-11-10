@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
+import { cmapData, lightnessStats } from 'colormeris';
 import { test } from 'vitest';
-import { cmapData } from '../../../core/colormap-library.ts';
-import { lightnessStats } from '../../../core/cvd.ts';
 import type { ColormapEntry } from '../../../types/index.ts';
 import { metrics, viewData } from '../../library-cache.ts';
 import type { Filters } from '../viewer-state.ts';

@@ -1,5 +1,5 @@
+import { mapByName } from 'colormeris';
 import { useLayoutEffect, useRef } from 'react';
-import { mapByName } from '../../../core/colormap-library.ts';
 import { comparedWith } from '../viewer-state.ts';
 import { MiniStrip } from './compare-numbers.tsx';
 

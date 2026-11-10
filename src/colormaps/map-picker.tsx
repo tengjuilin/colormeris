@@ -1,6 +1,6 @@
+import { cmapData, mapByName, mapColors } from 'colormeris';
 import { type KeyboardEvent, memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { cmapData, mapByName, mapColors } from '../core/colormap-library.ts';
 import type { ColormapEntry, Rgb } from '../types/index.ts';
 import { flushSafely } from '../ui/flush.ts';
 

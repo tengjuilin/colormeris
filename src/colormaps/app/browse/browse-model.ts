@@ -1,4 +1,4 @@
-import { lightnessStats } from '../../../core/cvd.ts';
+import { lightnessStats } from 'colormeris';
 import type { ColormapEntry, ColormapSource } from '../../../types/index.ts';
 import { metrics, viewData } from '../../library-cache.ts';
 import type { Filters, SortState } from '../viewer-state.ts';

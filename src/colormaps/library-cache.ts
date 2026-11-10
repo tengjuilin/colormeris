@@ -1,9 +1,6 @@
-import { labToRgb } from '../core/color.ts';
-import { mapColors } from '../core/colormap-library.ts';
-import { lightness } from '../core/cvd.ts';
+import type { ColormapMetrics, MapFeatures } from 'colormeris';
+import { colormapMetrics, labToRgb, lightness, mapColors, mapFeatures, ratingNotes } from 'colormeris';
 import type { ColormapEntry, Rgb, ViewData, ViewKey } from '../types/index.ts';
-import type { ColormapMetrics, MapFeatures } from './metrics.ts';
-import { colormapMetrics, mapFeatures, ratingNotes } from './metrics.ts';
 
 // Pure, cached data about each colormap: parsed colors, the colors in each
 // view (as seen, three CVD simulations, grayscale), the rating metrics and

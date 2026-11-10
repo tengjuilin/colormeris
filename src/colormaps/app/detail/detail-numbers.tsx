@@ -1,10 +1,8 @@
+import { lightnessStats, READ_DE, READ_WINDOW, rgbToHex, worstCvd } from 'colormeris';
 import { memo, useState } from 'react';
-import { rgbToHex } from '../../../core/color.ts';
-import { lightnessStats } from '../../../core/cvd.ts';
 import type { ColormapEntry, ViewKey } from '../../../types/index.ts';
 import { pct, VIEWS } from '../../common.ts';
 import { metrics, sepOf, viewData } from '../../library-cache.ts';
-import { READ_DE, READ_WINDOW, worstCvd } from '../../metrics.ts';
 import { Strip } from '../shared/strip.tsx';
 
 // The folded parts of the detail view with numbers: the lightness statistics,

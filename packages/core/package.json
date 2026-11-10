@@ -1,0 +1,38 @@
+{
+  "name": "colormeris",
+  "version": "0.1.0",
+  "description": "Colormap library, color science (CIELAB, ΔE2000, color vision deficiency), colormap matching and ratings, and colorbar sampling, as pure TypeScript functions.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/testing*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tengjuilin/colormeris.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://tengjuilin.github.io/colormeris/",
+  "keywords": [
+    "colormap",
+    "colorbar",
+    "cielab",
+    "delta-e",
+    "color-vision-deficiency",
+    "matplotlib",
+    "viridis"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  }
+}
